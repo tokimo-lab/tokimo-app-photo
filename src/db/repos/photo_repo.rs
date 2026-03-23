@@ -366,6 +366,120 @@ impl PhotoRepo {
         Ok(count)
     }
 
+    /// Batch set favorite for multiple photos
+    pub async fn batch_set_favorite(
+        db: &DatabaseConnection,
+        photo_ids: &[Uuid],
+        favorite: bool,
+    ) -> Result<u64, AppError> {
+        let result = photos::Entity::update_many()
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .col_expr(photos::Column::IsFavorite, Expr::value(favorite))
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Get photos that need EXIF re-scan (taken_at is NULL, have a source)
+    pub async fn get_photos_needing_exif(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+    ) -> Result<Vec<(Uuid, String, Uuid)>, AppError> {
+        // Return (photo_id, path, source_id) for photos missing EXIF
+        let rows = photos::Entity::find()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::TakenAt.is_null())
+            .filter(photos::Column::SourceId.is_not_null())
+            .select_only()
+            .column(photos::Column::Id)
+            .column(photos::Column::Path)
+            .column(photos::Column::SourceId)
+            .into_tuple::<(Uuid, String, Option<Uuid>)>()
+            .all(db)
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, path, src)| src.map(|s| (id, path, s)))
+            .collect())
+    }
+
+    /// Update EXIF data for a single photo
+    pub async fn update_exif(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        exif: &rust_image_processor::ExifData,
+    ) -> Result<(), AppError> {
+        let mut active = photos::ActiveModel {
+            id: Set(photo_id),
+            ..Default::default()
+        };
+
+        if let Some(ref date_str) = exif.taken_at {
+            let cleaned = date_str.trim_matches('"');
+            let normalised =
+                if cleaned.len() >= 10 && &cleaned[4..5] == ":" && &cleaned[7..8] == ":" {
+                    format!(
+                        "{}-{}-{}{}",
+                        &cleaned[0..4],
+                        &cleaned[5..7],
+                        &cleaned[8..10],
+                        &cleaned[10..]
+                    )
+                } else {
+                    cleaned.to_string()
+                };
+            if let Ok(dt) =
+                chrono::NaiveDateTime::parse_from_str(&normalised, "%Y-%m-%d %H:%M:%S")
+            {
+                active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
+            }
+        }
+
+        if exif.camera_make.is_some() {
+            active.camera_make = Set(exif.camera_make.clone());
+        }
+        if exif.camera_model.is_some() {
+            active.camera_model = Set(exif.camera_model.clone());
+        }
+        if exif.lens_model.is_some() {
+            active.lens_model = Set(exif.lens_model.clone());
+        }
+        if exif.focal_length.is_some() {
+            active.focal_length = Set(exif.focal_length);
+        }
+        if exif.aperture.is_some() {
+            active.aperture = Set(exif.aperture);
+        }
+        if exif.shutter_speed.is_some() {
+            active.shutter_speed = Set(exif.shutter_speed.clone());
+        }
+        if exif.iso.is_some() {
+            active.iso = Set(exif.iso);
+        }
+        if exif.orientation.is_some() {
+            active.orientation = Set(exif.orientation);
+        }
+        if exif.width.is_some() {
+            active.width = Set(exif.width);
+        }
+        if exif.height.is_some() {
+            active.height = Set(exif.height);
+        }
+        if exif.gps_latitude.is_some() {
+            active.gps_latitude = Set(exif.gps_latitude);
+        }
+        if exif.gps_longitude.is_some() {
+            active.gps_longitude = Set(exif.gps_longitude);
+        }
+        if exif.gps_altitude.is_some() {
+            active.gps_altitude = Set(exif.gps_altitude);
+        }
+
+        active.update(db).await?;
+        Ok(())
+    }
+
     /// List photos in a specific album
     pub async fn list_album_photos(
         db: &DatabaseConnection,

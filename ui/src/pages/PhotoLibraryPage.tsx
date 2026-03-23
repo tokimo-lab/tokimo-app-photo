@@ -6,12 +6,21 @@ import {
   SyncOutlined,
   Tag,
 } from "@tokiomo/components";
-import { Calendar, FolderOpen, Grid3x3, Star } from "lucide-react";
+import {
+  Calendar,
+  CheckSquare,
+  FolderOpen,
+  Grid3x3,
+  ScanSearch,
+  Star,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
+import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
+import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
 import type { PhotoOutput } from "../../generated/rust-api";
@@ -36,6 +45,8 @@ export default function PhotoLibraryPage() {
   const setTab = useCallback(
     (t: TabKey) => {
       setSearchParams({ tab: t }, { replace: true });
+      setSelectedIds(new Set());
+      setIsSelecting(false);
     },
     [setSearchParams],
   );
@@ -43,6 +54,40 @@ export default function PhotoLibraryPage() {
   const [page, setPage] = useState(1);
   const [search, _setSearch] = useState("");
 
+  // ── Selection state ────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
+
+  const handleSelect = useCallback((photo: PhotoOutput) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photo.id)) {
+        next.delete(photo.id);
+      } else {
+        next.add(photo.id);
+      }
+      if (next.size > 0) {
+        setIsSelecting(true);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+  }, []);
+
+  const toggleSelectMode = useCallback(() => {
+    if (isSelecting) {
+      clearSelection();
+    } else {
+      setIsSelecting(true);
+    }
+  }, [isSelecting, clearSelection]);
+
+  // ── Queries ────────────────────────────────────────────────────────────
   const libraryQuery = api.mediaLibrary.getById.useQuery(
     { id: id! },
     { enabled: !!id },
@@ -115,6 +160,68 @@ export default function PhotoLibraryPage() {
     [toggleFavMutation.mutate],
   );
 
+  // ── Batch operations ──────────────────────────────────────────────────
+  const batchFavMutation = api.mediaLibrary.batchFavorite.useMutation({
+    onSuccess: (data) => {
+      message.success(`已更新 ${data.updated} 张照片`);
+      clearSelection();
+      void photosQuery.refetch();
+      void favoritesQuery.refetch();
+    },
+    onError: (e) => message.error(e.message || "操作失败"),
+  });
+
+  const addToAlbumMutation = api.mediaLibrary.addPhotosToAlbum.useMutation({
+    onSuccess: () => {
+      message.success("已添加到相册");
+      clearSelection();
+      setShowAlbumPicker(false);
+      void albumsQuery.refetch();
+    },
+    onError: (e) => message.error(e.message || "操作失败"),
+  });
+
+  const handleBatchFavorite = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    batchFavMutation.mutate({
+      libraryId: id,
+      photoIds: [...selectedIds],
+      favorite: true,
+    });
+  }, [id, selectedIds, batchFavMutation.mutate]);
+
+  const handleBatchUnfavorite = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    batchFavMutation.mutate({
+      libraryId: id,
+      photoIds: [...selectedIds],
+      favorite: false,
+    });
+  }, [id, selectedIds, batchFavMutation.mutate]);
+
+  const handleAddToAlbum = useCallback(
+    (albumId: string) => {
+      addToAlbumMutation.mutate({
+        albumId,
+        photoIds: [...selectedIds],
+      });
+    },
+    [selectedIds, addToAlbumMutation.mutate],
+  );
+
+  // ── EXIF rescan ───────────────────────────────────────────────────────
+  const rescanMutation = api.mediaLibrary.rescanExif.useMutation({
+    onSuccess: (data) => {
+      message.success(data.message);
+    },
+    onError: (e) => message.error(e.message || "EXIF 扫描失败"),
+  });
+
+  const handleRescanExif = useCallback(() => {
+    if (!id) return;
+    rescanMutation.mutate({ libraryId: id });
+  }, [id, rescanMutation.mutate]);
+
   // ── TopBar ──────────────────────────────────────────────────────────────
   const refetchPhotos = useCallback(
     () => void photosQuery.refetch(),
@@ -127,6 +234,7 @@ export default function PhotoLibraryPage() {
 
   const isRefetching = photosQuery.isRefetching;
   const isSyncing = syncMutation.isPending;
+  const isRescanPending = rescanMutation.isPending;
 
   useTopBar({
     left: useMemo(() => {
@@ -145,6 +253,21 @@ export default function PhotoLibraryPage() {
       return (
         <>
           <Button
+            icon={<CheckSquare className="h-4 w-4" />}
+            onClick={toggleSelectMode}
+            className={isSelecting ? "!border-orange-500 !text-orange-500" : ""}
+          >
+            选择
+          </Button>
+          <Button
+            icon={<ScanSearch className="h-4 w-4" />}
+            onClick={handleRescanExif}
+            loading={isRescanPending}
+            title="重新扫描照片 EXIF 信息"
+          >
+            扫描EXIF
+          </Button>
+          <Button
             icon={<ReloadOutlined />}
             onClick={refetchPhotos}
             loading={isRefetching}
@@ -156,7 +279,17 @@ export default function PhotoLibraryPage() {
           </Button>
         </>
       );
-    }, [id, refetchPhotos, isRefetching, doSync, isSyncing]),
+    }, [
+      id,
+      refetchPhotos,
+      isRefetching,
+      doSync,
+      isSyncing,
+      toggleSelectMode,
+      isSelecting,
+      handleRescanExif,
+      isRescanPending,
+    ]),
   });
 
   if (!id) return null;
@@ -207,17 +340,26 @@ export default function PhotoLibraryPage() {
         <PhotoTimeline
           photos={photos}
           onToggleFavorite={handleToggleFavorite}
+          isSelecting={isSelecting}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
         />
       ) : tab === "folders" ? (
         <PhotoFoldersView
           libraryId={id}
           onToggleFavorite={handleToggleFavorite}
+          isSelecting={isSelecting}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
         />
       ) : tab === "favorites" ? (
         favoritePhotos.length > 0 ? (
           <PhotoTimeline
             photos={favoritePhotos}
             onToggleFavorite={handleToggleFavorite}
+            isSelecting={isSelecting}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
           />
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
@@ -250,6 +392,26 @@ export default function PhotoLibraryPage() {
 
       {tab === "timeline" && !isLoading && photos.length === 0 && (
         <Empty description="暂无照片，请先同步媒体库" />
+      )}
+
+      {/* Selection bar (floating bottom) */}
+      <PhotoSelectionBar
+        count={selectedIds.size}
+        onAddToAlbum={() => setShowAlbumPicker(true)}
+        onBatchFavorite={handleBatchFavorite}
+        onBatchUnfavorite={handleBatchUnfavorite}
+        onClear={clearSelection}
+      />
+
+      {/* Album picker dialog */}
+      {showAlbumPicker && (
+        <AlbumPickerDialog
+          libraryId={id}
+          selectedCount={selectedIds.size}
+          onPick={handleAddToAlbum}
+          onClose={() => setShowAlbumPicker(false)}
+          isPending={addToAlbumMutation.isPending}
+        />
       )}
     </div>
   );

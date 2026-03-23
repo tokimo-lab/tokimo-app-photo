@@ -7,9 +7,15 @@ import { groupPhotosByDate } from "./photo-utils";
 export function PhotoTimeline({
   photos,
   onToggleFavorite,
+  isSelecting,
+  selectedIds,
+  onSelect,
 }: {
   photos: PhotoOutput[];
   onToggleFavorite?: (photo: PhotoOutput) => void;
+  isSelecting?: boolean;
+  selectedIds?: Set<string>;
+  onSelect?: (photo: PhotoOutput) => void;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -43,6 +49,9 @@ export function PhotoTimeline({
                   photo={photo}
                   onClick={setSelectedPhoto}
                   onToggleFavorite={onToggleFavorite}
+                  isSelecting={isSelecting}
+                  isSelected={selectedIds?.has(photo.id)}
+                  onSelect={onSelect}
                 />
               ))}
             </div>
@@ -50,7 +59,7 @@ export function PhotoTimeline({
         ))}
       </div>
 
-      {selectedPhoto && (
+      {selectedPhoto && !isSelecting && (
         <PhotoLightbox
           photo={selectedPhoto}
           allPhotos={photos}

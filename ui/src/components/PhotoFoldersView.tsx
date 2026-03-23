@@ -9,9 +9,15 @@ import { PhotoThumbnail } from "./PhotoThumbnail";
 export function PhotoFoldersView({
   libraryId,
   onToggleFavorite,
+  isSelecting,
+  selectedIds,
+  onSelect,
 }: {
   libraryId: string;
   onToggleFavorite?: (photo: PhotoOutput) => void;
+  isSelecting?: boolean;
+  selectedIds?: Set<string>;
+  onSelect?: (photo: PhotoOutput) => void;
 }) {
   const [currentPath, setCurrentPath] = useState("/");
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -110,6 +116,9 @@ export function PhotoFoldersView({
               photo={photo}
               onClick={setSelectedPhoto}
               onToggleFavorite={onToggleFavorite}
+              isSelecting={isSelecting}
+              isSelected={selectedIds?.has(photo.id)}
+              onSelect={onSelect}
             />
           ))}
         </div>
