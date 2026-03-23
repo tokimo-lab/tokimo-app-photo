@@ -10,6 +10,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   isSelecting,
   isSelected,
   onSelect,
+  fillContainer,
 }: {
   photo: PhotoOutput;
   onClick: (photo: PhotoOutput) => void;
@@ -17,6 +18,8 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   isSelecting?: boolean;
   isSelected?: boolean;
   onSelect?: (photo: PhotoOutput) => void;
+  /** When true, fills parent dimensions instead of forcing aspect-square */
+  fillContainer?: boolean;
 }) {
   const src = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
@@ -39,7 +42,9 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
 
   return (
     <div
-      className={`group relative aspect-square overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
+      className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
+        fillContainer ? "h-full w-full" : "aspect-square"
+      } ${
         isSelected
           ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900"
           : ""
