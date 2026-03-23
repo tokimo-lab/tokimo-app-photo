@@ -1,14 +1,22 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
+import type { DateGroup } from "./photo-utils";
 import { groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
-import { computeJustifiedRows } from "./useJustifiedLayout";
+import { computeJustifiedRows, type JustifiedRow } from "./useJustifiedLayout";
 
 const PHOTO_GAP = 2;
 const HEADER_HEIGHT = 32;
+const VIRTUALIZER_OVERSCAN = 15;
+
+// ── Flat virtual item types ─────────────────────────────────────
+type VirtualItem =
+  | { type: "header"; group: DateGroup }
+  | { type: "row"; row: JustifiedRow; groupDate: string };
 
 export function PhotoTimeline({
   photos,
@@ -50,150 +58,176 @@ export function PhotoTimeline({
     return () => ro.disconnect();
   }, []);
 
-  // ── Pre-compute justified layout for ALL groups ──────────────
-  const groupLayouts = useMemo(() => {
-    if (containerWidth <= 0)
-      return new Map<string, ReturnType<typeof computeJustifiedRows>>();
-    const map = new Map<string, ReturnType<typeof computeJustifiedRows>>();
+  // ── Flatten groups into virtual items with pre-computed heights ──
+  const { flatItems, dateOffsets, itemHeights } = useMemo(() => {
+    const items: VirtualItem[] = [];
+    const heights: number[] = [];
+    const offsets = new Map<string, number>();
+    let cumOffset = 0;
+
     for (const group of groups) {
-      map.set(
-        group.date,
-        computeJustifiedRows(group.photos, containerWidth, 220, PHOTO_GAP),
-      );
+      // Record date → pixel offset for timeline scrubber
+      offsets.set(group.date, cumOffset);
+
+      // Header item
+      items.push({ type: "header", group });
+      heights.push(HEADER_HEIGHT);
+      cumOffset += HEADER_HEIGHT;
+
+      // Photo row items
+      if (containerWidth > 0) {
+        const rows = computeJustifiedRows(
+          group.photos,
+          containerWidth,
+          220,
+          PHOTO_GAP,
+        );
+        for (const row of rows) {
+          items.push({ type: "row", row, groupDate: group.date });
+          const h = row.height + PHOTO_GAP;
+          heights.push(h);
+          cumOffset += h;
+        }
+      }
     }
-    return map;
+
+    return { flatItems: items, dateOffsets: offsets, itemHeights: heights };
   }, [groups, containerWidth]);
 
-  // ── Track refs for each date group (timeline scrubber) ───────
-  const dateGroupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const setGroupRef = useCallback((date: string, el: HTMLDivElement | null) => {
-    if (el) {
-      dateGroupRefs.current.set(date, el);
-    } else {
-      dateGroupRefs.current.delete(date);
-    }
+  // ── Scroll element (dashboard-scroll-container) ──────────────
+  const scrollElRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    scrollElRef.current = document.getElementById("dashboard-scroll-container");
   }, []);
 
-  // ── Infinite scroll sentinel ─────────────────────────────────
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!hasMore || !onLoadMore) return;
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
+  // ── Virtual scroll ───────────────────────────────────────────
+  const virtualizer = useVirtualizer({
+    count: flatItems.length,
+    getScrollElement: () => scrollElRef.current,
+    estimateSize: (i) => itemHeights[i] ?? HEADER_HEIGHT,
+    overscan: VIRTUALIZER_OVERSCAN,
+    // Offset from scroll container top to virtualizer wrapper
+    scrollMargin: measureRef.current?.offsetTop ?? 0,
+  });
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isLoadingMore) {
-          onLoadMore();
-        }
-      },
-      { rootMargin: "400px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore, isLoadingMore]);
+  // ── Infinite scroll: trigger when near end ──────────────────
+  const virtualItems = virtualizer.getVirtualItems();
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || isLoadingMore) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+    // Load more when within 10 items of the end
+    if (lastItem.index >= flatItems.length - 10) {
+      onLoadMore();
+    }
+  }, [virtualItems, flatItems.length, hasMore, onLoadMore, isLoadingMore]);
+
+  // ── Scroll to date (for timeline scrubber) ──────────────────
+  const scrollToDate = useCallback(
+    (datePrefix: string, smooth: boolean) => {
+      // Find the first flat item whose date starts with the prefix
+      const idx = flatItems.findIndex(
+        (item) =>
+          item.type === "header" && item.group.date.startsWith(datePrefix),
+      );
+      if (idx >= 0) {
+        virtualizer.scrollToIndex(idx, {
+          align: "start",
+          behavior: smooth ? "smooth" : "auto",
+        });
+      }
+    },
+    [flatItems, virtualizer],
+  );
+
+  // ── Current visible date (for scroll spy) ───────────────────
+  const currentVisibleDate = useMemo(() => {
+    if (virtualItems.length === 0) return null;
+    // Find the first visible header
+    for (const vItem of virtualItems) {
+      const item = flatItems[vItem.index];
+      if (item?.type === "header") return item.group.date;
+    }
+    // Fallback: find the group date from the first visible row
+    const first = flatItems[virtualItems[0].index];
+    if (first?.type === "row") return first.groupDate;
+    return null;
+  }, [virtualItems, flatItems]);
 
   return (
     <>
       <div ref={measureRef} className="pr-14 lg:pr-14">
-        {groups.map((group) => {
-          const rows = groupLayouts.get(group.date);
-          const rowsHeight = rows
-            ? rows.reduce((sum, r) => sum + r.height, 0) +
-              Math.max(0, rows.length - 1) * PHOTO_GAP
-            : 200;
+        {/* Virtual scroll container with total height */}
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {virtualItems.map((vItem) => {
+            const item = flatItems[vItem.index];
+            if (!item) return null;
 
-          return (
-            <div
-              key={group.date}
-              ref={(el) => setGroupRef(group.date, el)}
-              style={{
-                contentVisibility: "auto",
-                containIntrinsicSize: `auto ${rowsHeight + HEADER_HEIGHT}px`,
-              }}
-            >
-              {/* Date header */}
-              <div className="group/date mb-0.5 flex items-center gap-2 py-1">
-                <button
-                  type="button"
-                  className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
-                    isSelecting &&
-                    group.photos.every((p) => selectedIds?.has(p.id))
-                      ? "border-orange-500 bg-orange-500 opacity-100"
-                      : isSelecting
-                        ? "border-neutral-400 bg-neutral-200/50 opacity-80 hover:opacity-100 dark:border-neutral-500 dark:bg-neutral-700/50"
-                        : "border-neutral-400 bg-neutral-200/50 opacity-0 group-hover/date:opacity-80 dark:border-neutral-500 dark:bg-neutral-700/50"
-                  }`}
-                  onClick={() => {
-                    if (!onSelect) return;
-                    const allSelected = group.photos.every((p) =>
-                      selectedIds?.has(p.id),
-                    );
-                    for (const p of group.photos) {
-                      if (allSelected || !selectedIds?.has(p.id)) onSelect(p);
-                    }
-                  }}
-                  title={`全选 ${group.label}`}
-                >
-                  {isSelecting &&
-                    group.photos.every((p) => selectedIds?.has(p.id)) && (
-                      <Check className="h-3 w-3 text-white" strokeWidth={3} />
-                    )}
-                </button>
-                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-                  {group.label}
-                </h3>
-                <span className="text-xs text-neutral-400">
-                  {group.photos.length} 张
-                </span>
+            return (
+              <div
+                key={vItem.key}
+                data-index={vItem.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vItem.start - virtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                {item.type === "header" ? (
+                  <DateHeader
+                    group={item.group}
+                    isSelecting={isSelecting}
+                    selectedIds={selectedIds}
+                    onSelect={onSelect}
+                  />
+                ) : (
+                  <div
+                    className="flex"
+                    style={{
+                      gap: `${PHOTO_GAP}px`,
+                      height: item.row.height,
+                    }}
+                  >
+                    {item.row.items.map((photo) => (
+                      <div
+                        key={photo.photo.id}
+                        style={{
+                          width: photo.width,
+                          height: photo.height,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <PhotoThumbnail
+                          photo={photo.photo}
+                          onClick={setSelectedPhoto}
+                          onToggleFavorite={onToggleFavorite}
+                          isSelecting={isSelecting}
+                          isSelected={selectedIds?.has(photo.photo.id)}
+                          onSelect={onSelect}
+                          fillContainer
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+            );
+          })}
+        </div>
 
-              {/* Justified photo rows */}
-              {rows && (
-                <div
-                  className="flex flex-col"
-                  style={{ gap: `${PHOTO_GAP}px` }}
-                >
-                  {rows.map((row, ri) => (
-                    <div
-                      key={row.items[0].photo.id}
-                      className="flex"
-                      style={{ gap: `${PHOTO_GAP}px`, height: row.height }}
-                    >
-                      {row.items.map((item) => (
-                        <div
-                          key={item.photo.id}
-                          style={{
-                            width: item.width,
-                            height: item.height,
-                            flexShrink: 0,
-                          }}
-                        >
-                          <PhotoThumbnail
-                            photo={item.photo}
-                            onClick={setSelectedPhoto}
-                            onToggleFavorite={onToggleFavorite}
-                            isSelecting={isSelecting}
-                            isSelected={selectedIds?.has(item.photo.id)}
-                            onSelect={onSelect}
-                            fillContainer
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Infinite scroll sentinel */}
-        {hasMore && (
-          <div ref={sentinelRef} className="flex justify-center py-4">
-            {isLoadingMore && (
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
-            )}
+        {/* Loading indicator */}
+        {hasMore && isLoadingMore && (
+          <div className="flex justify-center py-4">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
           </div>
         )}
 
@@ -208,7 +242,9 @@ export function PhotoTimeline({
       {/* Non-linear timeline scrubber on the right edge */}
       <TimelineScrubber
         libraryId={libraryId}
-        dateGroupRefs={dateGroupRefs.current}
+        dateOffsets={dateOffsets}
+        currentVisibleDate={currentVisibleDate}
+        scrollToDate={scrollToDate}
       />
 
       {selectedPhoto && !isSelecting && (
@@ -221,5 +257,51 @@ export function PhotoTimeline({
         />
       )}
     </>
+  );
+}
+
+// ── Date header (extracted for virtual rendering) ──────────────
+function DateHeader({
+  group,
+  isSelecting,
+  selectedIds,
+  onSelect,
+}: {
+  group: DateGroup;
+  isSelecting?: boolean;
+  selectedIds?: Set<string>;
+  onSelect?: (photo: PhotoOutput) => void;
+}) {
+  const allSelected =
+    isSelecting && group.photos.every((p) => selectedIds?.has(p.id));
+
+  return (
+    <div className="group/date mb-0.5 flex items-center gap-2 py-1">
+      <button
+        type="button"
+        className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
+          allSelected
+            ? "border-orange-500 bg-orange-500 opacity-100"
+            : isSelecting
+              ? "border-neutral-400 bg-neutral-200/50 opacity-80 hover:opacity-100 dark:border-neutral-500 dark:bg-neutral-700/50"
+              : "border-neutral-400 bg-neutral-200/50 opacity-0 group-hover/date:opacity-80 dark:border-neutral-500 dark:bg-neutral-700/50"
+        }`}
+        onClick={() => {
+          if (!onSelect) return;
+          for (const p of group.photos) {
+            if (allSelected || !selectedIds?.has(p.id)) onSelect(p);
+          }
+        }}
+        title={`全选 ${group.label}`}
+      >
+        {allSelected && (
+          <Check className="h-3 w-3 text-white" strokeWidth={3} />
+        )}
+      </button>
+      <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+        {group.label}
+      </h3>
+      <span className="text-xs text-neutral-400">{group.photos.length} 张</span>
+    </div>
   );
 }

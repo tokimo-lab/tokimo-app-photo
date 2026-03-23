@@ -256,10 +256,14 @@ function useTimelineLayout(
 // ── Component ───────────────────────────────────────────────────
 export function TimelineScrubber({
   libraryId,
-  dateGroupRefs,
+  dateOffsets: _dateOffsets,
+  currentVisibleDate,
+  scrollToDate,
 }: {
   libraryId: string;
-  dateGroupRefs: Map<string, HTMLDivElement>;
+  dateOffsets: Map<string, number>;
+  currentVisibleDate: string | null;
+  scrollToDate: (datePrefix: string, smooth: boolean) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [thumbPos, setThumbPos] = useState(0);
@@ -269,7 +273,6 @@ export function TimelineScrubber({
     y: number;
     text: string;
   } | null>(null);
-  const raf = useRef(0);
 
   const { data: timelineEntries } = api.mediaLibrary.getTimelineIndex.useQuery(
     { libraryId },
@@ -280,42 +283,14 @@ export function TimelineScrubber({
     focusYear,
   );
 
-  // ── Scroll container ────────────────────────────────────────
-  const scRef = useRef<HTMLElement | null>(null);
+  // ── Scroll → thumb sync (driven by virtualizer's visible date) ──
   useEffect(() => {
-    scRef.current = document.getElementById("dashboard-scroll-container");
-  }, []);
-
-  // ── Scroll → thumb sync ─────────────────────────────────────
-  useEffect(() => {
-    const sc = scRef.current;
-    if (!sc || datePositions.size === 0) return;
-
-    const onScroll = () => {
-      cancelAnimationFrame(raf.current);
-      raf.current = requestAnimationFrame(() => {
-        if (dragging) return;
-        const vpTop = sc.getBoundingClientRect().top + 80;
-        let best: string | null = null;
-        for (const [date, el] of dateGroupRefs) {
-          if (el.getBoundingClientRect().top <= vpTop) best = date;
-        }
-        if (best != null) {
-          const ym = best.slice(0, 7); // "2025-03" from "2025-03-12"
-          if (datePositions.has(ym)) {
-            setThumbPos(datePositions.get(ym)!);
-          }
-        }
-      });
-    };
-
-    sc.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => {
-      sc.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(raf.current);
-    };
-  }, [dateGroupRefs, datePositions, dragging]);
+    if (dragging || !currentVisibleDate || datePositions.size === 0) return;
+    const ym = currentVisibleDate.slice(0, 7); // "2025-03" from "2025-03-12"
+    if (datePositions.has(ym)) {
+      setThumbPos(datePositions.get(ym)!);
+    }
+  }, [currentVisibleDate, datePositions, dragging]);
 
   // ── Position → nearest year-month ───────────────────────────
   const nearestDate = useCallback(
@@ -342,21 +317,12 @@ export function TimelineScrubber({
       const pos = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
       const nearest = nearestDate(pos);
       if (nearest) {
-        // Find first dateGroupRef that starts with this year-month
-        for (const [date, el] of dateGroupRefs) {
-          if (date.startsWith(nearest)) {
-            el.scrollIntoView({
-              behavior: dragging ? "auto" : "smooth",
-              block: "start",
-            });
-            break;
-          }
-        }
+        scrollToDate(nearest, !dragging);
         setTooltip({ y: clientY, text: posToDateLabel(pos) });
       }
       setThumbPos(pos);
     },
-    [dateGroupRefs, nearestDate, dragging, posToDateLabel],
+    [nearestDate, dragging, posToDateLabel, scrollToDate],
   );
 
   // ── Mouse down on track ─────────────────────────────────────
