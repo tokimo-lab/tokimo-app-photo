@@ -87,9 +87,10 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
     }
 
     // ── Multi-year: 3-tier weight (day 1/3, month 1/3, year 1/3) ──
-    const span = latest - years[years.length - 1] || 1;
-    const dayDist = Math.max(1, Math.ceil(span * 0.15));
-    const monthDist = Math.max(dayDist + 1, Math.ceil(span * 0.4));
+    // Day tier: only the latest year (focused time)
+    // Month tier: next 2 years
+    // Year tier: everything else
+    // Each tier gets exactly 1/3 of total weight regardless of month count
 
     // Build month set per year
     const yearMonths = new Map<number, number[]>();
@@ -102,22 +103,18 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       arr.push(e.month);
     }
 
-    // Split into 3 tiers by distance
+    // Split into 3 tiers: day=latest 1 year, month=next 2, year=rest
     const dayYears: number[] = [];
     const monthYears: number[] = [];
     const yearOnlyYears: number[] = [];
     for (const y of years) {
       const d = latest - y;
-      if (d < dayDist) dayYears.push(y);
-      else if (d < monthDist) monthYears.push(y);
+      if (d === 0) dayYears.push(y);
+      else if (d <= 2) monthYears.push(y);
       else yearOnlyYears.push(y);
     }
-    if (dayYears.length === 0 && monthYears.length > 0)
-      dayYears.push(monthYears.shift()!);
-    if (dayYears.length === 0 && yearOnlyYears.length > 0)
-      dayYears.push(yearOnlyYears.shift()!);
 
-    // Assign weights: each non-empty tier sums to TIER_W
+    // Each non-empty tier sums to TIER_W (no coverage scaling)
     const TIER_W = 100;
     const tierAssign = (tier: number[]) => {
       const wm = new Map<number, number>();
@@ -126,7 +123,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       let sum = 0;
       for (let i = 0; i < n; i++) {
         const t = n > 1 ? i / (n - 1) : 0;
-        const s = 1.4 - 0.8 * t; // mild gradient: closest=1.4, farthest=0.6
+        const s = 1.3 - 0.6 * t;
         wm.set(tier[i], s);
         sum += s;
       }
@@ -137,23 +134,17 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
     const monthW = tierAssign(monthYears);
     const yearW = tierAssign(yearOnlyYears);
 
-    // Build yearMeta with coverage scaling
+    // Build yearMeta — NO coverage scaling (each tier keeps its 1/3)
     let totalW = 0;
     const yearMeta = new Map<number, { start: number; w: number }>();
     for (const y of years) {
-      let w = dayW.get(y) ?? monthW.get(y) ?? yearW.get(y) ?? 1;
-      const months = yearMonths.get(y) ?? [];
-      if (months.length > 0) {
-        const coverage = (Math.max(...months) - Math.min(...months) + 1) / 12;
-        w *= Math.max(0.25, coverage);
-      }
+      const w = dayW.get(y) ?? monthW.get(y) ?? yearW.get(y) ?? 1;
       yearMeta.set(y, { start: totalW, w });
       totalW += w;
     }
 
     // Tier sets for mark generation
     const daySet = new Set(dayYears);
-    const monthSet = new Set(monthYears);
 
     for (const y of years) {
       const m = yearMeta.get(y)!;
@@ -169,7 +160,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       });
 
       if (daySet.has(y)) {
-        // Day tier: month labels + day ticks
+        // Day tier only: month labels + day ticks
         for (let mo = maxMo; mo >= minMo; mo--) {
           const moPos = (maxMo - mo) / moRange;
           if (mo < maxMo) {
@@ -188,17 +179,8 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
             });
           }
         }
-      } else if (monthSet.has(y)) {
-        // Month tier: month labels only
-        for (let mo = maxMo - 1; mo >= minMo; mo--) {
-          const moPos = (maxMo - mo) / moRange;
-          marks.push({
-            position: (m.start + moPos * m.w) / totalW,
-            label: `${mo + 1}月`,
-            isYear: false,
-          });
-        }
       }
+      // Month tier & year tier: year label only (no month ticks)
     }
 
     // Date positions for each entry (using clipped month range)
