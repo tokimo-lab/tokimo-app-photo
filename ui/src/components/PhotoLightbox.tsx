@@ -3,16 +3,7 @@ import { Heart } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { formatBytes } from "./photo-utils";
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="text-white/50">{label}</span>
-      <p className="text-white/90">{value}</p>
-    </div>
-  );
-}
+import { PhotoInfoPanel } from "./PhotoInfoPanel";
 
 export function PhotoLightbox({
   photo,
@@ -218,88 +209,51 @@ export function PhotoLightbox({
             )}
           </div>
 
-          {editing ? (
-            <div className="mb-4 space-y-2">
-              <label className="block">
-                <span className="mb-1 block text-xs text-neutral-500">
-                  标题
-                </span>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                  placeholder="照片标题"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs text-neutral-500">
-                  描述
-                </span>
-                <textarea
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                  rows={2}
-                  placeholder="照片描述"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs text-neutral-500">
-                  拍摄时间
-                </span>
-                <input
-                  type="datetime-local"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                />
-              </label>
-            </div>
-          ) : (
-            <h3 className="mb-4 text-base font-semibold">
-              {detail.title || detail.filename}
-            </h3>
-          )}
-          <div className="space-y-3">
-            {detail.takenAt && (
-              <InfoRow
-                label="拍摄时间"
-                value={new Date(detail.takenAt).toLocaleString()}
-              />
-            )}
-            {detail.cameraMake && (
-              <InfoRow
-                label="相机"
-                value={`${detail.cameraMake} ${detail.cameraModel || ""}`}
-              />
-            )}
-            {detail.lensModel && (
-              <InfoRow label="镜头" value={detail.lensModel} />
-            )}
-            {detail.focalLength && (
-              <InfoRow label="焦距" value={`${detail.focalLength}mm`} />
-            )}
-            {detail.aperture && (
-              <InfoRow label="光圈" value={`f/${detail.aperture}`} />
-            )}
-            {detail.shutterSpeed && (
-              <InfoRow label="快门" value={detail.shutterSpeed} />
-            )}
-            {detail.iso && <InfoRow label="ISO" value={String(detail.iso)} />}
-            {detail.width && detail.height && (
-              <InfoRow
-                label="分辨率"
-                value={`${detail.width} × ${detail.height}`}
-              />
-            )}
-            {detail.fileSize && (
-              <InfoRow label="文件大小" value={formatBytes(detail.fileSize)} />
-            )}
-            {detail.locationName && (
-              <InfoRow label="位置" value={detail.locationName} />
-            )}
-          </div>
+          <PhotoInfoPanel
+            detail={detail}
+            fallbackTitle={photo.title || photo.filename}
+            editForm={
+              editing ? (
+                <div className="mb-4 space-y-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-neutral-500">
+                      标题
+                    </span>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                      placeholder="照片标题"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-neutral-500">
+                      描述
+                    </span>
+                    <textarea
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                      rows={2}
+                      placeholder="照片描述"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-neutral-500">
+                      拍摄时间
+                    </span>
+                    <input
+                      type="datetime-local"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                    />
+                  </label>
+                </div>
+              ) : null
+            }
+          />
         </div>
       )}
 

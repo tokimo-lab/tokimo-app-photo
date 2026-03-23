@@ -644,6 +644,13 @@ impl PhotoRepo {
             active.gps_altitude = Set(exif.gps_altitude);
         }
 
+        // Save full raw EXIF as JSON
+        if !exif.raw_tags.is_empty() {
+            active.exif_data = Set(Some(
+                serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
+            ));
+        }
+
         active.update(db).await?;
         Ok(())
     }
