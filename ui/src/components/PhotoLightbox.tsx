@@ -94,7 +94,17 @@ export function PhotoLightbox({
     onToggleFavorite,
   ]);
 
-  const src = photo.sourceId ? `/api/photos/${photo.id}/image` : undefined;
+  const isHeic =
+    photo.mimeType === "image/heif" ||
+    photo.mimeType === "image/heic" ||
+    /\.heic$/i.test(photo.filename) ||
+    /\.heif$/i.test(photo.filename);
+
+  const src = photo.sourceId
+    ? isHeic
+      ? `/api/photos/${photo.id}/thumbnail?w=1920`
+      : `/api/photos/${photo.id}/image`
+    : undefined;
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
   return (
