@@ -12,10 +12,8 @@ import {
   FolderOpen,
   Grid3x3,
   ScanSearch,
-  Search,
   Star,
   Trash2,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -459,6 +457,7 @@ export default function PhotoLibraryPage() {
           isTv={false}
           onSelect={() => {}}
           recentItems={[]}
+          placeholder="搜索照片…"
         />
       );
     }, [id]),
@@ -466,27 +465,6 @@ export default function PhotoLibraryPage() {
       if (!id) return undefined;
       return (
         <>
-          {tab === "timeline" && (
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索照片..."
-                className="h-8 w-64 rounded-lg border border-neutral-300 bg-white pl-8 pr-8 text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:border-blue-400"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          )}
           <Button
             icon={<CheckSquare className="h-4 w-4" />}
             onClick={toggleSelectMode}
@@ -516,8 +494,6 @@ export default function PhotoLibraryPage() {
       );
     }, [
       id,
-      tab,
-      searchQuery,
       handleRefresh,
       isRefetching,
       doSync,
