@@ -149,6 +149,11 @@ function useTimelineLayout(
 
     // Tier sets for mark generation
     const daySet = new Set(dayYears);
+    const monthSet = new Set(monthYears);
+
+    // Estimate track pixel height for label density calculation
+    const TRACK_PX = 700;
+    const LABEL_H = 16; // min px between month labels
 
     for (const y of years) {
       const m = yearMeta.get(y)!;
@@ -164,7 +169,7 @@ function useTimelineLayout(
       });
 
       if (daySet.has(y)) {
-        // Day tier only: month labels + day ticks
+        // Day tier: month labels + day ticks
         for (let mo = maxMo; mo >= minMo; mo--) {
           const moPos = (maxMo - mo) / moRange;
           if (mo < maxMo) {
@@ -183,8 +188,21 @@ function useTimelineLayout(
             });
           }
         }
+      } else if (monthSet.has(y)) {
+        // Month tier: show month labels at adaptive density
+        const yearPx = (m.w / totalW) * TRACK_PX;
+        const maxLabels = Math.max(1, Math.floor(yearPx / LABEL_H));
+        const step = Math.max(1, Math.ceil(moRange / maxLabels));
+        for (let mo = maxMo - step; mo >= minMo; mo -= step) {
+          const moPos = (maxMo - mo) / moRange;
+          marks.push({
+            position: (m.start + moPos * m.w) / totalW,
+            label: `${mo + 1}月`,
+            isYear: false,
+          });
+        }
       }
-      // Month tier & year tier: year label only (no month ticks)
+      // Year tier: year label only
     }
 
     // Date positions for each entry (using clipped month range)
