@@ -1,14 +1,12 @@
-import {
-  Camera,
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  MapPin,
-  Tags,
-} from "lucide-react";
+import { Camera, ExternalLink, FileText, MapPin } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { PhotoDetailOutput } from "../../generated/rust-api";
+import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { formatBytes } from "./photo-utils";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,11 +15,16 @@ function formatMegapixels(w: number, h: number): string {
   return mp >= 1 ? `${Math.round(mp)}MP` : `${mp.toFixed(1)}MP`;
 }
 
+function formatNum(n: number): string {
+  const rounded = Math.round(n * 100) / 100;
+  return rounded % 1 === 0 ? String(rounded) : String(rounded);
+}
+
 function formatCameraSettings(detail: PhotoDetailOutput): string | null {
   const parts: string[] = [];
-  if (detail.aperture) parts.push(`ƒ/${detail.aperture}`);
+  if (detail.aperture) parts.push(`ƒ/${formatNum(detail.aperture)}`);
   if (detail.shutterSpeed) parts.push(detail.shutterSpeed);
-  if (detail.focalLength) parts.push(`${detail.focalLength}mm`);
+  if (detail.focalLength) parts.push(`${formatNum(detail.focalLength)}mm`);
   if (detail.iso) parts.push(`ISO${detail.iso}`);
   return parts.length > 0 ? parts.join("  ") : null;
 }
@@ -31,15 +34,17 @@ function getDirectoryPath(fullPath: string): string {
   return lastSlash >= 0 ? fullPath.substring(0, lastSlash) : fullPath;
 }
 
-function formatDate(iso: string): string {
+function formatDateLines(
+  iso: string,
+): { dateLine: string; timeLine: string } | null {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const y = d.getFullYear();
+  if (Number.isNaN(d.getTime())) return null;
   const m = d.getMonth() + 1;
   const day = d.getDate();
+  const wd = WEEKDAYS[d.getDay()];
   const h = d.getHours().toString().padStart(2, "0");
   const min = d.getMinutes().toString().padStart(2, "0");
-  return `${y}年${m}月${day}日 ${h}:${min}`;
+  return { dateLine: `${m}月${day}日`, timeLine: `${wd}, ${h}:${min}` };
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -83,6 +88,12 @@ const EXTRA_EXIF_FIELDS: [string, string][] = [
   ["Software", "软件"],
   ["ExposureBiasValue", "曝光补偿"],
   ["ColorSpace", "色彩空间"],
+  ["ExposureProgram", "曝光程序"],
+  ["SceneCaptureType", "场景类型"],
+  ["FocalLengthIn35mmFilm", "等效焦距"],
+  ["PhotographicSensitivity", "感光度"],
+  ["CompositeImage", "合成图像"],
+  ["SensingMethod", "感光方式"],
 ];
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -96,12 +107,13 @@ export function PhotoInfoPanel({
   fallbackTitle: string;
   editForm: ReactNode | null;
 }) {
-  const [showRawExif, setShowRawExif] = useState(false);
+  const [showExifModal, setShowExifModal] = useState(false);
 
   const hasCameraData =
     detail.cameraMake ||
     detail.cameraModel ||
     detail.lensModel ||
+    detail.exifData?.LensModel ||
     detail.aperture ||
     detail.shutterSpeed ||
     detail.focalLength ||
@@ -109,6 +121,12 @@ export function PhotoInfoPanel({
 
   const hasGps = detail.gpsLatitude != null && detail.gpsLongitude != null;
   const cameraSettings = formatCameraSettings(detail);
+  const effectiveLensModel =
+    detail.lensModel ??
+    (detail.exifData?.LensModel
+      ? stripExifQuotes(detail.exifData.LensModel)
+      : null);
+  const dateLines = detail.takenAt ? formatDateLines(detail.takenAt) : null;
 
   return (
     <>
@@ -122,17 +140,28 @@ export function PhotoInfoPanel({
       <div className="space-y-4">
         {/* ── Details section ─────────────────────────────────────── */}
         <InfoSection icon={<FileText className="h-3 w-3" />} title="详情">
-          {detail.takenAt && (
-            <InfoRow label="日期" value={formatDate(detail.takenAt)} />
+          {dateLines && (
+            <div>
+              <p className="text-lg font-bold text-white/90">
+                {dateLines.dateLine}
+              </p>
+              <p className="text-sm text-white/50">{dateLines.timeLine}</p>
+            </div>
           )}
           {detail.width && detail.height && (
             <div>
               <span className="text-white/50">分辨率</span>
               <p className="text-white/90">
                 {formatMegapixels(detail.width, detail.height)}
-                {" · "}
+                {"\u2003"}
                 {detail.width}×{detail.height}
-                {detail.fileSize && ` · ${formatBytes(detail.fileSize)}`}
+                {detail.fileSize != null && (
+                  <>
+                    {"\u2003"}
+                    {formatBytes(detail.fileSize)} (
+                    {detail.fileSize.toLocaleString()} bytes)
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -144,6 +173,21 @@ export function PhotoInfoPanel({
             <InfoRow label="路径" value={getDirectoryPath(detail.path)} />
           )}
           {detail.mimeType && <InfoRow label="类型" value={detail.mimeType} />}
+          {detail.exifData?.DateTime && (
+            <InfoRow
+              label="修改时间"
+              value={stripExifQuotes(detail.exifData.DateTime)}
+            />
+          )}
+          {detail.exifData && Object.keys(detail.exifData).length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowExifModal(true)}
+              className="mt-1 cursor-pointer rounded-md bg-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/15 hover:text-white/90"
+            >
+              查看 EXIF 原始数据
+            </button>
+          )}
         </InfoSection>
 
         {/* ── Camera section ──────────────────────────────────────── */}
@@ -157,8 +201,8 @@ export function PhotoInfoPanel({
                   .join(" ")}
               />
             )}
-            {detail.lensModel && (
-              <InfoRow label="镜头" value={detail.lensModel} />
+            {effectiveLensModel && (
+              <InfoRow label="镜头" value={effectiveLensModel} />
             )}
             {cameraSettings && (
               <div>
@@ -170,8 +214,19 @@ export function PhotoInfoPanel({
             )}
             {detail.exifData &&
               EXTRA_EXIF_FIELDS.map(([key, label]) => {
-                const v = detail.exifData?.[key];
-                return v ? <InfoRow key={key} label={label} value={v} /> : null;
+                const raw = detail.exifData?.[key];
+                if (!raw) return null;
+                const cleaned = stripExifQuotes(raw);
+                if (
+                  key === "PhotographicSensitivity" &&
+                  detail.iso != null &&
+                  cleaned === String(detail.iso)
+                ) {
+                  return null;
+                }
+                const display =
+                  key === "FocalLengthIn35mmFilm" ? `${cleaned}mm` : cleaned;
+                return <InfoRow key={key} label={label} value={display} />;
               })}
           </InfoSection>
         )}
@@ -192,47 +247,25 @@ export function PhotoInfoPanel({
             {detail.locationName && (
               <InfoRow label="地点" value={detail.locationName} />
             )}
+            <a
+              href={`https://uri.amap.com/marker?position=${detail.gpsLongitude},${detail.gpsLatitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              在高德地图中打开
+            </a>
           </InfoSection>
         )}
-
-        {/* ── Raw EXIF section ────────────────────────────────────── */}
-        {detail.exifData && Object.keys(detail.exifData).length > 0 && (
-          <div className="border-t border-white/10 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowRawExif((v) => !v)}
-              className="flex w-full cursor-pointer items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 hover:text-white/60"
-            >
-              {showRawExif ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              <Tags className="h-3 w-3" />
-              EXIF 原始数据
-            </button>
-            {showRawExif && (
-              <div className="mt-2 max-h-72 space-y-px overflow-y-auto rounded bg-white/5 p-2 font-mono text-xs">
-                {Object.keys(detail.exifData)
-                  .sort()
-                  .map((key, i) => (
-                    <div
-                      key={key}
-                      className={`flex justify-between gap-3 rounded px-1.5 py-0.5 ${
-                        i % 2 === 0 ? "bg-white/5" : ""
-                      }`}
-                    >
-                      <span className="shrink-0 text-white/40">{key}</span>
-                      <span className="truncate text-right text-white/80">
-                        {detail.exifData![key]}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {showExifModal && detail.exifData && (
+        <ExifModal
+          exifData={detail.exifData}
+          onClose={() => setShowExifModal(false)}
+        />
+      )}
     </>
   );
 }
