@@ -284,7 +284,17 @@ export function TimelineScrubber({
       {/* Vertical track line */}
       <div className="absolute left-5 top-0 bottom-0 w-px bg-neutral-400/20 dark:bg-neutral-500/20" />
 
-      {/* Year / month marks */}
+      {/* Thumb indicator — rounded bar behind text */}
+      <div
+        className="absolute right-0 h-5 w-11 rounded-l-md bg-orange-500/15 dark:bg-orange-400/20"
+        style={{
+          top: `${thumbPos * 100}%`,
+          transform: "translateY(-50%)",
+          transition: dragging ? "none" : "top 150ms ease-out",
+        }}
+      />
+
+      {/* Year / month marks (rendered after thumb so text is on top) */}
       {marks.map((m) =>
         m.isYear ? (
           <span
@@ -305,16 +315,6 @@ export function TimelineScrubber({
           />
         ),
       )}
-
-      {/* Thumb indicator */}
-      <div
-        className="absolute left-[18px] h-1.5 w-1.5 rounded-full bg-orange-500 shadow-sm"
-        style={{
-          top: `${thumbPos * 100}%`,
-          transform: "translate(-50%, -50%)",
-          transition: dragging ? "none" : "top 150ms ease-out",
-        }}
-      />
 
       {/* Tooltip (during hover/drag) */}
       {tooltip && (

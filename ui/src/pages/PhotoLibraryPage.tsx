@@ -81,6 +81,13 @@ export default function PhotoLibraryPage() {
     };
   }, [searchQuery]);
 
+  // ── Hide native scrollbar (timeline scrubber replaces it) ──────────
+  useEffect(() => {
+    const sc = document.getElementById("dashboard-scroll-container");
+    if (sc) sc.classList.add("hide-scrollbar");
+    return () => sc?.classList.remove("hide-scrollbar");
+  }, []);
+
   // ── Selection state ────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
