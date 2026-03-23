@@ -1,3 +1,4 @@
+use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
@@ -229,5 +230,161 @@ impl PhotoRepo {
             .count(db)
             .await?;
         Ok(count)
+    }
+
+    /// Create a photo album
+    pub async fn create_album(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<PhotoAlbumOutput, AppError> {
+        let album_id = Uuid::new_v4();
+        let max_sort = photo_albums::Entity::find()
+            .filter(photo_albums::Column::LibraryId.eq(library_id))
+            .select_only()
+            .column_as(photo_albums::Column::SortOrder.max(), "max_sort")
+            .into_tuple::<Option<i32>>()
+            .one(db)
+            .await?
+            .flatten()
+            .unwrap_or(0);
+
+        let active = photo_albums::ActiveModel {
+            id: Set(album_id),
+            library_id: Set(library_id),
+            name: Set(name.to_string()),
+            description: Set(description.map(|s| s.to_string())),
+            album_type: Set("manual".to_string()),
+            sort_order: Set(max_sort + 1),
+            photo_count: Set(0),
+            ..Default::default()
+        };
+        photo_albums::Entity::insert(active).exec(db).await?;
+
+        photo_albums::Entity::find_by_id(album_id)
+            .into_partial_model::<PhotoAlbumOutput>()
+            .one(db)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to read created album".into()))
+    }
+
+    /// Delete a photo album (unlinks photos but doesn't delete them)
+    pub async fn delete_album(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+    ) -> Result<(), AppError> {
+        photos::Entity::update_many()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .col_expr(
+                photos::Column::PhotoAlbumId,
+                Expr::value(Option::<Uuid>::None),
+            )
+            .exec(db)
+            .await?;
+
+        photo_albums::Entity::delete_by_id(album_id)
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    /// Add photos to an album
+    pub async fn add_photos_to_album(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<i32, AppError> {
+        photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Album not found".into()))?;
+
+        photos::Entity::update_many()
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .col_expr(
+                photos::Column::PhotoAlbumId,
+                Expr::value(Some(album_id)),
+            )
+            .exec(db)
+            .await?;
+
+        let count = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .count(db)
+            .await? as i32;
+
+        let mut album_active: photo_albums::ActiveModel =
+            photo_albums::Entity::find_by_id(album_id)
+                .one(db)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Album not found".into()))?
+                .into();
+        album_active.photo_count = Set(count);
+
+        let album = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?;
+        if album.as_ref().and_then(|a| a.cover_photo_id).is_none() && !photo_ids.is_empty() {
+            album_active.cover_photo_id = Set(Some(photo_ids[0]));
+        }
+        album_active.update(db).await?;
+
+        Ok(count)
+    }
+
+    /// Remove photos from an album
+    pub async fn remove_photos_from_album(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<i32, AppError> {
+        photos::Entity::update_many()
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .col_expr(
+                photos::Column::PhotoAlbumId,
+                Expr::value(Option::<Uuid>::None),
+            )
+            .exec(db)
+            .await?;
+
+        let count = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .count(db)
+            .await? as i32;
+
+        let mut album_active: photo_albums::ActiveModel =
+            photo_albums::Entity::find_by_id(album_id)
+                .one(db)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Album not found".into()))?
+                .into();
+        album_active.photo_count = Set(count);
+        album_active.update(db).await?;
+
+        Ok(count)
+    }
+
+    /// List photos in a specific album
+    pub async fn list_album_photos(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let query = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .filter(photos::Column::IsHidden.eq(false))
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
+            .await?;
+
+        Ok(Page::new(items, total, page))
     }
 }
