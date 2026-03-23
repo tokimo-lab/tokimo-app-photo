@@ -12,7 +12,10 @@ import {
   FolderOpen,
   Grid3x3,
   ScanSearch,
+  Search,
   Star,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -27,13 +30,14 @@ import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { useMessage, useTopBar } from "../../hooks";
 
-type TabKey = "timeline" | "folders" | "favorites" | "albums";
+type TabKey = "timeline" | "folders" | "favorites" | "albums" | "trash";
 
 const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "timeline", label: "时间线", icon: Calendar },
   { key: "folders", label: "文件夹", icon: FolderOpen },
   { key: "favorites", label: "收藏", icon: Star },
   { key: "albums", label: "相册", icon: Grid3x3 },
+  { key: "trash", label: "回收站", icon: Trash2 },
 ];
 
 export default function PhotoLibraryPage() {
@@ -47,14 +51,35 @@ export default function PhotoLibraryPage() {
       setSearchParams({ tab: t }, { replace: true });
       setSelectedIds(new Set());
       setIsSelecting(false);
+      setSearchQuery("");
       // Reset pagination on tab switch
       setTimelinePage(1);
       setFavPage(1);
+      setTrashPage(1);
       accTimelineRef.current = [];
       accFavRef.current = [];
+      accTrashRef.current = [];
     },
     [setSearchParams],
   );
+
+  // ── Search state ─────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      // Reset pagination when search changes
+      setTimelinePage(1);
+      accTimelineRef.current = [];
+    }, 300);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [searchQuery]);
 
   // ── Selection state ────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -92,8 +117,10 @@ export default function PhotoLibraryPage() {
   // ── Infinite scroll pagination ─────────────────────────────────────────
   const [timelinePage, setTimelinePage] = useState(1);
   const [favPage, setFavPage] = useState(1);
+  const [trashPage, setTrashPage] = useState(1);
   const accTimelineRef = useRef<PhotoOutput[]>([]);
   const accFavRef = useRef<PhotoOutput[]>([]);
+  const accTrashRef = useRef<PhotoOutput[]>([]);
 
   // ── Queries ────────────────────────────────────────────────────────────
   const libraryQuery = api.mediaLibrary.getById.useQuery(
@@ -108,6 +135,7 @@ export default function PhotoLibraryPage() {
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
       sortDir: "desc",
+      search: debouncedSearch || undefined,
     },
     { enabled: !!id && tab === "timeline" },
   );
@@ -127,6 +155,11 @@ export default function PhotoLibraryPage() {
   const albumsQuery = api.mediaLibrary.listPhotoAlbums.useQuery(
     { libraryId: id! },
     { enabled: !!id && tab === "albums" },
+  );
+
+  const trashedQuery = api.mediaLibrary.listTrashedPhotos.useQuery(
+    { libraryId: id!, page: trashPage, pageSize: PAGE_SIZE },
+    { enabled: !!id && tab === "trash" },
   );
 
   // Accumulate timeline photos across pages
@@ -171,6 +204,27 @@ export default function PhotoLibraryPage() {
         : (favoritesQuery.data?.items ?? []);
   const favHasMore = allFavPhotos.length < favTotal;
 
+  // Accumulate trash photos across pages
+  const trashTotal = trashedQuery.data?.total ?? 0;
+  useEffect(() => {
+    if (!trashedQuery.data?.items) return;
+    if (trashPage === 1) {
+      accTrashRef.current = trashedQuery.data.items;
+    } else {
+      const ids = new Set(accTrashRef.current.map((p) => p.id));
+      const newItems = trashedQuery.data.items.filter((p) => !ids.has(p.id));
+      accTrashRef.current = [...accTrashRef.current, ...newItems];
+    }
+  }, [trashedQuery.data, trashPage]);
+
+  const allTrashPhotos =
+    trashPage === 1 && trashedQuery.data
+      ? trashedQuery.data.items
+      : accTrashRef.current.length > 0
+        ? accTrashRef.current
+        : (trashedQuery.data?.items ?? []);
+  const trashHasMore = allTrashPhotos.length < trashTotal;
+
   const albums = albumsQuery.data ?? [];
 
   const isLoading =
@@ -180,7 +234,9 @@ export default function PhotoLibraryPage() {
         ? favoritesQuery.isLoading && favPage === 1
         : tab === "albums"
           ? albumsQuery.isLoading
-          : false;
+          : tab === "trash"
+            ? trashedQuery.isLoading && trashPage === 1
+            : false;
 
   const syncMutation = api.mediaLibrary.sync.useMutation({
     onSuccess: () => {
@@ -256,6 +312,51 @@ export default function PhotoLibraryPage() {
     [selectedIds, addToAlbumMutation.mutate],
   );
 
+  // ── Batch hide mutation ────────────────────────────────────────
+  const batchHideMutation = api.mediaLibrary.batchHide.useMutation();
+  const handleBatchHide = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    batchHideMutation.mutate(
+      { libraryId: id, photoIds: [...selectedIds], hidden: true },
+      {
+        onSuccess: () => {
+          message.success(`已隐藏 ${selectedIds.size} 张照片`);
+          setSelectedIds(new Set());
+          setIsSelecting(false);
+          photosQuery.refetch();
+          favoritesQuery.refetch();
+        },
+      },
+    );
+  }, [
+    id,
+    selectedIds,
+    batchHideMutation,
+    message,
+    photosQuery,
+    favoritesQuery,
+  ]);
+
+  // ── Trash mutation ────────────────────────────────────────────
+  const trashMutation = api.mediaLibrary.trashPhotos.useMutation();
+  const handleTrash = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
+      return;
+    trashMutation.mutate(
+      { libraryId: id, photoIds: [...selectedIds] },
+      {
+        onSuccess: () => {
+          message.success(`已将 ${selectedIds.size} 张照片移到回收站`);
+          setSelectedIds(new Set());
+          setIsSelecting(false);
+          photosQuery.refetch();
+          favoritesQuery.refetch();
+        },
+      },
+    );
+  }, [id, selectedIds, trashMutation, message, photosQuery, favoritesQuery]);
+
   // ── EXIF rescan ───────────────────────────────────────────────────────
   const rescanMutation = api.mediaLibrary.rescanExif.useMutation({
     onSuccess: (data) => {
@@ -269,6 +370,44 @@ export default function PhotoLibraryPage() {
     rescanMutation.mutate({ libraryId: id });
   }, [id, rescanMutation.mutate]);
 
+  // ── Trash operations ──────────────────────────────────────────────────
+  const restoreMutation = api.mediaLibrary.restorePhotos.useMutation({
+    onSuccess: (data) => {
+      message.success(`已恢复 ${data.restored} 张照片`);
+      clearSelection();
+      setTrashPage(1);
+      accTrashRef.current = [];
+      void trashedQuery.refetch();
+      void photosQuery.refetch();
+    },
+    onError: (e) => message.error(e.message || "恢复失败"),
+  });
+
+  const permanentDeleteMutation = api.mediaLibrary.permanentDelete.useMutation({
+    onSuccess: (data) => {
+      message.success(`已永久删除 ${data.deleted} 张照片`);
+      clearSelection();
+      setTrashPage(1);
+      accTrashRef.current = [];
+      void trashedQuery.refetch();
+    },
+    onError: (e) => message.error(e.message || "删除失败"),
+  });
+
+  const handleRestore = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    restoreMutation.mutate({ libraryId: id, photoIds: [...selectedIds] });
+  }, [id, selectedIds, restoreMutation.mutate]);
+
+  const handlePermanentDelete = useCallback(() => {
+    if (!id || selectedIds.size === 0) return;
+    if (!window.confirm("永久删除选中的照片？此操作不可恢复！")) return;
+    permanentDeleteMutation.mutate({
+      libraryId: id,
+      photoIds: [...selectedIds],
+    });
+  }, [id, selectedIds, permanentDeleteMutation.mutate]);
+
   // ── Infinite scroll callbacks ─────────────────────────────────────────
   const loadMoreTimeline = useCallback(() => {
     setTimelinePage((p) => p + 1);
@@ -278,15 +417,22 @@ export default function PhotoLibraryPage() {
     setFavPage((p) => p + 1);
   }, []);
 
+  const loadMoreTrash = useCallback(() => {
+    setTrashPage((p) => p + 1);
+  }, []);
+
   // ── TopBar ──────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
     setTimelinePage(1);
     setFavPage(1);
+    setTrashPage(1);
     accTimelineRef.current = [];
     accFavRef.current = [];
+    accTrashRef.current = [];
     void photosQuery.refetch();
     void favoritesQuery.refetch();
-  }, [photosQuery.refetch, favoritesQuery.refetch]);
+    void trashedQuery.refetch();
+  }, [photosQuery.refetch, favoritesQuery.refetch, trashedQuery.refetch]);
 
   const doSync = useCallback(() => {
     if (!id) return;
@@ -313,6 +459,27 @@ export default function PhotoLibraryPage() {
       if (!id) return undefined;
       return (
         <>
+          {tab === "timeline" && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索照片..."
+                className="h-8 w-64 rounded-lg border border-neutral-300 bg-white pl-8 pr-8 text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-400 focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:border-blue-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
           <Button
             icon={<CheckSquare className="h-4 w-4" />}
             onClick={toggleSelectMode}
@@ -342,6 +509,8 @@ export default function PhotoLibraryPage() {
       );
     }, [
       id,
+      tab,
+      searchQuery,
       handleRefresh,
       isRefetching,
       doSync,
@@ -367,6 +536,7 @@ export default function PhotoLibraryPage() {
             <Tag>{timelineTotal} 张</Tag>
           )}
           {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
+          {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
         </div>
       </div>
 
@@ -437,6 +607,46 @@ export default function PhotoLibraryPage() {
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
         )
+      ) : tab === "trash" ? (
+        allTrashPhotos.length > 0 ? (
+          <div>
+            <div className="mb-4 flex items-center justify-between px-4">
+              <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                {trashTotal} 张照片在回收站中
+              </span>
+              {selectedIds.size > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleRestore}
+                    loading={restoreMutation.isPending}
+                  >
+                    恢复选中
+                  </Button>
+                  <Button
+                    onClick={handlePermanentDelete}
+                    loading={permanentDeleteMutation.isPending}
+                    className="text-red-500"
+                  >
+                    永久删除
+                  </Button>
+                </div>
+              )}
+            </div>
+            <PhotoTimeline
+              photos={allTrashPhotos}
+              total={trashTotal}
+              hasMore={trashHasMore}
+              onLoadMore={loadMoreTrash}
+              isLoadingMore={trashedQuery.isFetching && trashPage > 1}
+              onToggleFavorite={handleToggleFavorite}
+              isSelecting={isSelecting}
+              selectedIds={selectedIds}
+              onSelect={handleSelect}
+            />
+          </div>
+        ) : (
+          <Empty description="回收站为空" />
+        )
       ) : (
         <PhotoAlbumsView
           libraryId={id}
@@ -453,6 +663,8 @@ export default function PhotoLibraryPage() {
         onAddToAlbum={() => setShowAlbumPicker(true)}
         onBatchFavorite={handleBatchFavorite}
         onBatchUnfavorite={handleBatchUnfavorite}
+        onBatchHide={handleBatchHide}
+        onTrash={handleTrash}
         onClear={clearSelection}
       />
 

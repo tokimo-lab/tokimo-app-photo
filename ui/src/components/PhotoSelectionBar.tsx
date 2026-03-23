@@ -1,17 +1,21 @@
 import { Button } from "@tokiomo/components";
-import { Heart, HeartOff, ImagePlus, X } from "lucide-react";
+import { EyeOff, Heart, HeartOff, ImagePlus, Trash2, X } from "lucide-react";
 
 export function PhotoSelectionBar({
   count,
   onAddToAlbum,
   onBatchFavorite,
   onBatchUnfavorite,
+  onBatchHide,
+  onTrash,
   onClear,
 }: {
   count: number;
   onAddToAlbum: () => void;
   onBatchFavorite: () => void;
   onBatchUnfavorite: () => void;
+  onBatchHide: () => void;
+  onTrash: () => void;
   onClear: () => void;
 }) {
   if (count === 0) return null;
@@ -35,6 +39,16 @@ export function PhotoSelectionBar({
         icon={<HeartOff className="h-4 w-4" />}
       >
         取消收藏
+      </Button>
+      <Button onClick={onBatchHide} icon={<EyeOff className="h-4 w-4" />}>
+        隐藏
+      </Button>
+      <Button
+        onClick={onTrash}
+        icon={<Trash2 className="h-4 w-4" />}
+        className="text-red-500 hover:text-red-600 dark:text-red-400"
+      >
+        删除
       </Button>
 
       <div className="mx-1 h-5 w-px bg-neutral-200 dark:bg-neutral-700" />

@@ -1,5 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { formatBytes } from "./photo-utils";
@@ -36,6 +37,41 @@ export function PhotoLightbox({
     { enabled: true },
   );
   const detail = detailQuery.data;
+
+  // ── Edit mode state ──────────────────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const queryClient = useQueryClient();
+
+  const updateMutation = api.mediaLibrary.updatePhoto.useMutation();
+
+  const startEdit = useCallback(() => {
+    setEditTitle(detail?.title || photo.title || "");
+    setEditDesc(detail?.description || "");
+    setEditDate(detail?.takenAt ? detail.takenAt.slice(0, 16) : "");
+    setEditing(true);
+  }, [detail, photo]);
+
+  const saveEdit = useCallback(() => {
+    updateMutation.mutate(
+      {
+        photoId: photo.id,
+        title: editTitle || undefined,
+        description: editDesc || undefined,
+        takenAt: editDate ? new Date(editDate).toISOString() : undefined,
+      },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          queryClient.invalidateQueries({
+            queryKey: ["api.mediaLibrary.getPhoto"],
+          });
+        },
+      },
+    );
+  }, [photo.id, editTitle, editDesc, editDate, updateMutation, queryClient]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -139,9 +175,82 @@ export function PhotoLightbox({
       {/* Info panel */}
       {showInfo && detail && (
         <div className="absolute bottom-0 right-0 top-0 w-80 overflow-y-auto border-l border-white/10 bg-black/80 p-6 text-sm text-white backdrop-blur">
-          <h3 className="mb-4 text-base font-semibold">
-            {detail.title || detail.filename}
-          </h3>
+          {/* Edit header */}
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-neutral-300">
+              照片信息
+            </span>
+            {!editing ? (
+              <button
+                type="button"
+                onClick={startEdit}
+                className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-400 hover:bg-white/10"
+              >
+                编辑
+              </button>
+            ) : (
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  className="cursor-pointer rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-500"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="cursor-pointer rounded px-2 py-0.5 text-xs text-neutral-400 hover:bg-white/10"
+                >
+                  取消
+                </button>
+              </div>
+            )}
+          </div>
+
+          {editing ? (
+            <div className="mb-4 space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-xs text-neutral-500">
+                  标题
+                </span>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                  placeholder="照片标题"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-neutral-500">
+                  描述
+                </span>
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                  rows={2}
+                  placeholder="照片描述"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-neutral-500">
+                  拍摄时间
+                </span>
+                <input
+                  type="datetime-local"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </label>
+            </div>
+          ) : (
+            <h3 className="mb-4 text-base font-semibold">
+              {detail.title || detail.filename}
+            </h3>
+          )}
           <div className="space-y-3">
             {detail.takenAt && (
               <InfoRow

@@ -22,7 +22,8 @@ impl PhotoRepo {
     ) -> Result<Page<PhotoOutput>, AppError> {
         let mut query = photos::Entity::find()
             .filter(photos::Column::LibraryId.eq(library_id))
-            .filter(photos::Column::IsHidden.eq(false));
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::DeletedAt.is_null());
 
         if favorites_only {
             query = query.filter(photos::Column::IsFavorite.eq(true));
@@ -120,6 +121,7 @@ impl PhotoRepo {
         let query = photos::Entity::find()
             .filter(photos::Column::LibraryId.eq(library_id))
             .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::DeletedAt.is_null())
             .order_by_desc(photos::Column::TakenAt)
             .order_by_desc(photos::Column::CreatedAt);
 
@@ -180,6 +182,7 @@ impl PhotoRepo {
         let all_photos = photos::Entity::find()
             .filter(photos::Column::LibraryId.eq(library_id))
             .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::DeletedAt.is_null())
             .filter(photos::Column::Path.starts_with(&prefix))
             .order_by_asc(photos::Column::Filename)
             .into_partial_model::<PhotoOutput>()
@@ -380,6 +383,150 @@ impl PhotoRepo {
         Ok(result.rows_affected)
     }
 
+    /// Batch delete photos by IDs within a library
+    pub async fn batch_delete(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<u64, AppError> {
+        let result = photos::Entity::delete_many()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Toggle hidden flag on a photo
+    pub async fn toggle_hidden(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+    ) -> Result<bool, AppError> {
+        let photo = photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Photo not found".into()))?;
+
+        let new_val = !photo.is_hidden;
+        let mut active: photos::ActiveModel = photo.into();
+        active.is_hidden = Set(new_val);
+        active.update(db).await?;
+        Ok(new_val)
+    }
+
+    /// Batch set hidden for multiple photos
+    pub async fn batch_set_hidden(
+        db: &DatabaseConnection,
+        photo_ids: &[Uuid],
+        hidden: bool,
+    ) -> Result<u64, AppError> {
+        let result = photos::Entity::update_many()
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .col_expr(photos::Column::IsHidden, Expr::value(hidden))
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Update photo metadata (title, description, taken_at)
+    pub async fn update_photo(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        title: Option<Option<String>>,
+        description: Option<Option<String>>,
+        taken_at: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+    ) -> Result<PhotoDetailOutput, AppError> {
+        let photo = photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Photo not found".into()))?;
+
+        let mut active: photos::ActiveModel = photo.into();
+        if let Some(v) = title {
+            active.title = Set(v);
+        }
+        if let Some(v) = description {
+            active.description = Set(v);
+        }
+        if let Some(v) = taken_at {
+            active.taken_at = Set(v);
+        }
+        let updated = active.update(db).await?;
+        Ok(PhotoDetailOutput::from(updated))
+    }
+
+    /// Soft-delete (trash) photos by setting deleted_at
+    pub async fn trash_photos(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<u64, AppError> {
+        let now = chrono::Utc::now().fixed_offset();
+        let result = photos::Entity::update_many()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .filter(photos::Column::DeletedAt.is_null())
+            .col_expr(photos::Column::DeletedAt, Expr::value(now))
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Restore photos from trash by clearing deleted_at
+    pub async fn restore_photos(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<u64, AppError> {
+        let result = photos::Entity::update_many()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .filter(photos::Column::DeletedAt.is_not_null())
+            .col_expr(
+                photos::Column::DeletedAt,
+                Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
+            )
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// List trashed photos (deleted_at IS NOT NULL)
+    pub async fn list_trashed(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let query = photos::Entity::find()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::DeletedAt.is_not_null())
+            .order_by_desc(photos::Column::DeletedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
+            .await?;
+
+        Ok(Page::new(items, total, page))
+    }
+
+    /// Permanently delete photos that are already trashed
+    pub async fn permanent_delete(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<u64, AppError> {
+        let result = photos::Entity::delete_many()
+            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
+            .filter(photos::Column::DeletedAt.is_not_null())
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
     /// Get photos that need EXIF re-scan (taken_at is NULL, have a source)
     pub async fn get_photos_needing_exif(
         db: &DatabaseConnection,
@@ -507,6 +654,7 @@ impl PhotoRepo {
         let query = photos::Entity::find()
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
             .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::DeletedAt.is_null())
             .order_by_desc(photos::Column::TakenAt)
             .order_by_desc(photos::Column::CreatedAt);
 
