@@ -6,7 +6,15 @@ import {
   SyncOutlined,
   Tag,
 } from "@tokiomo/components";
-import { Calendar, FolderOpen, Grid3x3, Heart, ImageIcon } from "lucide-react";
+import {
+  Calendar,
+  ChevronRight,
+  FolderOpen,
+  Grid3x3,
+  Heart,
+  ImageIcon,
+  Star,
+} from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
@@ -18,11 +26,12 @@ import { useMessage, useTopBar } from "../../hooks";
 const PAGE_SIZE = 80;
 const THUMB_WIDTH = 320;
 
-type TabKey = "timeline" | "folders" | "albums";
+type TabKey = "timeline" | "folders" | "favorites" | "albums";
 
 const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "timeline", label: "时间线", icon: Calendar },
   { key: "folders", label: "文件夹", icon: FolderOpen },
+  { key: "favorites", label: "收藏", icon: Star },
   { key: "albums", label: "相册", icon: Grid3x3 },
 ];
 
@@ -60,6 +69,18 @@ export default function PhotoLibraryPage() {
     { enabled: !!id && tab === "timeline" },
   );
 
+  const favoritesQuery = api.mediaLibrary.listPhotos.useQuery(
+    {
+      libraryId: id!,
+      page,
+      pageSize: PAGE_SIZE,
+      sortBy: "takenAt",
+      sortDir: "desc",
+      favoritesOnly: true,
+    },
+    { enabled: !!id && tab === "favorites" },
+  );
+
   const albumsQuery = api.mediaLibrary.listPhotoAlbums.useQuery(
     { libraryId: id! },
     { enabled: !!id && tab === "albums" },
@@ -75,9 +96,18 @@ export default function PhotoLibraryPage() {
 
   const total = photosQuery.data?.total ?? 0;
   const photos = photosQuery.data?.items ?? [];
+  const favoritePhotos = favoritesQuery.data?.items ?? [];
+  const favoriteTotal = favoritesQuery.data?.total ?? 0;
   const albums = albumsQuery.data ?? [];
+
   const isLoading =
-    tab === "timeline" ? photosQuery.isLoading : albumsQuery.isLoading;
+    tab === "timeline"
+      ? photosQuery.isLoading
+      : tab === "favorites"
+        ? favoritesQuery.isLoading
+        : tab === "albums"
+          ? albumsQuery.isLoading
+          : false;
 
   const [_syncModalOpen, _setSyncModalOpen] = useState(false);
   const [_syncClearData, _setSyncClearData] = useState(false);
@@ -136,7 +166,10 @@ export default function PhotoLibraryPage() {
           <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
             {libraryQuery.data?.name ?? "相册"}
           </h2>
-          {total > 0 && <Tag>{total} 张</Tag>}
+          {tab === "timeline" && total > 0 && <Tag>{total} 张</Tag>}
+          {tab === "favorites" && favoriteTotal > 0 && (
+            <Tag>{favoriteTotal} 张</Tag>
+          )}
         </div>
       </div>
 
@@ -170,20 +203,32 @@ export default function PhotoLibraryPage() {
       ) : tab === "timeline" ? (
         <PhotoTimeline photos={photos} />
       ) : tab === "folders" ? (
-        <Empty description="文件夹视图开发中" />
+        <PhotoFoldersView libraryId={id} />
+      ) : tab === "favorites" ? (
+        favoritePhotos.length > 0 ? (
+          <PhotoTimeline photos={favoritePhotos} />
+        ) : (
+          <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
+        )
       ) : (
         <PhotoAlbumsGrid albums={albums} />
       )}
 
       {/* Load more */}
-      {tab === "timeline" &&
+      {(tab === "timeline" || tab === "favorites") &&
         !isLoading &&
-        photos.length > 0 &&
-        photos.length < total && (
-          <div className="flex justify-center py-4">
-            <Button onClick={() => setPage((p) => p + 1)}>加载更多</Button>
-          </div>
-        )}
+        (() => {
+          const items = tab === "favorites" ? favoritePhotos : photos;
+          const count = tab === "favorites" ? favoriteTotal : total;
+          return (
+            items.length > 0 &&
+            items.length < count && (
+              <div className="flex justify-center py-4">
+                <Button onClick={() => setPage((p) => p + 1)}>加载更多</Button>
+              </div>
+            )
+          );
+        })()}
 
       {tab === "timeline" && !isLoading && photos.length === 0 && (
         <Empty description="暂无照片，请先同步媒体库" />
@@ -319,6 +364,126 @@ const PhotoThumbnail = memo(function PhotoThumbnail({
     </button>
   );
 });
+
+// ── Photo Folders View ───────────────────────────────────────────────────────
+
+function PhotoFoldersView({ libraryId }: { libraryId: string }) {
+  const [currentPath, setCurrentPath] = useState("/");
+  const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
+
+  const foldersQuery = api.mediaLibrary.listPhotoFolders.useQuery(
+    { libraryId, path: currentPath },
+    { enabled: !!libraryId },
+  );
+
+  const folders = foldersQuery.data?.folders ?? [];
+  const photos = foldersQuery.data?.photos ?? [];
+
+  const breadcrumbs = useMemo(() => {
+    const parts = currentPath.split("/").filter(Boolean);
+    const crumbs = [{ label: "根目录", path: "/" }];
+    let acc = "";
+    for (const p of parts) {
+      acc += `/${p}`;
+      crumbs.push({ label: p, path: acc });
+    }
+    return crumbs;
+  }, [currentPath]);
+
+  if (foldersQuery.isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spin />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1 text-sm">
+        {breadcrumbs.map((crumb, i) => (
+          <span key={crumb.path} className="flex items-center gap-1">
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+            <button
+              type="button"
+              className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+                i === breadcrumbs.length - 1
+                  ? "font-medium text-neutral-900 dark:text-neutral-100"
+                  : "text-neutral-500 dark:text-neutral-400"
+              }`}
+              onClick={() => setCurrentPath(crumb.path)}
+            >
+              {crumb.label}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {/* Subdirectories */}
+      {folders.length > 0 && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+          {folders.map((folder) => (
+            <button
+              key={folder.path}
+              type="button"
+              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--glass-border)] bg-white/50 p-3 text-left transition-colors hover:bg-neutral-50 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+              onClick={() => setCurrentPath(folder.path)}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
+                {folder.coverPhotoId ? (
+                  <img
+                    src={`/api/photos/${folder.coverPhotoId}/thumbnail?w=80`}
+                    alt=""
+                    className="h-full w-full rounded-lg object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <FolderOpen className="h-5 w-5 text-neutral-400" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  {folder.name}
+                </p>
+                <p className="text-xs text-neutral-500">
+                  {folder.photoCount} 张
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Photos in current directory */}
+      {photos.length > 0 && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-1.5">
+          {photos.map((photo) => (
+            <PhotoThumbnail
+              key={photo.id}
+              photo={photo}
+              onClick={setSelectedPhoto}
+            />
+          ))}
+        </div>
+      )}
+
+      {folders.length === 0 && photos.length === 0 && (
+        <Empty description="此文件夹为空" />
+      )}
+
+      {selectedPhoto && (
+        <PhotoLightbox
+          photo={selectedPhoto}
+          allPhotos={photos}
+          onClose={() => setSelectedPhoto(null)}
+          onNavigate={setSelectedPhoto}
+        />
+      )}
+    </>
+  );
+}
 
 // ── Photo Albums Grid ────────────────────────────────────────────────────────
 
