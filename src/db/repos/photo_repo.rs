@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
@@ -28,6 +29,7 @@ impl PhotoRepo {
         sort_dir: &str,
         search: Option<&str>,
         favorites_only: bool,
+        before_date: Option<&str>,
     ) -> Result<Page<PhotoOutput>, AppError> {
         let mut query = photos::Entity::find()
             .filter(photos::Column::LibraryId.eq(library_id))
@@ -36,6 +38,18 @@ impl PhotoRepo {
 
         if favorites_only {
             query = query.filter(photos::Column::IsFavorite.eq(true));
+        }
+
+        // Date filter: show only photos taken before (or on) this date
+        if let Some(date_str) = before_date {
+            if let Ok(dt) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                let end_of_day = dt
+                    .and_hms_opt(23, 59, 59)
+                    .unwrap()
+                    .and_utc()
+                    .fixed_offset();
+                query = query.filter(photos::Column::TakenAt.lte(end_of_day));
+            }
         }
 
         if let Some(s) = search {

@@ -121,6 +121,9 @@ export default function PhotoLibraryPage() {
 
   // ── Infinite scroll pagination ─────────────────────────────────────────
   const [timelinePage, setTimelinePage] = useState(1);
+  const [timelineBeforeDate, setTimelineBeforeDate] = useState<
+    string | undefined
+  >();
   const [favPage, setFavPage] = useState(1);
   const [trashPage, setTrashPage] = useState(1);
   const accTimelineRef = useRef<PhotoOutput[]>([]);
@@ -141,6 +144,7 @@ export default function PhotoLibraryPage() {
       sortBy: "takenAt",
       sortDir: "desc",
       search: debouncedSearch || undefined,
+      beforeDate: timelineBeforeDate,
     },
     { enabled: !!id && tab === "timeline" },
   );
@@ -418,6 +422,26 @@ export default function PhotoLibraryPage() {
     setTimelinePage((p) => p + 1);
   }, []);
 
+  // Seek to a specific date — resets pagination with beforeDate filter
+  const seekToDate = useCallback((datePrefix: string) => {
+    // Convert year-month prefix like "2022-06" to end-of-month date
+    const parts = datePrefix.split("-");
+    let beforeDate: string;
+    if (parts.length >= 2) {
+      const y = Number.parseInt(parts[0], 10);
+      const m = Number.parseInt(parts[1], 10);
+      // Last day of the month
+      const lastDay = new Date(y, m, 0).getDate();
+      beforeDate = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    } else {
+      // Year only — use Dec 31
+      beforeDate = `${parts[0]}-12-31`;
+    }
+    accTimelineRef.current = [];
+    setTimelinePage(1);
+    setTimelineBeforeDate(beforeDate);
+  }, []);
+
   const loadMoreFav = useCallback(() => {
     setFavPage((p) => p + 1);
   }, []);
@@ -563,6 +587,7 @@ export default function PhotoLibraryPage() {
             isSelecting={isSelecting}
             selectedIds={selectedIds}
             onSelect={handleSelect}
+            onSeekToDate={seekToDate}
           />
         ) : (
           <Empty description="暂无照片，请先同步媒体库" />

@@ -29,6 +29,7 @@ export function PhotoTimeline({
   isSelecting,
   selectedIds,
   onSelect,
+  onSeekToDate,
 }: {
   photos: PhotoOutput[];
   libraryId: string;
@@ -40,6 +41,7 @@ export function PhotoTimeline({
   isSelecting?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (photo: PhotoOutput) => void;
+  onSeekToDate?: (datePrefix: string) => void;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -135,9 +137,12 @@ export function PhotoTimeline({
           align: "start",
           behavior: smooth ? "smooth" : "auto",
         });
+      } else if (onSeekToDate) {
+        // Target date not loaded yet — seek via backend
+        onSeekToDate(datePrefix);
       }
     },
-    [flatItems, virtualizer],
+    [flatItems, virtualizer, onSeekToDate],
   );
 
   // ── Current visible date (for scroll spy) ───────────────────
