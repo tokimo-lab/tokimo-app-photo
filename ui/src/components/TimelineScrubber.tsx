@@ -118,9 +118,10 @@ function useTimelineLayout(
       else yearOnlyYears.push(y);
     }
 
-    // Each non-empty tier sums to TIER_W (no coverage scaling)
+    // Day tier gets half the weight so recent months don't stretch too far
+    const DAY_TIER_W = 50;
     const TIER_W = 100;
-    const tierAssign = (tier: number[]) => {
+    const tierAssign = (tier: number[], tw = TIER_W) => {
       const wm = new Map<number, number>();
       if (tier.length === 0) return wm;
       const n = tier.length;
@@ -131,10 +132,10 @@ function useTimelineLayout(
         wm.set(tier[i], s);
         sum += s;
       }
-      for (const [y, w] of wm) wm.set(y, (w / sum) * TIER_W);
+      for (const [y, w] of wm) wm.set(y, (w / sum) * tw);
       return wm;
     };
-    const dayW = tierAssign(dayYears);
+    const dayW = tierAssign(dayYears, DAY_TIER_W);
     const monthW = tierAssign(monthYears);
     const yearW = tierAssign(yearOnlyYears);
 
