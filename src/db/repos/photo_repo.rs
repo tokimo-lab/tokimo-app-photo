@@ -3,9 +3,18 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::db::entities::{file_systems, photo_albums, photos};
-use crate::db::models::photo::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::db::models::photo::{
+    FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget,
+};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
+
+#[derive(Debug, serde::Serialize)]
+pub struct TimelineEntry {
+    pub year: i32,
+    pub month: i32,
+    pub count: i64,
+}
 
 pub struct PhotoRepo;
 
@@ -643,6 +652,42 @@ impl PhotoRepo {
             active.update(db).await?;
         }
         Ok(())
+    }
+
+    /// Get timeline index: year/month counts for a library (all photos, not paginated)
+    pub async fn timeline_index(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+    ) -> Result<Vec<TimelineEntry>, AppError> {
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT
+                EXTRACT(YEAR FROM taken_at)::int AS year,
+                EXTRACT(MONTH FROM taken_at)::int AS month,
+                COUNT(*) AS count
+            FROM photos
+            WHERE library_id = $1
+              AND taken_at IS NOT NULL
+              AND is_hidden = false
+              AND deleted_at IS NULL
+            GROUP BY year, month
+            ORDER BY year DESC, month DESC
+            "#,
+            [library_id.into()],
+        );
+        let results = db
+            .query_all_raw(stmt)
+            .await
+            .map_err(AppError::Database)?;
+        let mut entries = Vec::new();
+        for row in results {
+            let year: i32 = row.try_get("", "year").unwrap_or(0);
+            let month: i32 = row.try_get("", "month").unwrap_or(0);
+            let count: i64 = row.try_get("", "count").unwrap_or(0);
+            entries.push(TimelineEntry { year, month, count });
+        }
+        Ok(entries)
     }
 
     /// List photos in a specific album

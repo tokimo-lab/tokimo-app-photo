@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DateGroup } from "./photo-utils";
+import { api } from "../../generated/rust-api";
 
 /**
  * Non-linear timeline scrubber for photo timeline.
@@ -7,6 +7,9 @@ import type { DateGroup } from "./photo-utils";
  * Right-edge vertical track with year labels spaced non-linearly:
  * recent years spread out (month-level ticks), distant years compress,
  * very old years plateau at minimum spacing — matching MT Photos UX.
+ *
+ * Uses backend timeline index for complete library coverage
+ * (not limited to loaded photo groups).
  *
  * Supports click-to-jump and drag-to-scrub with date tooltip.
  */
@@ -25,48 +28,44 @@ interface Mark {
   isYear: boolean;
 }
 
-// ── Compute timeline layout ─────────────────────────────────────
-function useTimelineLayout(groups: DateGroup[]) {
+interface TimelineEntry {
+  year: number;
+  month: number;
+  count: number;
+}
+
+// ── Compute timeline layout from backend entries ────────────────
+function useTimelineLayout(entries: TimelineEntry[]) {
   return useMemo(() => {
-    const valid = groups.filter((g) => g.year > 0);
-    if (valid.length === 0)
+    if (entries.length === 0)
       return { marks: [] as Mark[], datePositions: new Map<string, number>() };
 
-    const years = [...new Set(valid.map((g) => g.year))].sort((a, b) => b - a);
+    const years = [...new Set(entries.map((e) => e.year))].sort(
+      (a, b) => b - a,
+    );
     const latest = years[0];
-    const datePositions = new Map<string, number>();
     const marks: Mark[] = [];
+    const datePositions = new Map<string, number>();
 
-    // ── Single year: linear by date range ───────────────────────
+    // ── Single year: linear by month ────────────────────────────
     if (years.length === 1) {
-      const times = valid.map((g) => new Date(g.date).getTime());
-      const maxT = Math.max(...times);
-      const minT = Math.min(...times);
-      const span = maxT - minT || 1;
-
-      for (const g of valid) {
-        const t = new Date(g.date).getTime();
-        datePositions.set(g.date, (maxT - t) / span);
-      }
+      const months = entries.map((e) => e.month).sort((a, b) => b - a);
+      const maxM = Math.max(...months);
+      const minM = Math.min(...months);
+      const span = maxM - minM || 1;
 
       marks.push({ position: 0, label: String(latest), isYear: true });
 
-      // Show month labels when data spans multiple months
-      const months = new Set(valid.map((g) => g.date.slice(0, 7)));
-      if (months.size > 1) {
-        for (const ym of months) {
-          const d = new Date(`${ym}-01`);
-          const t = d.getTime();
-          if (t >= minT && t <= maxT) {
-            marks.push({
-              position: Math.max(0, Math.min(1, (maxT - t) / span)),
-              label: `${d.getMonth() + 1}月`,
-              isYear: false,
-            });
-          }
-        }
+      for (const e of entries) {
+        const pos = (maxM - e.month) / span;
+        const key = `${e.year}-${String(e.month).padStart(2, "0")}`;
+        datePositions.set(key, Math.max(0, Math.min(1, pos)));
+        marks.push({
+          position: pos,
+          label: `${e.month}月`,
+          isYear: false,
+        });
       }
-
       return { marks, datePositions };
     }
 
@@ -98,35 +97,32 @@ function useTimelineLayout(groups: DateGroup[]) {
       }
     }
 
-    // Date group positions within their year segment
-    for (const g of valid) {
-      const m = yearMeta.get(g.year);
+    // Date positions for each entry
+    for (const e of entries) {
+      const m = yearMeta.get(e.year);
       if (!m) continue;
-      const month = Number.parseInt(g.date.slice(5, 7), 10) || 1;
-      const day = Number.parseInt(g.date.slice(8, 10), 10) || 1;
-      const frac = ((month - 1) * 30.44 + day) / 365.25;
-      // Within year: Dec at top (pos ≈ start), Jan at bottom (pos ≈ start+w)
+      const frac = ((e.month - 1) * 30.44) / 365.25;
       const pos = (m.start + (1 - frac) * m.w) / totalW;
-      datePositions.set(g.date, Math.max(0, Math.min(1, pos)));
+      const key = `${e.year}-${String(e.month).padStart(2, "0")}`;
+      datePositions.set(key, Math.max(0, Math.min(1, pos)));
     }
 
     return { marks, datePositions };
-  }, [groups]);
+  }, [entries]);
 }
 
-// ── Format date for tooltip ─────────────────────────────────────
-function formatTooltipDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+// ── Format year-month for tooltip ───────────────────────────────
+function formatTooltipYM(ym: string): string {
+  const [y, m] = ym.split("-");
+  return `${y}年${Number.parseInt(m, 10)}月`;
 }
 
 // ── Component ───────────────────────────────────────────────────
 export function TimelineScrubber({
-  groups,
+  libraryId,
   dateGroupRefs,
 }: {
-  groups: DateGroup[];
+  libraryId: string;
   dateGroupRefs: Map<string, HTMLDivElement>;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -137,7 +133,12 @@ export function TimelineScrubber({
     text: string;
   } | null>(null);
   const raf = useRef(0);
-  const { marks, datePositions } = useTimelineLayout(groups);
+
+  const { data: timelineEntries } = api.mediaLibrary.getTimelineIndex.useQuery(
+    { libraryId },
+    { enabled: !!libraryId },
+  );
+  const { marks, datePositions } = useTimelineLayout(timelineEntries ?? []);
 
   // ── Scroll container ────────────────────────────────────────
   const scRef = useRef<HTMLElement | null>(null);
@@ -159,8 +160,11 @@ export function TimelineScrubber({
         for (const [date, el] of dateGroupRefs) {
           if (el.getBoundingClientRect().top <= vpTop) best = date;
         }
-        if (best != null && datePositions.has(best)) {
-          setThumbPos(datePositions.get(best)!);
+        if (best != null) {
+          const ym = best.slice(0, 7); // "2025-03" from "2025-03-12"
+          if (datePositions.has(ym)) {
+            setThumbPos(datePositions.get(ym)!);
+          }
         }
       });
     };
@@ -173,16 +177,16 @@ export function TimelineScrubber({
     };
   }, [dateGroupRefs, datePositions, dragging]);
 
-  // ── Position → nearest date ─────────────────────────────────
+  // ── Position → nearest year-month ───────────────────────────
   const nearestDate = useCallback(
     (pos: number) => {
       let best: string | null = null;
       let bestDist = Number.POSITIVE_INFINITY;
-      for (const [date, dp] of datePositions) {
+      for (const [ym, dp] of datePositions) {
         const d = Math.abs(dp - pos);
         if (d < bestDist) {
           bestDist = d;
-          best = date;
+          best = ym;
         }
       }
       return best;
@@ -196,14 +200,19 @@ export function TimelineScrubber({
       if (!trackRef.current) return;
       const r = trackRef.current.getBoundingClientRect();
       const pos = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
-      const date = nearestDate(pos);
-      if (date) {
-        const el = dateGroupRefs.get(date);
-        el?.scrollIntoView({
-          behavior: dragging ? "auto" : "smooth",
-          block: "start",
-        });
-        setTooltip({ y: clientY, text: formatTooltipDate(date) });
+      const nearest = nearestDate(pos);
+      if (nearest) {
+        // Find first dateGroupRef that starts with this year-month
+        for (const [date, el] of dateGroupRefs) {
+          if (date.startsWith(nearest)) {
+            el.scrollIntoView({
+              behavior: dragging ? "auto" : "smooth",
+              block: "start",
+            });
+            break;
+          }
+        }
+        setTooltip({ y: clientY, text: formatTooltipYM(nearest) });
       }
       setThumbPos(pos);
     },
@@ -242,9 +251,9 @@ export function TimelineScrubber({
       if (dragging || !trackRef.current) return;
       const r = trackRef.current.getBoundingClientRect();
       const pos = (e.clientY - r.top) / r.height;
-      const date = nearestDate(pos);
-      if (date) {
-        setTooltip({ y: e.clientY, text: formatTooltipDate(date) });
+      const ym = nearestDate(pos);
+      if (ym) {
+        setTooltip({ y: e.clientY, text: formatTooltipYM(ym) });
       }
     },
     [dragging, nearestDate],

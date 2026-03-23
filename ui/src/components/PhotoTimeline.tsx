@@ -7,6 +7,7 @@ import { TimelineScrubber } from "./TimelineScrubber";
 
 export function PhotoTimeline({
   photos,
+  libraryId,
   total,
   hasMore,
   onLoadMore,
@@ -17,6 +18,7 @@ export function PhotoTimeline({
   onSelect,
 }: {
   photos: PhotoOutput[];
+  libraryId: string;
   total?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -115,7 +117,10 @@ export function PhotoTimeline({
       </div>
 
       {/* Non-linear timeline scrubber on the right edge */}
-      <TimelineScrubber groups={groups} dateGroupRefs={dateGroupRefs.current} />
+      <TimelineScrubber
+        libraryId={libraryId}
+        dateGroupRefs={dateGroupRefs.current}
+      />
 
       {selectedPhoto && !isSelecting && (
         <PhotoLightbox

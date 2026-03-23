@@ -571,6 +571,7 @@ export default function PhotoLibraryPage() {
         allTimelinePhotos.length > 0 ? (
           <PhotoTimeline
             photos={allTimelinePhotos}
+            libraryId={id!}
             total={timelineTotal}
             hasMore={timelineHasMore}
             onLoadMore={loadMoreTimeline}
@@ -595,6 +596,7 @@ export default function PhotoLibraryPage() {
         allFavPhotos.length > 0 ? (
           <PhotoTimeline
             photos={allFavPhotos}
+            libraryId={id!}
             total={favTotal}
             hasMore={favHasMore}
             onLoadMore={loadMoreFav}
@@ -634,6 +636,7 @@ export default function PhotoLibraryPage() {
             </div>
             <PhotoTimeline
               photos={allTrashPhotos}
+              libraryId={id!}
               total={trashTotal}
               hasMore={trashHasMore}
               onLoadMore={loadMoreTrash}
