@@ -91,18 +91,38 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
     const span = latest - years[years.length - 1] || 1;
     const knee = Math.max(1, span * 0.12);
 
+    // Build month set per year for boundary clipping
+    const yearMonths = new Map<number, number[]>();
+    for (const e of entries) {
+      let arr = yearMonths.get(e.year);
+      if (!arr) {
+        arr = [];
+        yearMonths.set(e.year, arr);
+      }
+      arr.push(e.month);
+    }
+
     let totalW = 0;
     const yearMeta = new Map<number, { start: number; w: number }>();
     for (const y of years) {
-      const w = yearWeight(latest - y, knee);
+      const months = yearMonths.get(y) ?? [];
+      const maxMo = Math.max(...months, 1);
+      const minMo = Math.min(...months, 12);
+      // Scale weight by actual month coverage (partial year → less space)
+      const coverage = (maxMo - minMo + 1) / 12;
+      const w = yearWeight(latest - y, knee) * Math.max(0.25, coverage);
       yearMeta.set(y, { start: totalW, w });
       totalW += w;
     }
 
-    // Year marks + dynamic month/day ticks based on position on track
+    // Year marks + dynamic month/day ticks (only for months with data)
     for (const y of years) {
       const m = yearMeta.get(y)!;
       const midPos = (m.start + m.w / 2) / totalW;
+      const months = yearMonths.get(y) ?? [];
+      const maxMo = Math.max(...months, 1);
+      const minMo = Math.min(...months, 12);
+
       marks.push({
         position: m.start / totalW,
         label: String(y),
@@ -110,10 +130,10 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       });
 
       if (midPos < 0.25) {
-        // Day precision zone (top 1/4): month labels + day ticks
-        for (let mo = 12; mo >= 1; mo--) {
-          const moPos = 1 - (mo - 1) / 12;
-          if (mo < 12) {
+        // Day precision zone: month labels + day ticks (only real months)
+        for (let mo = maxMo; mo >= minMo; mo--) {
+          const moPos = (maxMo - mo) / (maxMo - minMo + 1);
+          if (mo < maxMo) {
             marks.push({
               position: (m.start + moPos * m.w) / totalW,
               label: `${mo + 1}月`,
@@ -121,7 +141,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
             });
           }
           for (const day of [10, 20]) {
-            const dayPos = 1 - (mo - 1 + (day - 1) / 30) / 12;
+            const dayPos = (maxMo - mo + (day - 1) / 30) / (maxMo - minMo + 1);
             marks.push({
               position: (m.start + dayPos * m.w) / totalW,
               label: "",
@@ -130,9 +150,9 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
           }
         }
       } else if (midPos < 0.5) {
-        // Month precision zone (top 1/4–1/2): month labels only
-        for (let mo = 11; mo >= 1; mo--) {
-          const moPos = 1 - (mo - 1) / 12;
+        // Month precision zone: month labels only (only real months)
+        for (let mo = maxMo - 1; mo >= minMo; mo--) {
+          const moPos = (maxMo - mo) / (maxMo - minMo + 1);
           marks.push({
             position: (m.start + moPos * m.w) / totalW,
             label: `${mo + 1}月`,
@@ -140,42 +160,46 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
           });
         }
       }
-      // Bottom half: year label only
     }
 
-    // Date positions for each entry
+    // Date positions for each entry (using clipped month range)
     for (const e of entries) {
       const m = yearMeta.get(e.year);
       if (!m) continue;
-      const frac = ((e.month - 1) * 30.44) / 365.25;
-      const pos = (m.start + (1 - frac) * m.w) / totalW;
+      const months = yearMonths.get(e.year) ?? [];
+      const maxMo = Math.max(...months, 1);
+      const minMo = Math.min(...months, 12);
+      const moRange = maxMo - minMo + 1;
+      const pos = (m.start + ((maxMo - e.month) / moRange) * m.w) / totalW;
       const key = `${e.year}-${String(e.month).padStart(2, "0")}`;
       datePositions.set(key, Math.max(0, Math.min(1, pos)));
     }
 
-    // Capture yearMeta/totalW for posToDateLabel closure
+    // Capture for posToDateLabel closure
     const _yearMeta = yearMeta;
     const _totalW = totalW;
     const _years = years;
+    const _yearMonths = yearMonths;
 
     return {
       marks,
       datePositions,
       posToDateLabel: (pos: number) => {
         const absW = pos * _totalW;
-        // Find which year block this position falls in
         for (let i = 0; i < _years.length; i++) {
           const y = _years[i];
           const meta = _yearMeta.get(y)!;
           const nextStart = meta.start + meta.w;
           if (absW <= nextStart || i === _years.length - 1) {
-            // Position is within this year's block
-            const withinYear = (absW - meta.start) / meta.w; // 0=top(Dec) 1=bottom(Jan)
-            const dayOfYear = (1 - withinYear) * 365;
-            const month = Math.floor(dayOfYear / 30.44) + 1;
-            const day = Math.floor(dayOfYear - (month - 1) * 30.44) + 1;
-            const mo = Math.max(1, Math.min(12, month));
-            const d = Math.max(1, Math.min(31, day));
+            const months = _yearMonths.get(y) ?? [];
+            const maxMo = Math.max(...months, 1);
+            const minMo = Math.min(...months, 12);
+            const within = (absW - meta.start) / meta.w; // 0=top(maxMo) 1=bottom(minMo)
+            const moRange = maxMo - minMo + 1;
+            const moFloat = maxMo - within * moRange;
+            const mo = Math.max(minMo, Math.min(maxMo, Math.floor(moFloat)));
+            const dayFrac = moFloat - mo;
+            const d = Math.max(1, Math.min(31, Math.floor(dayFrac * 30) + 1));
             return `${y}年${mo}月${d}日`;
           }
         }
