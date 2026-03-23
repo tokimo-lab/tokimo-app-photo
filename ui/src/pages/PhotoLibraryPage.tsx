@@ -11,7 +11,6 @@ import {
   CheckSquare,
   FolderOpen,
   Grid3x3,
-  ScanSearch,
   Star,
   Trash2,
 } from "lucide-react";
@@ -366,19 +365,6 @@ export default function PhotoLibraryPage() {
     );
   }, [id, selectedIds, trashMutation, message, photosQuery, favoritesQuery]);
 
-  // ── Full rescan ───────────────────────────────────────────────────────
-  const rescanMutation = api.mediaLibrary.rescan.useMutation({
-    onSuccess: (data) => {
-      message.success(data.message);
-    },
-    onError: (e) => message.error(e.message || "重扫失败"),
-  });
-
-  const handleRescan = useCallback(() => {
-    if (!id) return;
-    rescanMutation.mutate({ libraryId: id });
-  }, [id, rescanMutation.mutate]);
-
   // ── Trash operations ──────────────────────────────────────────────────
   const restoreMutation = api.mediaLibrary.restorePhotos.useMutation({
     onSuccess: (data) => {
@@ -470,7 +456,6 @@ export default function PhotoLibraryPage() {
 
   const isRefetching = photosQuery.isRefetching;
   const isSyncing = syncMutation.isPending;
-  const isRescanPending = rescanMutation.isPending;
 
   useTopBar({
     left: useMemo(() => {
@@ -497,14 +482,6 @@ export default function PhotoLibraryPage() {
             选择
           </Button>
           <Button
-            icon={<ScanSearch className="h-4 w-4" />}
-            onClick={handleRescan}
-            loading={isRescanPending}
-            title="全量重扫（EXIF / 尺寸 / 日期）"
-          >
-            重扫
-          </Button>
-          <Button
             icon={<ReloadOutlined />}
             onClick={handleRefresh}
             loading={isRefetching}
@@ -524,8 +501,6 @@ export default function PhotoLibraryPage() {
       isSyncing,
       toggleSelectMode,
       isSelecting,
-      handleRescan,
-      isRescanPending,
     ]),
   });
 
