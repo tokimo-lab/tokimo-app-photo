@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { PhotoLightbox } from "./PhotoLightbox";
@@ -73,7 +74,34 @@ export function PhotoTimeline({
             }}
           >
             {/* Date header */}
-            <div className="sticky top-0 z-10 mb-1.5 flex items-center gap-2 bg-neutral-50/80 py-1 backdrop-blur-sm dark:bg-neutral-900/80">
+            <div className="group/date mb-1.5 flex items-center gap-2 py-1">
+              {/* Select-all checkbox — visible on hover or when selecting */}
+              <button
+                type="button"
+                className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
+                  isSelecting &&
+                  group.photos.every((p) => selectedIds?.has(p.id))
+                    ? "border-orange-500 bg-orange-500 opacity-100"
+                    : isSelecting
+                      ? "border-neutral-400 bg-neutral-200/50 opacity-80 hover:opacity-100 dark:border-neutral-500 dark:bg-neutral-700/50"
+                      : "border-neutral-400 bg-neutral-200/50 opacity-0 group-hover/date:opacity-80 dark:border-neutral-500 dark:bg-neutral-700/50"
+                }`}
+                onClick={() => {
+                  if (!onSelect) return;
+                  const allSelected = group.photos.every((p) =>
+                    selectedIds?.has(p.id),
+                  );
+                  for (const p of group.photos) {
+                    if (allSelected || !selectedIds?.has(p.id)) onSelect(p);
+                  }
+                }}
+                title={`全选 ${group.label}`}
+              >
+                {isSelecting &&
+                  group.photos.every((p) => selectedIds?.has(p.id)) && (
+                    <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                  )}
+              </button>
               <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                 {group.label}
               </h3>
