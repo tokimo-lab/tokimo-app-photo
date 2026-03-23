@@ -83,6 +83,18 @@ export default function PhotoLibraryPage() {
   const [_syncClearData, _setSyncClearData] = useState(false);
 
   // ── TopBar ──────────────────────────────────────────────────────────────
+  const refetchPhotos = useCallback(
+    () => void photosQuery.refetch(),
+    [photosQuery.refetch],
+  );
+  const doSync = useCallback(() => {
+    if (!id) return;
+    syncMutation.mutate({ id, clearData: false });
+  }, [id, syncMutation.mutate]);
+
+  const isRefetching = photosQuery.isRefetching;
+  const isSyncing = syncMutation.isPending;
+
   useTopBar({
     left: useMemo(() => {
       if (!id) return undefined;
@@ -101,26 +113,17 @@ export default function PhotoLibraryPage() {
         <>
           <Button
             icon={<ReloadOutlined />}
-            onClick={() => void photosQuery.refetch()}
-            loading={photosQuery.isRefetching}
+            onClick={refetchPhotos}
+            loading={isRefetching}
           >
             刷新
           </Button>
-          <Button
-            icon={<SyncOutlined />}
-            onClick={() => {
-              syncMutation.mutate({
-                id,
-                clearData: false,
-              });
-            }}
-            loading={syncMutation.isPending}
-          >
+          <Button icon={<SyncOutlined />} onClick={doSync} loading={isSyncing}>
             同步
           </Button>
         </>
       );
-    }, [id, photosQuery.isRefetching, photosQuery.refetch, syncMutation]),
+    }, [id, refetchPhotos, isRefetching, doSync, isSyncing]),
   });
 
   if (!id) return null;
