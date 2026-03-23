@@ -189,11 +189,15 @@ export function PhotoTimeline({
                   left: 0,
                   width: "100%",
                   transform: `translateY(${vItem.start - virtualizer.options.scrollMargin}px)`,
+                  paddingBottom: item.type === "row" ? PHOTO_GAP : 0,
                 }}
               >
                 {item.type === "header" ? (
                   <div
-                    style={{ paddingLeft: PHOTO_GAP, paddingRight: PHOTO_GAP }}
+                    style={{
+                      paddingLeft: PHOTO_GAP,
+                      paddingRight: PHOTO_GAP,
+                    }}
                   >
                     <DateHeader
                       group={item.group}
