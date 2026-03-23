@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
-import { extractYears, groupPhotosByDate } from "./photo-utils";
-import { YearNavigator } from "./YearNavigator";
+import { groupPhotosByDate } from "./photo-utils";
+import { TimelineScrubber } from "./TimelineScrubber";
 
 export function PhotoTimeline({
   photos,
@@ -27,7 +27,6 @@ export function PhotoTimeline({
   onSelect?: (photo: PhotoOutput) => void;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
-  const years = useMemo(() => extractYears(groups), [groups]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
 
   // Track refs for each date group for year navigator scrolling
@@ -61,7 +60,7 @@ export function PhotoTimeline({
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="space-y-4 pr-14 lg:pr-14">
         {groups.map((group) => (
           <div
             key={group.date}
@@ -115,8 +114,8 @@ export function PhotoTimeline({
         )}
       </div>
 
-      {/* Year navigator on the right edge */}
-      <YearNavigator years={years} dateGroupRefs={dateGroupRefs.current} />
+      {/* Non-linear timeline scrubber on the right edge */}
+      <TimelineScrubber groups={groups} dateGroupRefs={dateGroupRefs.current} />
 
       {selectedPhoto && !isSelecting && (
         <PhotoLightbox

@@ -65,15 +65,6 @@ export function groupPhotosByDate(photos: PhotoOutput[]): DateGroup[] {
   return groups;
 }
 
-/** Extract unique sorted years from date groups (descending). */
-export function extractYears(groups: DateGroup[]): number[] {
-  const years = new Set<number>();
-  for (const g of groups) {
-    if (g.year > 0) years.add(g.year);
-  }
-  return [...years].sort((a, b) => b - a);
-}
-
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
