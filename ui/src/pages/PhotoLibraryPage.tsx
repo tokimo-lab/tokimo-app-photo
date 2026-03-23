@@ -1,14 +1,13 @@
 import {
   Button,
   Empty,
-  Image,
   ReloadOutlined,
   Spin,
   SyncOutlined,
   Tag,
 } from "@tokiomo/components";
 import { Calendar, FolderOpen, Grid3x3, Heart, ImageIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
 import type { PhotoOutput } from "../../generated/rust-api";
@@ -17,6 +16,7 @@ import { useMessage, useTopBar } from "../../hooks";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 80;
+const THUMB_WIDTH = 320;
 
 type TabKey = "timeline" | "folders" | "albums";
 
@@ -224,7 +224,13 @@ function PhotoTimeline({ photos }: { photos: PhotoOutput[] }) {
     <>
       <div className="space-y-6">
         {groups.map((group) => (
-          <div key={group.date}>
+          <div
+            key={group.date}
+            style={{
+              contentVisibility: "auto",
+              containIntrinsicSize: "auto 200px",
+            }}
+          >
             {/* Date header */}
             <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 py-1">
               <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
@@ -241,7 +247,7 @@ function PhotoTimeline({ photos }: { photos: PhotoOutput[] }) {
                 <PhotoThumbnail
                   key={photo.id}
                   photo={photo}
-                  onClick={() => setSelectedPhoto(photo)}
+                  onClick={setSelectedPhoto}
                 />
               ))}
             </div>
@@ -264,31 +270,34 @@ function PhotoTimeline({ photos }: { photos: PhotoOutput[] }) {
 
 // ── Photo Thumbnail ──────────────────────────────────────────────────────────
 
-function PhotoThumbnail({
+const PhotoThumbnail = memo(function PhotoThumbnail({
   photo,
   onClick,
 }: {
   photo: PhotoOutput;
-  onClick: () => void;
+  onClick: (photo: PhotoOutput) => void;
 }) {
-  const src = photo.thumbnailPath
-    ? `/api/storage/${photo.thumbnailPath}`
-    : photo.sourceId
-      ? `/api/photos/${photo.id}/image`
-      : undefined;
+  const src = photo.sourceId
+    ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
+    : undefined;
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loaded, setLoaded] = useState(false);
 
   return (
     <button
       type="button"
-      className="group relative aspect-square cursor-pointer overflow-hidden rounded-md bg-neutral-100 transition-transform hover:z-10 hover:scale-[1.02] dark:bg-neutral-800"
-      onClick={onClick}
+      className="group relative aspect-square cursor-pointer overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800"
+      onClick={() => onClick(photo)}
     >
       {src ? (
-        <Image
+        <img
+          ref={imgRef}
           src={src}
           alt={photo.title || photo.filename}
-          className="h-full w-full object-cover"
+          className={`h-full w-full object-cover transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"}`}
           loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
@@ -309,7 +318,7 @@ function PhotoThumbnail({
       </div>
     </button>
   );
-}
+});
 
 // ── Photo Albums Grid ────────────────────────────────────────────────────────
 
@@ -337,11 +346,12 @@ function PhotoAlbumsGrid({
         >
           <div className="aspect-[4/3] bg-neutral-100 dark:bg-neutral-800">
             {album.coverPhotoId ? (
-              <Image
-                src={`/api/photos/${album.coverPhotoId}/image`}
+              <img
+                src={`/api/photos/${album.coverPhotoId}/thumbnail?w=400`}
                 alt={album.name}
                 className="h-full w-full object-cover"
                 loading="lazy"
+                decoding="async"
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center">
