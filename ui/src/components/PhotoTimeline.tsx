@@ -30,6 +30,7 @@ export function PhotoTimeline({
   selectedIds,
   onSelect,
   onSeekToDate,
+  targetRowHeight = 220,
 }: {
   photos: PhotoOutput[];
   libraryId: string;
@@ -42,6 +43,7 @@ export function PhotoTimeline({
   selectedIds?: Set<string>;
   onSelect?: (photo: PhotoOutput) => void;
   onSeekToDate?: (datePrefix: string) => void;
+  targetRowHeight?: number;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -81,7 +83,7 @@ export function PhotoTimeline({
         const rows = computeJustifiedRows(
           group.photos,
           containerWidth,
-          220,
+          targetRowHeight,
           PHOTO_GAP,
         );
         for (const row of rows) {
@@ -94,7 +96,7 @@ export function PhotoTimeline({
     }
 
     return { flatItems: items, dateOffsets: offsets, itemHeights: heights };
-  }, [groups, containerWidth]);
+  }, [groups, containerWidth, targetRowHeight]);
 
   // ── Scroll element (dashboard-scroll-container) ──────────────
   const scrollElRef = useRef<HTMLElement | null>(null);

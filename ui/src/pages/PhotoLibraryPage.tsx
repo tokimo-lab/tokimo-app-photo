@@ -21,6 +21,11 @@ import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
 import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
+import {
+  loadSavedSizeIndex,
+  PHOTO_SIZE_LEVELS,
+  PhotoSizeSlider,
+} from "../../components/photo/PhotoSizeSlider";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
 import type { PhotoOutput } from "../../generated/rust-api";
@@ -59,6 +64,10 @@ export default function PhotoLibraryPage() {
     },
     [setSearchParams],
   );
+
+  // ── Grid size state ──────────────────────────────────────────────────
+  const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
+  const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
 
   // ── Search state ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -474,6 +483,7 @@ export default function PhotoLibraryPage() {
       if (!id) return undefined;
       return (
         <>
+          <PhotoSizeSlider value={sizeIndex} onChange={setSizeIndex} />
           <Button
             icon={<CheckSquare className="h-4 w-4" />}
             onClick={toggleSelectMode}
@@ -501,6 +511,7 @@ export default function PhotoLibraryPage() {
       isSyncing,
       toggleSelectMode,
       isSelecting,
+      sizeIndex,
     ]),
   });
 
@@ -563,6 +574,7 @@ export default function PhotoLibraryPage() {
             selectedIds={selectedIds}
             onSelect={handleSelect}
             onSeekToDate={seekToDate}
+            targetRowHeight={targetRowHeight}
           />
         ) : (
           <Empty description="暂无照片，请先同步媒体库" />
@@ -588,6 +600,7 @@ export default function PhotoLibraryPage() {
             isSelecting={isSelecting}
             selectedIds={selectedIds}
             onSelect={handleSelect}
+            targetRowHeight={targetRowHeight}
           />
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
@@ -628,6 +641,7 @@ export default function PhotoLibraryPage() {
               isSelecting={isSelecting}
               selectedIds={selectedIds}
               onSelect={handleSelect}
+              targetRowHeight={targetRowHeight}
             />
           </div>
         ) : (
