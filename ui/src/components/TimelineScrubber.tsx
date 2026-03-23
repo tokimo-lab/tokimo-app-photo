@@ -15,11 +15,11 @@ import { api } from "../../generated/rust-api";
  */
 
 // ── Non-linear year weight ──────────────────────────────────────
-// Dynamic sigmoid: adapts "knee" to the library's actual year span.
-// Near years get high weight (expanded), far years plateau at minimum.
-function yearWeight(dist: number, knee: number): number {
-  return 4 + 12 / (1 + (dist / knee) ** 3);
-}
+// Splits years into 3 tiers by distance from latest, each tier
+// occupies exactly 1/3 of the track:
+//   Tier 1 (day precision):   top 1/3 — closest years
+//   Tier 2 (month precision): middle 1/3
+//   Tier 3 (year only):       bottom 1/3 — distant years
 
 // ── Types ───────────────────────────────────────────────────────
 interface Mark {
@@ -86,12 +86,12 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       };
     }
 
-    // ── Multi-year: non-linear year weights ─────────────────────
-    // Knee adapts to span: ~12% of span → steeper for large libs
+    // ── Multi-year: 3-tier weight (day 1/3, month 1/3, year 1/3) ──
     const span = latest - years[years.length - 1] || 1;
-    const knee = Math.max(1, span * 0.12);
+    const dayDist = Math.max(1, Math.ceil(span * 0.15));
+    const monthDist = Math.max(dayDist + 1, Math.ceil(span * 0.4));
 
-    // Build month set per year for boundary clipping
+    // Build month set per year
     const yearMonths = new Map<number, number[]>();
     for (const e of entries) {
       let arr = yearMonths.get(e.year);
@@ -102,26 +102,65 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       arr.push(e.month);
     }
 
+    // Split into 3 tiers by distance
+    const dayYears: number[] = [];
+    const monthYears: number[] = [];
+    const yearOnlyYears: number[] = [];
+    for (const y of years) {
+      const d = latest - y;
+      if (d < dayDist) dayYears.push(y);
+      else if (d < monthDist) monthYears.push(y);
+      else yearOnlyYears.push(y);
+    }
+    if (dayYears.length === 0 && monthYears.length > 0)
+      dayYears.push(monthYears.shift()!);
+    if (dayYears.length === 0 && yearOnlyYears.length > 0)
+      dayYears.push(yearOnlyYears.shift()!);
+
+    // Assign weights: each non-empty tier sums to TIER_W
+    const TIER_W = 100;
+    const tierAssign = (tier: number[]) => {
+      const wm = new Map<number, number>();
+      if (tier.length === 0) return wm;
+      const n = tier.length;
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        const t = n > 1 ? i / (n - 1) : 0;
+        const s = 1.4 - 0.8 * t; // mild gradient: closest=1.4, farthest=0.6
+        wm.set(tier[i], s);
+        sum += s;
+      }
+      for (const [y, w] of wm) wm.set(y, (w / sum) * TIER_W);
+      return wm;
+    };
+    const dayW = tierAssign(dayYears);
+    const monthW = tierAssign(monthYears);
+    const yearW = tierAssign(yearOnlyYears);
+
+    // Build yearMeta with coverage scaling
     let totalW = 0;
     const yearMeta = new Map<number, { start: number; w: number }>();
     for (const y of years) {
+      let w = dayW.get(y) ?? monthW.get(y) ?? yearW.get(y) ?? 1;
       const months = yearMonths.get(y) ?? [];
-      const maxMo = Math.max(...months, 1);
-      const minMo = Math.min(...months, 12);
-      // Scale weight by actual month coverage (partial year → less space)
-      const coverage = (maxMo - minMo + 1) / 12;
-      const w = yearWeight(latest - y, knee) * Math.max(0.25, coverage);
+      if (months.length > 0) {
+        const coverage = (Math.max(...months) - Math.min(...months) + 1) / 12;
+        w *= Math.max(0.25, coverage);
+      }
       yearMeta.set(y, { start: totalW, w });
       totalW += w;
     }
 
-    // Year marks + dynamic month/day ticks (only for months with data)
+    // Tier sets for mark generation
+    const daySet = new Set(dayYears);
+    const monthSet = new Set(monthYears);
+
     for (const y of years) {
       const m = yearMeta.get(y)!;
-      const midPos = (m.start + m.w / 2) / totalW;
       const months = yearMonths.get(y) ?? [];
       const maxMo = Math.max(...months, 1);
       const minMo = Math.min(...months, 12);
+      const moRange = maxMo - minMo + 1;
 
       marks.push({
         position: m.start / totalW,
@@ -129,10 +168,10 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
         isYear: true,
       });
 
-      if (midPos < 0.25) {
-        // Day precision zone: month labels + day ticks (only real months)
+      if (daySet.has(y)) {
+        // Day tier: month labels + day ticks
         for (let mo = maxMo; mo >= minMo; mo--) {
-          const moPos = (maxMo - mo) / (maxMo - minMo + 1);
+          const moPos = (maxMo - mo) / moRange;
           if (mo < maxMo) {
             marks.push({
               position: (m.start + moPos * m.w) / totalW,
@@ -141,7 +180,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
             });
           }
           for (const day of [10, 20]) {
-            const dayPos = (maxMo - mo + (day - 1) / 30) / (maxMo - minMo + 1);
+            const dayPos = (maxMo - mo + (day - 1) / 30) / moRange;
             marks.push({
               position: (m.start + dayPos * m.w) / totalW,
               label: "",
@@ -149,10 +188,10 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
             });
           }
         }
-      } else if (midPos < 0.5) {
-        // Month precision zone: month labels only (only real months)
+      } else if (monthSet.has(y)) {
+        // Month tier: month labels only
         for (let mo = maxMo - 1; mo >= minMo; mo--) {
-          const moPos = (maxMo - mo) / (maxMo - minMo + 1);
+          const moPos = (maxMo - mo) / moRange;
           marks.push({
             position: (m.start + moPos * m.w) / totalW,
             label: `${mo + 1}月`,
