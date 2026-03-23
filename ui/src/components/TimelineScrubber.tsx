@@ -41,7 +41,10 @@ interface LayoutResult {
   posToDateLabel: (pos: number) => string;
 }
 
-function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
+function useTimelineLayout(
+  entries: TimelineEntry[],
+  focusYear: number | null,
+): LayoutResult {
   return useMemo(() => {
     const empty: LayoutResult = {
       marks: [],
@@ -53,7 +56,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
     const years = [...new Set(entries.map((e) => e.year))].sort(
       (a, b) => b - a,
     );
-    const latest = years[0];
+    const focus = focusYear ?? years[0];
     const marks: Mark[] = [];
     const datePositions = new Map<string, number>();
 
@@ -64,7 +67,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       const minM = Math.min(...months);
       const span = maxM - minM || 1;
 
-      marks.push({ position: 0, label: String(latest), isYear: true });
+      marks.push({ position: 0, label: String(years[0]), isYear: true });
 
       for (const e of entries) {
         const pos = (maxM - e.month) / span;
@@ -76,21 +79,22 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
           isYear: false,
         });
       }
+      const yr = years[0];
       return {
         marks,
         datePositions,
         posToDateLabel: (pos: number) => {
           const mo = Math.round(maxM - pos * span);
-          return `${latest}年${Math.max(1, Math.min(12, mo))}月`;
+          return `${yr}年${Math.max(1, Math.min(12, mo))}月`;
         },
       };
     }
 
-    // ── Multi-year: 3-tier weight (day 1/3, month 1/3, year 1/3) ──
-    // Day tier: only the latest year (focused time)
-    // Month tier: next 2 years
-    // Year tier: everything else
-    // Each tier gets exactly 1/3 of total weight regardless of month count
+    // ── Multi-year: 3-tier weight centered on focus year ────────
+    // Day tier:   focus year (±0) → 1/3 of track, month labels + day ticks
+    // Month tier: focus ±1–2 years → 1/3 of track, year labels only
+    // Year tier:  everything else → 1/3 of track, year labels only
+    // On drag-end, focus shifts → layout recomputes → second drag is precise
 
     // Build month set per year
     const yearMonths = new Map<number, number[]>();
@@ -103,12 +107,12 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
       arr.push(e.month);
     }
 
-    // Split into 3 tiers: day=latest 1 year, month=next 2, year=rest
+    // Split into 3 tiers by distance from focus
     const dayYears: number[] = [];
     const monthYears: number[] = [];
     const yearOnlyYears: number[] = [];
     for (const y of years) {
-      const d = latest - y;
+      const d = Math.abs(focus - y);
       if (d === 0) dayYears.push(y);
       else if (d <= 2) monthYears.push(y);
       else yearOnlyYears.push(y);
@@ -227,7 +231,7 @@ function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
         return "";
       },
     };
-  }, [entries]);
+  }, [entries, focusYear]);
 }
 
 // ── Component ───────────────────────────────────────────────────
@@ -241,6 +245,7 @@ export function TimelineScrubber({
   const trackRef = useRef<HTMLDivElement>(null);
   const [thumbPos, setThumbPos] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [focusYear, setFocusYear] = useState<number | null>(null);
   const [tooltip, setTooltip] = useState<{
     y: number;
     text: string;
@@ -253,6 +258,7 @@ export function TimelineScrubber({
   );
   const { marks, datePositions, posToDateLabel } = useTimelineLayout(
     timelineEntries ?? [],
+    focusYear,
   );
 
   // ── Scroll container ────────────────────────────────────────
@@ -351,6 +357,14 @@ export function TimelineScrubber({
     const onUp = () => {
       setDragging(false);
       setTooltip(null);
+      // Shift focus to where the user landed → recompute layout
+      if (trackRef.current) {
+        const label = posToDateLabel(thumbPos);
+        const yearMatch = label.match(/^(\d{4})/);
+        if (yearMatch) {
+          setFocusYear(Number.parseInt(yearMatch[1], 10));
+        }
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -358,7 +372,7 @@ export function TimelineScrubber({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragging, scrollToY]);
+  }, [dragging, scrollToY, thumbPos, posToDateLabel]);
 
   // ── Hover tooltip ───────────────────────────────────────────
   const onHover = useCallback(
