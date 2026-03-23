@@ -1,7 +1,7 @@
 import type { PhotoOutput } from "../../generated/rust-api";
 
 const TARGET_ROW_HEIGHT = 220;
-const PHOTO_GAP = 2;
+const PHOTO_GAP = 4;
 
 export interface JustifiedItem {
   photo: PhotoOutput;

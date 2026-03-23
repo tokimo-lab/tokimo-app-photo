@@ -9,7 +9,7 @@ import { groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
 import { computeJustifiedRows, type JustifiedRow } from "./useJustifiedLayout";
 
-const PHOTO_GAP = 2;
+const PHOTO_GAP = 4;
 const HEADER_HEIGHT = 32;
 const VIRTUALIZER_OVERSCAN = 15;
 

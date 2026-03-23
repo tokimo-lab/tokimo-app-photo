@@ -550,15 +550,13 @@ impl PhotoRepo {
         Ok(result.rows_affected)
     }
 
-    /// Get photos that need EXIF re-scan (taken_at is NULL, have a source)
-    pub async fn get_photos_needing_exif(
+    /// Get all photos with a source for full rescan
+    pub async fn get_all_photos_for_rescan(
         db: &DatabaseConnection,
         library_id: Uuid,
     ) -> Result<Vec<(Uuid, String, Uuid)>, AppError> {
-        // Return (photo_id, path, source_id) for photos missing EXIF
         let rows = photos::Entity::find()
             .filter(photos::Column::LibraryId.eq(library_id))
-            .filter(photos::Column::TakenAt.is_null())
             .filter(photos::Column::SourceId.is_not_null())
             .select_only()
             .column(photos::Column::Id)
@@ -665,6 +663,23 @@ impl PhotoRepo {
             active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
             active.update(db).await?;
         }
+        Ok(())
+    }
+
+    /// Update only width/height (when EXIF didn't have dimensions but image header did).
+    pub async fn update_exif_dimensions(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        width: i32,
+        height: i32,
+    ) -> Result<(), AppError> {
+        let active = photos::ActiveModel {
+            id: Set(photo_id),
+            width: Set(Some(width)),
+            height: Set(Some(height)),
+            ..Default::default()
+        };
+        active.update(db).await?;
         Ok(())
     }
 

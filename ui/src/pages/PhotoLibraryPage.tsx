@@ -366,15 +366,15 @@ export default function PhotoLibraryPage() {
     );
   }, [id, selectedIds, trashMutation, message, photosQuery, favoritesQuery]);
 
-  // ── EXIF rescan ───────────────────────────────────────────────────────
-  const rescanMutation = api.mediaLibrary.rescanExif.useMutation({
+  // ── Full rescan ───────────────────────────────────────────────────────
+  const rescanMutation = api.mediaLibrary.rescan.useMutation({
     onSuccess: (data) => {
       message.success(data.message);
     },
-    onError: (e) => message.error(e.message || "EXIF 扫描失败"),
+    onError: (e) => message.error(e.message || "重扫失败"),
   });
 
-  const handleRescanExif = useCallback(() => {
+  const handleRescan = useCallback(() => {
     if (!id) return;
     rescanMutation.mutate({ libraryId: id });
   }, [id, rescanMutation.mutate]);
@@ -498,11 +498,11 @@ export default function PhotoLibraryPage() {
           </Button>
           <Button
             icon={<ScanSearch className="h-4 w-4" />}
-            onClick={handleRescanExif}
+            onClick={handleRescan}
             loading={isRescanPending}
-            title="扫描日期信息（EXIF / 文件名 / 修改时间）"
+            title="全量重扫（EXIF / 尺寸 / 日期）"
           >
-            扫描日期
+            重扫
           </Button>
           <Button
             icon={<ReloadOutlined />}
@@ -524,7 +524,7 @@ export default function PhotoLibraryPage() {
       isSyncing,
       toggleSelectMode,
       isSelecting,
-      handleRescanExif,
+      handleRescan,
       isRescanPending,
     ]),
   });
