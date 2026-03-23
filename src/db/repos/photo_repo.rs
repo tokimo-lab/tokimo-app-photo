@@ -480,6 +480,24 @@ impl PhotoRepo {
         Ok(())
     }
 
+    /// Update only the `taken_at` field (from filename date or mtime).
+    /// `date_str` must be `"YYYY-MM-DD HH:MM:SS"`.
+    pub async fn update_taken_at(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        date_str: &str,
+    ) -> Result<(), AppError> {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+            let mut active = photos::ActiveModel {
+                id: Set(photo_id),
+                ..Default::default()
+            };
+            active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
+            active.update(db).await?;
+        }
+        Ok(())
+    }
+
     /// List photos in a specific album
     pub async fn list_album_photos(
         db: &DatabaseConnection,

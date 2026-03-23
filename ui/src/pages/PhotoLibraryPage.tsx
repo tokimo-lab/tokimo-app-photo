@@ -14,7 +14,7 @@ import {
   ScanSearch,
   Star,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
 import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
@@ -47,12 +47,14 @@ export default function PhotoLibraryPage() {
       setSearchParams({ tab: t }, { replace: true });
       setSelectedIds(new Set());
       setIsSelecting(false);
+      // Reset pagination on tab switch
+      setTimelinePage(1);
+      setFavPage(1);
+      accTimelineRef.current = [];
+      accFavRef.current = [];
     },
     [setSearchParams],
   );
-
-  const [page, setPage] = useState(1);
-  const [search, _setSearch] = useState("");
 
   // ── Selection state ────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -87,6 +89,12 @@ export default function PhotoLibraryPage() {
     }
   }, [isSelecting, clearSelection]);
 
+  // ── Infinite scroll pagination ─────────────────────────────────────────
+  const [timelinePage, setTimelinePage] = useState(1);
+  const [favPage, setFavPage] = useState(1);
+  const accTimelineRef = useRef<PhotoOutput[]>([]);
+  const accFavRef = useRef<PhotoOutput[]>([]);
+
   // ── Queries ────────────────────────────────────────────────────────────
   const libraryQuery = api.mediaLibrary.getById.useQuery(
     { id: id! },
@@ -96,11 +104,10 @@ export default function PhotoLibraryPage() {
   const photosQuery = api.mediaLibrary.listPhotos.useQuery(
     {
       libraryId: id!,
-      page,
+      page: timelinePage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
       sortDir: "desc",
-      search: search || undefined,
     },
     { enabled: !!id && tab === "timeline" },
   );
@@ -108,7 +115,7 @@ export default function PhotoLibraryPage() {
   const favoritesQuery = api.mediaLibrary.listPhotos.useQuery(
     {
       libraryId: id!,
-      page,
+      page: favPage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
       sortDir: "desc",
@@ -122,28 +129,68 @@ export default function PhotoLibraryPage() {
     { enabled: !!id && tab === "albums" },
   );
 
-  const syncMutation = api.mediaLibrary.sync.useMutation({
-    onSuccess: () => {
-      message.success("同步已开始");
-      void photosQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "同步失败"),
-  });
+  // Accumulate timeline photos across pages
+  const timelineTotal = photosQuery.data?.total ?? 0;
+  useEffect(() => {
+    if (!photosQuery.data?.items) return;
+    if (timelinePage === 1) {
+      accTimelineRef.current = photosQuery.data.items;
+    } else {
+      const ids = new Set(accTimelineRef.current.map((p) => p.id));
+      const newItems = photosQuery.data.items.filter((p) => !ids.has(p.id));
+      accTimelineRef.current = [...accTimelineRef.current, ...newItems];
+    }
+  }, [photosQuery.data, timelinePage]);
 
-  const total = photosQuery.data?.total ?? 0;
-  const photos = photosQuery.data?.items ?? [];
-  const favoritePhotos = favoritesQuery.data?.items ?? [];
-  const favoriteTotal = favoritesQuery.data?.total ?? 0;
+  const allTimelinePhotos =
+    timelinePage === 1 && photosQuery.data
+      ? photosQuery.data.items
+      : accTimelineRef.current.length > 0
+        ? accTimelineRef.current
+        : (photosQuery.data?.items ?? []);
+  const timelineHasMore = allTimelinePhotos.length < timelineTotal;
+
+  // Accumulate favorites across pages
+  const favTotal = favoritesQuery.data?.total ?? 0;
+  useEffect(() => {
+    if (!favoritesQuery.data?.items) return;
+    if (favPage === 1) {
+      accFavRef.current = favoritesQuery.data.items;
+    } else {
+      const ids = new Set(accFavRef.current.map((p) => p.id));
+      const newItems = favoritesQuery.data.items.filter((p) => !ids.has(p.id));
+      accFavRef.current = [...accFavRef.current, ...newItems];
+    }
+  }, [favoritesQuery.data, favPage]);
+
+  const allFavPhotos =
+    favPage === 1 && favoritesQuery.data
+      ? favoritesQuery.data.items
+      : accFavRef.current.length > 0
+        ? accFavRef.current
+        : (favoritesQuery.data?.items ?? []);
+  const favHasMore = allFavPhotos.length < favTotal;
+
   const albums = albumsQuery.data ?? [];
 
   const isLoading =
     tab === "timeline"
-      ? photosQuery.isLoading
+      ? photosQuery.isLoading && timelinePage === 1
       : tab === "favorites"
-        ? favoritesQuery.isLoading
+        ? favoritesQuery.isLoading && favPage === 1
         : tab === "albums"
           ? albumsQuery.isLoading
           : false;
+
+  const syncMutation = api.mediaLibrary.sync.useMutation({
+    onSuccess: () => {
+      message.success("同步已开始");
+      setTimelinePage(1);
+      accTimelineRef.current = [];
+      void photosQuery.refetch();
+    },
+    onError: (e) => message.error(e.message || "同步失败"),
+  });
 
   // ── Favorite toggle ─────────────────────────────────────────────────────
   const toggleFavMutation = api.mediaLibrary.togglePhotoFavorite.useMutation({
@@ -222,11 +269,25 @@ export default function PhotoLibraryPage() {
     rescanMutation.mutate({ libraryId: id });
   }, [id, rescanMutation.mutate]);
 
+  // ── Infinite scroll callbacks ─────────────────────────────────────────
+  const loadMoreTimeline = useCallback(() => {
+    setTimelinePage((p) => p + 1);
+  }, []);
+
+  const loadMoreFav = useCallback(() => {
+    setFavPage((p) => p + 1);
+  }, []);
+
   // ── TopBar ──────────────────────────────────────────────────────────────
-  const refetchPhotos = useCallback(
-    () => void photosQuery.refetch(),
-    [photosQuery.refetch],
-  );
+  const handleRefresh = useCallback(() => {
+    setTimelinePage(1);
+    setFavPage(1);
+    accTimelineRef.current = [];
+    accFavRef.current = [];
+    void photosQuery.refetch();
+    void favoritesQuery.refetch();
+  }, [photosQuery.refetch, favoritesQuery.refetch]);
+
   const doSync = useCallback(() => {
     if (!id) return;
     syncMutation.mutate({ id, clearData: false });
@@ -263,13 +324,13 @@ export default function PhotoLibraryPage() {
             icon={<ScanSearch className="h-4 w-4" />}
             onClick={handleRescanExif}
             loading={isRescanPending}
-            title="重新扫描照片 EXIF 信息"
+            title="扫描日期信息（EXIF / 文件名 / 修改时间）"
           >
-            扫描EXIF
+            扫描日期
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            onClick={refetchPhotos}
+            onClick={handleRefresh}
             loading={isRefetching}
           >
             刷新
@@ -281,7 +342,7 @@ export default function PhotoLibraryPage() {
       );
     }, [
       id,
-      refetchPhotos,
+      handleRefresh,
       isRefetching,
       doSync,
       isSyncing,
@@ -302,10 +363,10 @@ export default function PhotoLibraryPage() {
           <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
             {libraryQuery.data?.name ?? "相册"}
           </h2>
-          {tab === "timeline" && total > 0 && <Tag>{total} 张</Tag>}
-          {tab === "favorites" && favoriteTotal > 0 && (
-            <Tag>{favoriteTotal} 张</Tag>
+          {tab === "timeline" && timelineTotal > 0 && (
+            <Tag>{timelineTotal} 张</Tag>
           )}
+          {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
         </div>
       </div>
 
@@ -332,18 +393,26 @@ export default function PhotoLibraryPage() {
       </div>
 
       {/* Content */}
-      {isLoading && tab !== "albums" ? (
+      {isLoading ? (
         <div className="flex h-64 items-center justify-center">
           <Spin />
         </div>
       ) : tab === "timeline" ? (
-        <PhotoTimeline
-          photos={photos}
-          onToggleFavorite={handleToggleFavorite}
-          isSelecting={isSelecting}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-        />
+        allTimelinePhotos.length > 0 ? (
+          <PhotoTimeline
+            photos={allTimelinePhotos}
+            total={timelineTotal}
+            hasMore={timelineHasMore}
+            onLoadMore={loadMoreTimeline}
+            isLoadingMore={photosQuery.isFetching && timelinePage > 1}
+            onToggleFavorite={handleToggleFavorite}
+            isSelecting={isSelecting}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+          />
+        ) : (
+          <Empty description="暂无照片，请先同步媒体库" />
+        )
       ) : tab === "folders" ? (
         <PhotoFoldersView
           libraryId={id}
@@ -353,9 +422,13 @@ export default function PhotoLibraryPage() {
           onSelect={handleSelect}
         />
       ) : tab === "favorites" ? (
-        favoritePhotos.length > 0 ? (
+        allFavPhotos.length > 0 ? (
           <PhotoTimeline
-            photos={favoritePhotos}
+            photos={allFavPhotos}
+            total={favTotal}
+            hasMore={favHasMore}
+            onLoadMore={loadMoreFav}
+            isLoadingMore={favoritesQuery.isFetching && favPage > 1}
             onToggleFavorite={handleToggleFavorite}
             isSelecting={isSelecting}
             selectedIds={selectedIds}
@@ -372,26 +445,6 @@ export default function PhotoLibraryPage() {
           onToggleFavorite={handleToggleFavorite}
           onRefresh={() => void albumsQuery.refetch()}
         />
-      )}
-
-      {/* Load more */}
-      {(tab === "timeline" || tab === "favorites") &&
-        !isLoading &&
-        (() => {
-          const items = tab === "favorites" ? favoritePhotos : photos;
-          const count = tab === "favorites" ? favoriteTotal : total;
-          return (
-            items.length > 0 &&
-            items.length < count && (
-              <div className="flex justify-center py-4">
-                <Button onClick={() => setPage((p) => p + 1)}>加载更多</Button>
-              </div>
-            )
-          );
-        })()}
-
-      {tab === "timeline" && !isLoading && photos.length === 0 && (
-        <Empty description="暂无照片，请先同步媒体库" />
       )}
 
       {/* Selection bar (floating bottom) */}

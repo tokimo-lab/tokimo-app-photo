@@ -6,11 +6,46 @@ export const THUMB_WIDTH = 320;
 export type DateGroup = {
   date: string;
   label: string;
+  year: number;
   photos: PhotoOutput[];
 };
 
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+function formatDateLabel(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const wd = WEEKDAYS[d.getDay()];
+
+  if (
+    y === today.getFullYear() &&
+    m === today.getMonth() + 1 &&
+    day === today.getDate()
+  ) {
+    return `今天 · ${m}月${day}日 ${wd}`;
+  }
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (
+    y === yesterday.getFullYear() &&
+    m === yesterday.getMonth() + 1 &&
+    day === yesterday.getDate()
+  ) {
+    return `昨天 · ${m}月${day}日 ${wd}`;
+  }
+
+  if (y === today.getFullYear()) {
+    return `${m}月${day}日 ${wd}`;
+  }
+  return `${y}年${m}月${day}日 ${wd}`;
+}
+
 export function groupPhotosByDate(photos: PhotoOutput[]): DateGroup[] {
-  const groups: DateGroup[] = [];
   const map = new Map<string, PhotoOutput[]>();
 
   for (const photo of photos) {
@@ -19,16 +54,24 @@ export function groupPhotosByDate(photos: PhotoOutput[]): DateGroup[] {
     map.get(dateStr)!.push(photo);
   }
 
+  const groups: DateGroup[] = [];
   for (const [date, items] of map) {
-    const d = new Date(date);
-    const label =
-      date === "未知日期"
-        ? date
-        : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    groups.push({ date, label, photos: items });
+    const label = date === "未知日期" ? date : formatDateLabel(date);
+    const year =
+      date === "未知日期" ? 0 : Number.parseInt(date.slice(0, 4), 10);
+    groups.push({ date, label, year, photos: items });
   }
 
   return groups;
+}
+
+/** Extract unique sorted years from date groups (descending). */
+export function extractYears(groups: DateGroup[]): number[] {
+  const years = new Set<number>();
+  for (const g of groups) {
+    if (g.year > 0) years.add(g.year);
+  }
+  return [...years].sort((a, b) => b - a);
 }
 
 export function formatBytes(bytes: number): string {
