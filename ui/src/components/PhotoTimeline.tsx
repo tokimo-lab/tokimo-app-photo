@@ -62,6 +62,9 @@ export function PhotoTimeline({
     return () => ro.disconnect();
   }, []);
 
+  // Layout width = measured width minus left+right padding (same as gap)
+  const layoutWidth = Math.max(0, containerWidth - 2 * PHOTO_GAP);
+
   // ── Flatten groups into virtual items with pre-computed heights ──
   const { flatItems, dateOffsets, itemHeights } = useMemo(() => {
     const items: VirtualItem[] = [];
@@ -70,7 +73,6 @@ export function PhotoTimeline({
     let cumOffset = 0;
 
     for (const group of groups) {
-      // Record date → pixel offset for timeline scrubber
       offsets.set(group.date, cumOffset);
 
       // Header item
@@ -79,10 +81,10 @@ export function PhotoTimeline({
       cumOffset += HEADER_HEIGHT;
 
       // Photo row items
-      if (containerWidth > 0) {
+      if (layoutWidth > 0) {
         const rows = computeJustifiedRows(
           group.photos,
-          containerWidth,
+          layoutWidth,
           targetRowHeight,
           PHOTO_GAP,
         );
@@ -96,7 +98,7 @@ export function PhotoTimeline({
     }
 
     return { flatItems: items, dateOffsets: offsets, itemHeights: heights };
-  }, [groups, containerWidth, targetRowHeight]);
+  }, [groups, layoutWidth, targetRowHeight]);
 
   // ── Scroll element (dashboard-scroll-container) ──────────────
   const scrollElRef = useRef<HTMLElement | null>(null);
@@ -190,18 +192,24 @@ export function PhotoTimeline({
                 }}
               >
                 {item.type === "header" ? (
-                  <DateHeader
-                    group={item.group}
-                    isSelecting={isSelecting}
-                    selectedIds={selectedIds}
-                    onSelect={onSelect}
-                  />
+                  <div
+                    style={{ paddingLeft: PHOTO_GAP, paddingRight: PHOTO_GAP }}
+                  >
+                    <DateHeader
+                      group={item.group}
+                      isSelecting={isSelecting}
+                      selectedIds={selectedIds}
+                      onSelect={onSelect}
+                    />
+                  </div>
                 ) : (
                   <div
                     className="flex"
                     style={{
                       gap: `${PHOTO_GAP}px`,
                       height: item.row.height,
+                      paddingLeft: PHOTO_GAP,
+                      paddingRight: PHOTO_GAP,
                     }}
                   >
                     {item.row.items.map((photo) => (

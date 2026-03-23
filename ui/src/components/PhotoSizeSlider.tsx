@@ -10,7 +10,7 @@ export const PHOTO_SIZE_LEVELS = [
   { label: "极大", height: 420 },
 ] as const;
 
-export const DEFAULT_SIZE_INDEX = 2; // "中"
+export const DEFAULT_SIZE_INDEX = 1; // "小"
 
 const STORAGE_KEY = "tokimo:photo-grid-size";
 
