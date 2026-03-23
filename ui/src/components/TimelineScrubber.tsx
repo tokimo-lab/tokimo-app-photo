@@ -15,10 +15,10 @@ import { api } from "../../generated/rust-api";
  */
 
 // ── Non-linear year weight ──────────────────────────────────────
-// Sigmoid curve: distance 0 → 60, transitions around 8-year mark,
-// plateaus at 8. "远到一定距离后比例尺不再变大".
-function yearWeight(distFromLatest: number): number {
-  return 8 + 52 / (1 + (distFromLatest / 8) ** 3);
+// Dynamic sigmoid: adapts "knee" to the library's actual year span.
+// Near years get high weight (expanded), far years plateau at minimum.
+function yearWeight(dist: number, knee: number): number {
+  return 4 + 12 / (1 + (dist / knee) ** 3);
 }
 
 // ── Types ───────────────────────────────────────────────────────
@@ -35,10 +35,20 @@ interface TimelineEntry {
 }
 
 // ── Compute timeline layout from backend entries ────────────────
-function useTimelineLayout(entries: TimelineEntry[]) {
+interface LayoutResult {
+  marks: Mark[];
+  datePositions: Map<string, number>;
+  posToDateLabel: (pos: number) => string;
+}
+
+function useTimelineLayout(entries: TimelineEntry[]): LayoutResult {
   return useMemo(() => {
-    if (entries.length === 0)
-      return { marks: [] as Mark[], datePositions: new Map<string, number>() };
+    const empty: LayoutResult = {
+      marks: [],
+      datePositions: new Map(),
+      posToDateLabel: () => "",
+    };
+    if (entries.length === 0) return empty;
 
     const years = [...new Set(entries.map((e) => e.year))].sort(
       (a, b) => b - a,
@@ -66,35 +76,71 @@ function useTimelineLayout(entries: TimelineEntry[]) {
           isYear: false,
         });
       }
-      return { marks, datePositions };
+      return {
+        marks,
+        datePositions,
+        posToDateLabel: (pos: number) => {
+          const mo = Math.round(maxM - pos * span);
+          return `${latest}年${Math.max(1, Math.min(12, mo))}月`;
+        },
+      };
     }
 
     // ── Multi-year: non-linear year weights ─────────────────────
+    // Knee adapts to span: ~12% of span → steeper for large libs
+    const span = latest - years[years.length - 1] || 1;
+    const knee = Math.max(1, span * 0.12);
+
     let totalW = 0;
     const yearMeta = new Map<number, { start: number; w: number }>();
     for (const y of years) {
-      const w = yearWeight(latest - y);
+      const w = yearWeight(latest - y, knee);
       yearMeta.set(y, { start: totalW, w });
       totalW += w;
     }
 
-    // Year marks + month ticks
+    // Year marks + dynamic month/day ticks based on position on track
     for (const y of years) {
       const m = yearMeta.get(y)!;
+      const midPos = (m.start + m.w / 2) / totalW;
       marks.push({
         position: m.start / totalW,
         label: String(y),
         isYear: true,
       });
-      if (m.w >= 20) {
-        for (let mo = 2; mo <= 12; mo++) {
+
+      if (midPos < 0.25) {
+        // Day precision zone (top 1/4): month labels + day ticks
+        for (let mo = 12; mo >= 1; mo--) {
+          const moPos = 1 - (mo - 1) / 12;
+          if (mo < 12) {
+            marks.push({
+              position: (m.start + moPos * m.w) / totalW,
+              label: `${mo + 1}月`,
+              isYear: false,
+            });
+          }
+          for (const day of [10, 20]) {
+            const dayPos = 1 - (mo - 1 + (day - 1) / 30) / 12;
+            marks.push({
+              position: (m.start + dayPos * m.w) / totalW,
+              label: "",
+              isYear: false,
+            });
+          }
+        }
+      } else if (midPos < 0.5) {
+        // Month precision zone (top 1/4–1/2): month labels only
+        for (let mo = 11; mo >= 1; mo--) {
+          const moPos = 1 - (mo - 1) / 12;
           marks.push({
-            position: (m.start + ((mo - 1) / 12) * m.w) / totalW,
-            label: `${mo}月`,
+            position: (m.start + moPos * m.w) / totalW,
+            label: `${mo + 1}月`,
             isYear: false,
           });
         }
       }
+      // Bottom half: year label only
     }
 
     // Date positions for each entry
@@ -107,14 +153,36 @@ function useTimelineLayout(entries: TimelineEntry[]) {
       datePositions.set(key, Math.max(0, Math.min(1, pos)));
     }
 
-    return { marks, datePositions };
-  }, [entries]);
-}
+    // Capture yearMeta/totalW for posToDateLabel closure
+    const _yearMeta = yearMeta;
+    const _totalW = totalW;
+    const _years = years;
 
-// ── Format year-month for tooltip ───────────────────────────────
-function formatTooltipYM(ym: string): string {
-  const [y, m] = ym.split("-");
-  return `${y}年${Number.parseInt(m, 10)}月`;
+    return {
+      marks,
+      datePositions,
+      posToDateLabel: (pos: number) => {
+        const absW = pos * _totalW;
+        // Find which year block this position falls in
+        for (let i = 0; i < _years.length; i++) {
+          const y = _years[i];
+          const meta = _yearMeta.get(y)!;
+          const nextStart = meta.start + meta.w;
+          if (absW <= nextStart || i === _years.length - 1) {
+            // Position is within this year's block
+            const withinYear = (absW - meta.start) / meta.w; // 0=top(Dec) 1=bottom(Jan)
+            const dayOfYear = (1 - withinYear) * 365;
+            const month = Math.floor(dayOfYear / 30.44) + 1;
+            const day = Math.floor(dayOfYear - (month - 1) * 30.44) + 1;
+            const mo = Math.max(1, Math.min(12, month));
+            const d = Math.max(1, Math.min(31, day));
+            return `${y}年${mo}月${d}日`;
+          }
+        }
+        return "";
+      },
+    };
+  }, [entries]);
 }
 
 // ── Component ───────────────────────────────────────────────────
@@ -138,7 +206,9 @@ export function TimelineScrubber({
     { libraryId },
     { enabled: !!libraryId },
   );
-  const { marks, datePositions } = useTimelineLayout(timelineEntries ?? []);
+  const { marks, datePositions, posToDateLabel } = useTimelineLayout(
+    timelineEntries ?? [],
+  );
 
   // ── Scroll container ────────────────────────────────────────
   const scRef = useRef<HTMLElement | null>(null);
@@ -212,11 +282,11 @@ export function TimelineScrubber({
             break;
           }
         }
-        setTooltip({ y: clientY, text: formatTooltipYM(nearest) });
+        setTooltip({ y: clientY, text: posToDateLabel(pos) });
       }
       setThumbPos(pos);
     },
-    [dateGroupRefs, nearestDate, dragging],
+    [dateGroupRefs, nearestDate, dragging, posToDateLabel],
   );
 
   // ── Mouse down on track ─────────────────────────────────────
@@ -250,13 +320,13 @@ export function TimelineScrubber({
     (e: React.MouseEvent) => {
       if (dragging || !trackRef.current) return;
       const r = trackRef.current.getBoundingClientRect();
-      const pos = (e.clientY - r.top) / r.height;
-      const ym = nearestDate(pos);
-      if (ym) {
-        setTooltip({ y: e.clientY, text: formatTooltipYM(ym) });
+      const pos = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      const label = posToDateLabel(pos);
+      if (label) {
+        setTooltip({ y: e.clientY, text: label });
       }
     },
-    [dragging, nearestDate],
+    [dragging, posToDateLabel],
   );
 
   const onLeave = useCallback(() => {
@@ -284,9 +354,9 @@ export function TimelineScrubber({
       {/* Vertical track line */}
       <div className="absolute left-5 top-0 bottom-0 w-px bg-neutral-400/20 dark:bg-neutral-500/20" />
 
-      {/* Thumb indicator — rounded bar behind text */}
+      {/* Thumb indicator — thin rounded bar aligned with tick marks */}
       <div
-        className="absolute right-0 h-5 w-11 rounded-l-md bg-orange-500/15 dark:bg-orange-400/20"
+        className="absolute left-4 right-0.5 h-[3px] rounded-full bg-orange-500/50 dark:bg-orange-400/60"
         style={{
           top: `${thumbPos * 100}%`,
           transform: "translateY(-50%)",
@@ -294,7 +364,7 @@ export function TimelineScrubber({
         }}
       />
 
-      {/* Year / month marks (rendered after thumb so text is on top) */}
+      {/* Year / month / day marks (rendered after thumb so text is on top) */}
       {marks.map((m) =>
         m.isYear ? (
           <span
@@ -307,10 +377,23 @@ export function TimelineScrubber({
           >
             {m.label}
           </span>
-        ) : (
-          <div
+        ) : m.label ? (
+          // Month label with tick
+          <span
             key={`m-${m.label}-${m.position.toFixed(4)}`}
-            className="absolute left-4 h-px w-2 bg-neutral-400/25 dark:bg-neutral-500/25"
+            className="absolute right-1 text-[9px] text-neutral-400/60 dark:text-neutral-500/60"
+            style={{
+              top: `${m.position * 100}%`,
+              transform: "translateY(-50%)",
+            }}
+          >
+            {m.label}
+          </span>
+        ) : (
+          // Day tick (no label, short mark)
+          <div
+            key={`d-${m.position.toFixed(6)}`}
+            className="absolute left-[18px] h-px w-1 bg-neutral-400/20 dark:bg-neutral-500/20"
             style={{ top: `${m.position * 100}%` }}
           />
         ),
