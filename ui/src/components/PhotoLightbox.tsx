@@ -66,7 +66,7 @@ export function PhotoLightbox({
         onSuccess: () => {
           setEditing(false);
           queryClient.invalidateQueries({
-            queryKey: ["api.app.getPhoto"],
+            queryKey: ["/api/photos/{id}"],
           });
         },
       },
@@ -245,10 +245,10 @@ export function PhotoLightbox({
               onHoverFace={setHoveredFaceId}
               onRefreshComplete={() => {
                 queryClient.invalidateQueries({
-                  queryKey: ["api.app.getPhoto"],
+                  queryKey: ["/api/photos/{id}"],
                 });
                 queryClient.invalidateQueries({
-                  queryKey: ["api.photoSettings.getPhotoFaces"],
+                  queryKey: ["/api/photos/{id}/faces"],
                 });
               }}
               editForm={
