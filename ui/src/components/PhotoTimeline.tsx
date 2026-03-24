@@ -305,7 +305,7 @@ function DateHeader({
   return (
     <div
       className={`group/date relative mb-0.5 flex items-center py-1 ${
-        isSelecting ? "pl-7" : "pl-0 group-hover/date:pl-7"
+        isSelecting ? "pl-7" : "pl-0 hover:pl-7"
       }`}
       style={{
         transition: "padding-left 280ms cubic-bezier(0.22, 1, 0.36, 1)",
