@@ -247,6 +247,22 @@ export function PhotoInfoPanel({
             {detail.locationName && (
               <InfoRow label="地点" value={detail.locationName} />
             )}
+            {detail.geoAddress && detail.geoAddress !== detail.locationName && (
+              <InfoRow label="详细地址" value={detail.geoAddress} />
+            )}
+            {detail.geoProvince && (
+              <InfoRow
+                label="行政区划"
+                value={[
+                  detail.geoProvince,
+                  detail.geoCity,
+                  detail.geoDistrict,
+                  detail.geoTownship,
+                ]
+                  .filter(Boolean)
+                  .join(" / ")}
+              />
+            )}
             <a
               href={`https://uri.amap.com/marker?position=${detail.gpsLongitude},${detail.gpsLatitude}`}
               target="_blank"

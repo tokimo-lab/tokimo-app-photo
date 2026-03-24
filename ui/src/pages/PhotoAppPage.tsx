@@ -11,6 +11,7 @@ import {
   CheckSquare,
   FolderOpen,
   Grid3x3,
+  MapPin,
   Star,
   Trash2,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
 import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
+import { PhotoLocationsView } from "../../components/photo/PhotoLocationsView";
 import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
 import {
   loadSavedSizeIndex,
@@ -32,12 +34,19 @@ import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { useMessage, useTopBar } from "../../hooks";
 
-type TabKey = "timeline" | "folders" | "favorites" | "albums" | "trash";
+type TabKey =
+  | "timeline"
+  | "folders"
+  | "favorites"
+  | "locations"
+  | "albums"
+  | "trash";
 
 const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "timeline", label: "时间线", icon: Calendar },
   { key: "folders", label: "文件夹", icon: FolderOpen },
   { key: "favorites", label: "收藏", icon: Star },
+  { key: "locations", label: "地点", icon: MapPin },
   { key: "albums", label: "相册", icon: Grid3x3 },
   { key: "trash", label: "回收站", icon: Trash2 },
 ];
@@ -595,6 +604,15 @@ export default function PhotoAppPage() {
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
         )
+      ) : tab === "locations" ? (
+        <PhotoLocationsView
+          appId={id}
+          onToggleFavorite={handleToggleFavorite}
+          isSelecting={isSelecting}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
+          targetRowHeight={targetRowHeight}
+        />
       ) : tab === "trash" ? (
         allTrashPhotos.length > 0 ? (
           <div>
