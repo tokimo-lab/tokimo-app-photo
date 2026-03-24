@@ -1,9 +1,9 @@
 import { Button, Empty, Spin } from "@tokiomo/components";
 import { ChevronRight, MapPin, Navigation } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
+import { useWindowNav } from "../window-manager/WindowNavContext";
 import { PhotoTimeline } from "./PhotoTimeline";
 import { PAGE_SIZE } from "./photo-utils";
 
@@ -44,6 +44,7 @@ export function PhotoLocationsView({
   const [drill, setDrill] = useState<DrillState>({ level: "province" });
   const [photosPage, setPhotosPage] = useState(1);
   const photosAccumRef = useRef<PhotoOutput[]>([]);
+  const { openWindow } = useWindowNav();
 
   const statsQuery = api.app.getLocationStats.useQuery(
     { appId: appId! },
@@ -235,12 +236,19 @@ export function PhotoLocationsView({
         description={
           <span>
             暂无地理位置数据。请先
-            <Link
-              to="../settings/external-database?tab=photoGeo"
+            <button
+              type="button"
               className="text-[var(--accent-text)] hover:underline"
+              onClick={() =>
+                openWindow({
+                  type: "page",
+                  title: "Settings",
+                  metadata: { pageId: "external-database" },
+                })
+              }
             >
               配置高德 API 密钥
-            </Link>
+            </button>
             并触发逆地理编码。
           </span>
         }

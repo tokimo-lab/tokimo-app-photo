@@ -1,17 +1,13 @@
-import {
-  Button,
-  Empty,
-  ReloadOutlined,
-  Spin,
-  SyncOutlined,
-  Tag,
-} from "@tokiomo/components";
+import { Button, Empty, Spin, Tag } from "@tokiomo/components";
 import {
   Calendar,
-  CheckSquare,
   FolderOpen,
+  FolderSync,
   Grid3x3,
+  LayoutGrid,
   MapPin,
+  MousePointerClick,
+  RefreshCw,
   ScanText,
   Search,
   Sparkles,
@@ -21,8 +17,6 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
-import { TopBarSearch } from "../../components/dashboard/TopBarSearch";
 import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
@@ -32,13 +26,15 @@ import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
 import {
   loadSavedSizeIndex,
   PHOTO_SIZE_LEVELS,
-  PhotoSizeSlider,
+  saveSizeIndex,
 } from "../../components/photo/PhotoSizeSlider";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
+import { useWindowNav } from "../../components/window-manager/WindowNavContext";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { useMessage, useTopBar } from "../../hooks";
+import { useMenuBar, useMessage } from "../../hooks";
+import type { MenuBarConfig } from "../../hooks/MenuBarContext";
 
 type TabKey =
   | "timeline"
@@ -60,27 +56,26 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
 ];
 
 export default function PhotoAppPage() {
-  const { id } = useParams<{ id: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { params } = useWindowNav();
+  const id = params.appId as string | undefined;
   const message = useMessage();
 
-  const tab = (searchParams.get("tab") as TabKey) || "timeline";
-  const setTab = useCallback(
-    (t: TabKey) => {
-      setSearchParams({ tab: t }, { replace: true });
-      setSelectedIds(new Set());
-      setIsSelecting(false);
-      setSearchQuery("");
-      // Reset pagination on tab switch
-      setTimelinePage(1);
-      setFavPage(1);
-      setTrashPage(1);
-      accTimelineRef.current = [];
-      accFavRef.current = [];
-      accTrashRef.current = [];
-    },
-    [setSearchParams],
+  const [tab, setTabRaw] = useState<TabKey>(
+    (params.tab as TabKey) || "timeline",
   );
+  const setTab = useCallback((t: TabKey) => {
+    setTabRaw(t);
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+    setSearchQuery("");
+    // Reset pagination on tab switch
+    setTimelinePage(1);
+    setFavPage(1);
+    setTrashPage(1);
+    accTimelineRef.current = [];
+    accFavRef.current = [];
+    accTrashRef.current = [];
+  }, []);
 
   // ── Grid size state ──────────────────────────────────────────────────
   const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
@@ -504,7 +499,7 @@ export default function PhotoAppPage() {
     setTrashPage((p) => p + 1);
   }, []);
 
-  // ── TopBar ──────────────────────────────────────────────────────────────
+  // ── MenuBar ──────────────────────────────────────────────────────────────
   const handleRefresh = useCallback(() => {
     setTimelinePage(1);
     setFavPage(1);
@@ -525,54 +520,74 @@ export default function PhotoAppPage() {
   const isRefetching = photosQuery.isRefetching;
   const isSyncing = syncMutation.isPending;
 
-  useTopBar({
-    left: useMemo(() => {
-      if (!id) return undefined;
-      return (
-        <TopBarSearch
-          appId={id}
-          isTv={false}
-          onSelect={() => {}}
-          recentItems={[]}
-          placeholder="搜索照片…"
-        />
-      );
-    }, [id]),
-    right: useMemo(() => {
-      if (!id) return undefined;
-      return (
-        <>
-          <PhotoSizeSlider value={sizeIndex} onChange={setSizeIndex} />
-          <Button
-            icon={<CheckSquare className="h-4 w-4" />}
-            onClick={toggleSelectMode}
-            className={isSelecting ? "!border-orange-500 !text-orange-500" : ""}
-          >
-            选择
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={isRefetching}
-          >
-            刷新
-          </Button>
-          <Button icon={<SyncOutlined />} onClick={doSync} loading={isSyncing}>
-            同步
-          </Button>
-        </>
-      );
-    }, [
-      id,
-      handleRefresh,
-      isRefetching,
-      doSync,
-      isSyncing,
-      toggleSelectMode,
-      isSelecting,
-      sizeIndex,
-    ]),
-  });
+  const menuBarConfig: MenuBarConfig | null = useMemo(() => {
+    if (!id) return null;
+
+    const sizeItems = PHOTO_SIZE_LEVELS.map((level, i) => ({
+      key: `size-${i}`,
+      label: `${level.label}${i === sizeIndex ? " ✓" : ""}`,
+      icon: <LayoutGrid size={14} />,
+      onClick: () => {
+        setSizeIndex(i);
+        saveSizeIndex(i);
+      },
+    }));
+
+    return {
+      menus: [
+        {
+          key: "view",
+          label: "显示",
+          items: sizeItems,
+        },
+        {
+          key: "actions",
+          label: "操作",
+          items: [
+            {
+              key: "select",
+              label: isSelecting ? "取消选择" : "选择",
+              icon: <MousePointerClick size={14} />,
+              onClick: toggleSelectMode,
+            },
+            { type: "divider" as const },
+            {
+              key: "refresh",
+              label: "刷新",
+              icon: <RefreshCw size={14} />,
+              disabled: isRefetching,
+              onClick: handleRefresh,
+            },
+            {
+              key: "sync",
+              label: "同步",
+              icon: <FolderSync size={14} />,
+              disabled: isSyncing,
+              onClick: doSync,
+            },
+          ],
+        },
+      ],
+      search: {
+        appId: id,
+        searchType: "photo" as const,
+        placeholder: "搜索照片…",
+        onSelect: () => {},
+        recentItems: [],
+      },
+    };
+  }, [
+    id,
+    handleRefresh,
+    isRefetching,
+    doSync,
+    isSyncing,
+    toggleSelectMode,
+    isSelecting,
+    sizeIndex,
+  ]);
+
+  useMenuBar(menuBarConfig);
 
   if (!id) return null;
 
