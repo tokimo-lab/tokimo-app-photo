@@ -31,6 +31,7 @@ export function PhotoTimeline({
   onSelect,
   onSeekToDate,
   targetRowHeight = 220,
+  onNavigateToPerson,
 }: {
   photos: PhotoOutput[];
   appId: string;
@@ -44,6 +45,7 @@ export function PhotoTimeline({
   onSelect?: (photo: PhotoOutput) => void;
   onSeekToDate?: (datePrefix: string) => void;
   targetRowHeight?: number;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -281,6 +283,7 @@ export function PhotoTimeline({
           onClose={() => setSelectedPhoto(null)}
           onNavigate={setSelectedPhoto}
           onToggleFavorite={onToggleFavorite}
+          onNavigateToPerson={onNavigateToPerson}
         />
       )}
     </>

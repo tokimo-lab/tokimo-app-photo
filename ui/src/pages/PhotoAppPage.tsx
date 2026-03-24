@@ -75,6 +75,23 @@ export default function PhotoAppPage() {
   const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
   const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
 
+  // ── Navigate to person (from lightbox face click) ──────────────────
+  const [navigateToPersonId, setNavigateToPersonId] = useState<string | null>(
+    null,
+  );
+
+  const handleNavigateToPerson = useCallback(
+    (personId: string) => {
+      setNavigateToPersonId(personId);
+      setTab("people");
+    },
+    [setTab],
+  );
+
+  const handleNavigateToPersonHandled = useCallback(() => {
+    setNavigateToPersonId(null);
+  }, []);
+
   // Hide scrollbar on the scroll parent (photo uses timeline scrubber instead)
   useEffect(() => {
     let el = rootRef.current?.parentElement ?? null;
@@ -736,6 +753,7 @@ export default function PhotoAppPage() {
             onSelect={handleSelect}
             onSeekToDate={seekToDate}
             targetRowHeight={targetRowHeight}
+            onNavigateToPerson={handleNavigateToPerson}
           />
         ) : ocrFilterActive ? (
           <Empty description="当前加载的照片中没有 OCR 匹配结果" />
@@ -749,6 +767,7 @@ export default function PhotoAppPage() {
           isSelecting={isSelecting}
           selectedIds={selectedIds}
           onSelect={handleSelect}
+          onNavigateToPerson={handleNavigateToPerson}
         />
       ) : tab === "favorites" ? (
         allFavPhotos.length > 0 ? (
@@ -764,6 +783,7 @@ export default function PhotoAppPage() {
             selectedIds={selectedIds}
             onSelect={handleSelect}
             targetRowHeight={targetRowHeight}
+            onNavigateToPerson={handleNavigateToPerson}
           />
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
@@ -776,6 +796,7 @@ export default function PhotoAppPage() {
           selectedIds={selectedIds}
           onSelect={handleSelect}
           targetRowHeight={targetRowHeight}
+          onNavigateToPerson={handleNavigateToPerson}
         />
       ) : tab === "people" ? (
         <PhotoPeopleView
@@ -785,6 +806,9 @@ export default function PhotoAppPage() {
           selectedIds={selectedIds}
           onSelect={handleSelect}
           targetRowHeight={targetRowHeight}
+          navigateToPersonId={navigateToPersonId}
+          onNavigateToPersonHandled={handleNavigateToPersonHandled}
+          onNavigateToPerson={handleNavigateToPerson}
         />
       ) : tab === "trash" ? (
         allTrashPhotos.length > 0 ? (
@@ -823,6 +847,7 @@ export default function PhotoAppPage() {
               selectedIds={selectedIds}
               onSelect={handleSelect}
               targetRowHeight={targetRowHeight}
+              onNavigateToPerson={handleNavigateToPerson}
             />
           </div>
         ) : (
@@ -835,6 +860,7 @@ export default function PhotoAppPage() {
           isLoading={albumsQuery.isLoading}
           onToggleFavorite={handleToggleFavorite}
           onRefresh={() => void albumsQuery.refetch()}
+          onNavigateToPerson={handleNavigateToPerson}
         />
       )}
 

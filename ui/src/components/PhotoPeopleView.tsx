@@ -1,6 +1,6 @@
 import { Button, Empty, Spin } from "@tokiomo/components";
 import { ChevronRight, Pencil, User, Users } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import type { PersonOutput } from "../../generated/rust-types/index";
@@ -14,6 +14,9 @@ interface PhotoPeopleViewProps {
   selectedIds: Set<string>;
   onSelect: (photo: PhotoOutput) => void;
   targetRowHeight: number;
+  navigateToPersonId?: string | null;
+  onNavigateToPersonHandled?: () => void;
+  onNavigateToPerson?: (personId: string) => void;
 }
 
 type ViewLevel = "grid" | "detail";
@@ -30,6 +33,9 @@ export function PhotoPeopleView({
   selectedIds,
   onSelect,
   targetRowHeight,
+  navigateToPersonId,
+  onNavigateToPersonHandled,
+  onNavigateToPerson,
 }: PhotoPeopleViewProps) {
   const [view, setView] = useState<ViewState>({ level: "grid" });
   const [photosPage, setPhotosPage] = useState(1);
@@ -96,6 +102,21 @@ export function PhotoPeopleView({
     setPhotosPage(1);
     setView({ level: "detail", person });
   }, []);
+
+  // Auto-navigate to a specific person when navigateToPersonId is set
+  useEffect(() => {
+    if (!navigateToPersonId || !personsQuery.data) return;
+    const person = personsQuery.data.find((p) => p.id === navigateToPersonId);
+    if (person) {
+      handleSelectPerson(person);
+    }
+    onNavigateToPersonHandled?.();
+  }, [
+    navigateToPersonId,
+    personsQuery.data,
+    handleSelectPerson,
+    onNavigateToPersonHandled,
+  ]);
 
   const handleBack = useCallback(() => {
     setView({ level: "grid" });
@@ -291,6 +312,7 @@ export function PhotoPeopleView({
               selectedIds={selectedIds}
               onSelect={onSelect}
               targetRowHeight={targetRowHeight}
+              onNavigateToPerson={onNavigateToPerson}
             />
           ) : photosQuery.isLoading ? (
             <div className="flex h-32 items-center justify-center">

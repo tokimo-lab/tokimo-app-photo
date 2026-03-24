@@ -12,12 +12,14 @@ export function PhotoFoldersView({
   isSelecting,
   selectedIds,
   onSelect,
+  onNavigateToPerson,
 }: {
   appId: string;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   isSelecting?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (photo: PhotoOutput) => void;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const [currentPath, setCurrentPath] = useState("/");
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -135,6 +137,7 @@ export function PhotoFoldersView({
           onClose={() => setSelectedPhoto(null)}
           onNavigate={setSelectedPhoto}
           onToggleFavorite={onToggleFavorite}
+          onNavigateToPerson={onNavigateToPerson}
         />
       )}
     </>

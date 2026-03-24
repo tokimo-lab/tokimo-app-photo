@@ -14,6 +14,7 @@ interface PhotoLocationTabProps {
   selectedIds: Set<string>;
   onSelect: (photo: PhotoOutput) => void;
   targetRowHeight: number;
+  onNavigateToPerson?: (personId: string) => void;
 }
 
 type ViewLevel = "map" | "timeline";
@@ -30,6 +31,7 @@ export function PhotoLocationTab({
   selectedIds,
   onSelect,
   targetRowHeight,
+  onNavigateToPerson,
 }: PhotoLocationTabProps) {
   const [view, setView] = useState<ViewState>({ level: "map" });
   const [photosPage, setPhotosPage] = useState(1);
@@ -127,6 +129,7 @@ export function PhotoLocationTab({
           selectedIds={selectedIds}
           onSelect={onSelect}
           targetRowHeight={targetRowHeight}
+          onNavigateToPerson={onNavigateToPerson}
         />
       ) : photosQuery.isLoading ? (
         <div className="flex h-64 items-center justify-center">

@@ -85,11 +85,13 @@ function AlbumDetailView({
   onBack,
   onToggleFavorite,
   onDeleteAlbum,
+  onNavigateToPerson,
 }: {
   album: PhotoAlbumOutput;
   onBack: () => void;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   onDeleteAlbum: (albumId: string) => void;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const [page, setPage] = useState(1);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
@@ -165,6 +167,7 @@ function AlbumDetailView({
           onClose={() => setSelectedPhoto(null)}
           onNavigate={setSelectedPhoto}
           onToggleFavorite={onToggleFavorite}
+          onNavigateToPerson={onNavigateToPerson}
         />
       )}
     </div>
@@ -179,12 +182,14 @@ export function PhotoAlbumsView({
   isLoading,
   onToggleFavorite,
   onRefresh,
+  onNavigateToPerson,
 }: {
   appId: string;
   albums: PhotoAlbumOutput[];
   isLoading: boolean;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   onRefresh: () => void;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<PhotoAlbumOutput | null>(null);
@@ -228,6 +233,7 @@ export function PhotoAlbumsView({
         onBack={() => setActiveAlbum(null)}
         onToggleFavorite={onToggleFavorite}
         onDeleteAlbum={handleDelete}
+        onNavigateToPerson={onNavigateToPerson}
       />
     );
   }

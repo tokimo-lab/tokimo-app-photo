@@ -12,12 +12,14 @@ export function PhotoLightbox({
   onClose,
   onNavigate,
   onToggleFavorite,
+  onNavigateToPerson,
 }: {
   photo: PhotoOutput;
   allPhotos: PhotoOutput[];
   onClose: () => void;
   onNavigate: (p: PhotoOutput) => void;
   onToggleFavorite?: (photo: PhotoOutput) => void;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const idx = allPhotos.findIndex((p) => p.id === photo.id);
   const hasPrev = idx > 0;
@@ -259,6 +261,7 @@ export function PhotoLightbox({
               fallbackTitle={photo.title || photo.filename}
               hoveredFaceId={hoveredFaceId}
               onHoverFace={setHoveredFaceId}
+              onNavigateToPerson={onNavigateToPerson}
               onRefreshComplete={() => {
                 queryClient.invalidateQueries({
                   queryKey: ["/api/photos/{id}"],

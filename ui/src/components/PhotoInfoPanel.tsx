@@ -107,6 +107,7 @@ export function PhotoInfoPanel({
   hoveredFaceId,
   onHoverFace,
   onRefreshComplete,
+  onNavigateToPerson,
 }: {
   detail: PhotoDetailOutput;
   fallbackTitle: string;
@@ -114,6 +115,7 @@ export function PhotoInfoPanel({
   hoveredFaceId: number | null;
   onHoverFace: (faceId: number | null) => void;
   onRefreshComplete?: () => void;
+  onNavigateToPerson?: (personId: string) => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
 
@@ -201,10 +203,12 @@ export function PhotoInfoPanel({
         {/* ── People section ──────────────────────────────────────── */}
         <PhotoFacesPanel
           photoId={detail.id}
+          appId={detail.appId}
           photoWidth={detail.width}
           photoHeight={detail.height}
           hoveredFaceId={hoveredFaceId}
           onHoverFace={onHoverFace}
+          onNavigateToPerson={onNavigateToPerson}
         />
 
         {/* ── Camera section ──────────────────────────────────────── */}
