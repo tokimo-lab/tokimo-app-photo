@@ -303,16 +303,27 @@ function DateHeader({
     isSelecting && group.photos.every((p) => selectedIds?.has(p.id));
 
   return (
-    <div className="group/date relative mb-0.5 flex items-center py-1 pl-7">
+    <div
+      className={`group/date relative mb-0.5 flex items-center py-1 ${
+        isSelecting ? "pl-7" : "pl-0 group-hover/date:pl-7"
+      }`}
+      style={{
+        transition: "padding-left 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+      }}
+    >
       <button
         type="button"
-        className={`absolute left-0 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
+        className={`absolute left-0 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 ${
           allSelected
             ? "border-orange-500 bg-orange-500 opacity-100"
             : isSelecting
               ? "border-neutral-400 bg-neutral-200/50 opacity-80 hover:opacity-100 dark:border-neutral-500 dark:bg-neutral-700/50"
               : "border-neutral-400 bg-neutral-200/50 opacity-0 group-hover/date:opacity-80 dark:border-neutral-500 dark:bg-neutral-700/50"
         }`}
+        style={{
+          transition:
+            "opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
         onClick={() => {
           if (!onSelect) return;
           for (const p of group.photos) {
