@@ -107,101 +107,103 @@ export function PhotoLightbox({
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90">
-      {/* Top toolbar */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-        {/* Favorite toggle */}
-        {onToggleFavorite && (
+    <div className="fixed inset-0 z-[100] flex bg-black/90">
+      {/* ── Photo area (flex-1, takes remaining space) ── */}
+      <div className="relative flex flex-1 flex-col">
+        {/* Top toolbar */}
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+          {onToggleFavorite && (
+            <button
+              type="button"
+              className="cursor-pointer rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
+              onClick={() => onToggleFavorite(photo)}
+              title="收藏 (F)"
+            >
+              <Heart
+                className={`h-5 w-5 ${
+                  isFav ? "fill-red-500 text-red-500" : "text-white"
+                }`}
+              />
+            </button>
+          )}
+          <button
+            type="button"
+            className="cursor-pointer rounded-full bg-black/50 px-3 py-2 text-xs text-white transition-colors hover:bg-black/70"
+            onClick={() => setShowInfo((v) => !v)}
+          >
+            ℹ️ 详情
+          </button>
           <button
             type="button"
             className="cursor-pointer rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
-            onClick={() => onToggleFavorite(photo)}
-            title="收藏 (F)"
+            onClick={onClose}
           >
-            <Heart
-              className={`h-5 w-5 ${
-                isFav ? "fill-red-500 text-red-500" : "text-white"
-              }`}
-            />
+            ✕
+          </button>
+        </div>
+
+        {/* Previous */}
+        {hasPrev && (
+          <button
+            type="button"
+            className="absolute left-4 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-black/50 p-3 text-2xl text-white transition-colors hover:bg-black/70"
+            onClick={() => onNavigate(allPhotos[idx - 1])}
+          >
+            ‹
           </button>
         )}
 
-        {/* Info toggle */}
-        <button
-          type="button"
-          className="cursor-pointer rounded-full bg-black/50 px-3 py-2 text-xs text-white transition-colors hover:bg-black/70"
-          onClick={() => setShowInfo((v) => !v)}
-        >
-          ℹ️ 详情
-        </button>
-
-        {/* Close */}
-        <button
-          type="button"
-          className="cursor-pointer rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Previous */}
-      {hasPrev && (
-        <button
-          type="button"
-          className="absolute left-4 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-black/50 p-3 text-2xl text-white transition-colors hover:bg-black/70"
-          onClick={() => onNavigate(allPhotos[idx - 1])}
-        >
-          ‹
-        </button>
-      )}
-
-      {/* Next */}
-      {hasNext && (
-        <button
-          type="button"
-          className="absolute right-4 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-black/50 p-3 text-2xl text-white transition-colors hover:bg-black/70"
-          onClick={() => onNavigate(allPhotos[idx + 1])}
-        >
-          ›
-        </button>
-      )}
-
-      {/* Image */}
-      <div className="flex h-full w-full items-center justify-center p-12">
-        {src ? (
-          <div className="relative inline-block max-h-full max-w-full">
-            <img
-              ref={imgRef}
-              src={src}
-              alt={photo.title || photo.filename}
-              className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
-              draggable={false}
-            />
-            {/* Face highlight overlays */}
-            {hoveredFaceId != null &&
-              faces &&
-              detail?.width &&
-              detail?.height && (
-                <FaceHighlightOverlay
-                  faces={faces}
-                  hoveredFaceId={hoveredFaceId}
-                  photoWidth={detail.width}
-                  photoHeight={detail.height}
-                  imgRef={imgRef}
-                />
-              )}
-          </div>
-        ) : (
-          <div className="text-neutral-400">无法加载图片</div>
+        {/* Next */}
+        {hasNext && (
+          <button
+            type="button"
+            className="absolute right-4 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-black/50 p-3 text-2xl text-white transition-colors hover:bg-black/70"
+            onClick={() => onNavigate(allPhotos[idx + 1])}
+          >
+            ›
+          </button>
         )}
+
+        {/* Image */}
+        <div className="flex flex-1 items-center justify-center p-12">
+          {src ? (
+            <div className="relative inline-block max-h-full max-w-full">
+              <img
+                ref={imgRef}
+                src={src}
+                alt={photo.title || photo.filename}
+                className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                draggable={false}
+              />
+              {hoveredFaceId != null &&
+                faces &&
+                detail?.width &&
+                detail?.height && (
+                  <FaceHighlightOverlay
+                    faces={faces}
+                    hoveredFaceId={hoveredFaceId}
+                    photoWidth={detail.width}
+                    photoHeight={detail.height}
+                    imgRef={imgRef}
+                  />
+                )}
+            </div>
+          ) : (
+            <div className="text-neutral-400">无法加载图片</div>
+          )}
+        </div>
+
+        {/* Bottom bar */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
+          {idx + 1} / {allPhotos.length} — {photo.filename}
+        </div>
       </div>
 
-      {/* Info panel */}
+      {/* ── Info panel (fixed-width side panel) ── */}
       {showInfo && detail && (
-        <div className="absolute bottom-0 right-0 top-0 w-80 overflow-y-auto border-l border-white/10 bg-black/80 p-6 text-sm text-white backdrop-blur">
-          {/* Edit header */}
-          <div className="mb-3 flex items-center justify-between">
+        <div className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-neutral-900/95 text-sm text-white backdrop-blur">
+          {/* Sticky header */}
+          <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
             <span className="text-sm font-semibold text-neutral-300">
               照片信息
             </span>
@@ -233,60 +235,58 @@ export function PhotoLightbox({
             )}
           </div>
 
-          <PhotoInfoPanel
-            detail={detail}
-            fallbackTitle={photo.title || photo.filename}
-            hoveredFaceId={hoveredFaceId}
-            onHoverFace={setHoveredFaceId}
-            editForm={
-              editing ? (
-                <div className="mb-4 space-y-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-neutral-500">
-                      标题
-                    </span>
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                      placeholder="照片标题"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-neutral-500">
-                      描述
-                    </span>
-                    <textarea
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                      rows={2}
-                      placeholder="照片描述"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-neutral-500">
-                      拍摄时间
-                    </span>
-                    <input
-                      type="datetime-local"
-                      value={editDate}
-                      onChange={(e) => setEditDate(e.target.value)}
-                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                    />
-                  </label>
-                </div>
-              ) : null
-            }
-          />
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <PhotoInfoPanel
+              detail={detail}
+              fallbackTitle={photo.title || photo.filename}
+              hoveredFaceId={hoveredFaceId}
+              onHoverFace={setHoveredFaceId}
+              editForm={
+                editing ? (
+                  <div className="mb-4 space-y-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">
+                        标题
+                      </span>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                        placeholder="照片标题"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">
+                        描述
+                      </span>
+                      <textarea
+                        value={editDesc}
+                        onChange={(e) => setEditDesc(e.target.value)}
+                        className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                        rows={2}
+                        placeholder="照片描述"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-neutral-500">
+                        拍摄时间
+                      </span>
+                      <input
+                        type="datetime-local"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                      />
+                    </label>
+                  </div>
+                ) : null
+              }
+            />
+          </div>
         </div>
       )}
-
-      {/* Bottom bar */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
-        {idx + 1} / {allPhotos.length} — {photo.filename}
-      </div>
     </div>
   );
 }
