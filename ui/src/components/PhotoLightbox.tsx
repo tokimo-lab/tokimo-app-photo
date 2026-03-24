@@ -22,7 +22,22 @@ export function PhotoLightbox({
   const idx = allPhotos.findIndex((p) => p.id === photo.id);
   const hasPrev = idx > 0;
   const hasNext = idx < allPhotos.length - 1;
-  const [showInfo, setShowInfo] = useState(false);
+  const [showInfo, setShowInfo] = useState(() => {
+    try {
+      return localStorage.getItem("photo-lightbox-info") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleInfo = useCallback(() => {
+    setShowInfo((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("photo-lightbox-info", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -78,7 +93,7 @@ export function PhotoLightbox({
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft" && hasPrev) onNavigate(allPhotos[idx - 1]);
       if (e.key === "ArrowRight" && hasNext) onNavigate(allPhotos[idx + 1]);
-      if (e.key === "i") setShowInfo((v) => !v);
+      if (e.key === "i") toggleInfo();
       if (e.key === "f" && onToggleFavorite) onToggleFavorite(photo);
     };
     document.addEventListener("keydown", handler);
@@ -92,6 +107,7 @@ export function PhotoLightbox({
     onNavigate,
     photo,
     onToggleFavorite,
+    toggleInfo,
   ]);
 
   const isHeic =
@@ -130,7 +146,7 @@ export function PhotoLightbox({
           <button
             type="button"
             className="cursor-pointer rounded-full bg-black/50 px-3 py-2 text-xs text-white transition-colors hover:bg-black/70"
-            onClick={() => setShowInfo((v) => !v)}
+            onClick={toggleInfo}
           >
             ℹ️ 详情
           </button>

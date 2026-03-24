@@ -591,42 +591,38 @@ export default function PhotoAppPage() {
   if (!id) return null;
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
-            {libraryQuery.data?.name ?? "相册"}
-          </h2>
+    <div className="space-y-3">
+      {/* Tab bar — iOS 26 style pill, centered */}
+      <div className="relative flex items-center justify-center">
+        <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
+          {tabs.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
+                    : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
+                }`}
+                onClick={() => setTab(t.key)}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        {/* Photo count — positioned absolutely so it doesn't affect centering */}
+        <div className="absolute right-0">
           {tab === "timeline" && timelineTotal > 0 && (
             <Tag>{timelineTotal} 张</Tag>
           )}
           {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
           {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
         </div>
-      </div>
-
-      {/* Tab bar — iOS 26 style pill segmented control */}
-      <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
-                active
-                  ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
-                  : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
-              }`}
-              onClick={() => setTab(t.key)}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {t.label}
-            </button>
-          );
-        })}
       </div>
 
       {/* OCR search results banner */}

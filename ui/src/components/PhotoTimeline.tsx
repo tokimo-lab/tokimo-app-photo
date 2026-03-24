@@ -303,10 +303,10 @@ function DateHeader({
     isSelecting && group.photos.every((p) => selectedIds?.has(p.id));
 
   return (
-    <div className="group/date mb-0.5 flex items-center gap-2 py-1">
+    <div className="group/date relative mb-0.5 flex items-center py-1 pl-7">
       <button
         type="button"
-        className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
+        className={`absolute left-0 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
           allSelected
             ? "border-orange-500 bg-orange-500 opacity-100"
             : isSelecting
@@ -328,7 +328,9 @@ function DateHeader({
       <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
         {group.label}
       </h3>
-      <span className="text-xs text-neutral-400">{group.photos.length} 张</span>
+      <span className="ml-2 text-xs text-neutral-400">
+        {group.photos.length} 张
+      </span>
     </div>
   );
 }
