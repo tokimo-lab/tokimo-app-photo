@@ -1,3 +1,4 @@
+// Photo Map View — AMap JS API v1.4 + Supercluster clustering
 import AMapLoader from "@amap/amap-jsapi-loader";
 import { Empty, Spin } from "@tokiomo/components";
 import { Layers } from "lucide-react";
@@ -67,10 +68,13 @@ function loadMapCenter(): { center: [number, number]; zoom: number } | null {
 // Minimal type aliases for AMap objects
 type AMapInstance = {
   getZoom(): number;
-  getCenter(): { lng: number; lat: number };
+  getCenter(): { lng: number; lat: number; getLng(): number; getLat(): number };
   getBounds(): {
-    northEast: { lat: number; lng: number };
-    southWest: { lat: number; lng: number };
+    getNorthEast(): { lng: number; lat: number };
+    getSouthWest(): { lng: number; lat: number };
+    // v2.0 also exposes as properties
+    northEast?: { lat: number; lng: number };
+    southWest?: { lat: number; lng: number };
   };
   setMapStyle(style: string): void;
   getLayers(): Array<{ CLASS_NAME?: string; show(): void; hide(): void }>;
@@ -136,7 +140,8 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
 
     const zoom = Math.round(map.getZoom());
     const bounds = map.getBounds();
-    const { northEast, southWest } = bounds;
+    const northEast = bounds.getNorthEast();
+    const southWest = bounds.getSouthWest();
     const clusters = sc.getClusters(
       [southWest.lng, southWest.lat, northEast.lng, northEast.lat],
       zoom,
@@ -145,6 +150,7 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
     const newMarkers: unknown[] = [];
     for (const cluster of clusters) {
       const [lng, lat] = cluster.geometry.coordinates;
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
       const isCluster = cluster.properties.cluster;
       const count = isCluster ? cluster.properties.point_count : 1;
       const photoId = isCluster
@@ -165,7 +171,6 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
         content: iconContent,
         position: [lng, lat],
         offset: new AMap.Pixel(-24, -24),
-        anchor: "center",
       });
       newMarkers.push(marker);
     }
@@ -236,10 +241,14 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
 
     let destroyed = false;
 
+    // Clean any stale AMap SDK state from previous HMR cycles
+    const loader = AMapLoader as unknown as { reset?: () => void };
+    loader.reset?.();
+
     AMapLoader.load({
       key: amapJsKey,
-      version: "2.0",
-      plugins: ["AMap.Scale", "AMap.ToolBar", "AMap.ControlBar"],
+      version: "1.4.15",
+      plugins: ["AMap.Scale", "AMap.ToolBar"],
     })
       .then((AMap: AMapSDK) => {
         if (destroyed || !containerRef.current) return;
@@ -252,17 +261,14 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
         const mapOptions: Record<string, unknown> = {
           zoom: saved?.zoom ?? 5,
           center: saved?.center ?? [104.07, 30.67],
-          mapStyle: amapStyleForTheme(eff),
-          rotateEnable: true,
-          pitchEnable: true,
-          viewMode: "3D",
-          zooms: [2, 21],
+          zooms: [3, 20],
           resizeEnable: true,
+          mapStyle: amapStyleForTheme(eff),
         };
 
         if (isSatellite) {
           mapOptions.layers = [
-            AMap.createDefaultLayer(),
+            new AMap.TileLayer(),
             new AMap.TileLayer.Satellite(),
           ];
         }
@@ -284,16 +290,7 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
 
         // Controls
         map.addControl(new AMap.Scale());
-        map.addControl(
-          new AMap.ToolBar({
-            position: { top: "110px", right: "40px" },
-          }),
-        );
-        map.addControl(
-          new AMap.ControlBar({
-            position: { top: "10px", right: "10px" },
-          }),
-        );
+        map.addControl(new AMap.ToolBar({ liteStyle: true }));
 
         map.on("complete", () => {
           if (!destroyed) setMapReady(true);
@@ -309,6 +306,8 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
         mapRef.current.destroy();
         mapRef.current = null;
       }
+      const resetLoader = AMapLoader as unknown as { reset?: () => void };
+      resetLoader.reset?.();
     };
     // Only run once when key becomes available
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -367,50 +366,12 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, [themeOpen]);
 
-  // ── Loading / empty states ───────────────────────────────────────────
-  if (geoSettings.isLoading || pointsQuery.isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Spin />
-      </div>
-    );
-  }
-
-  if (!amapJsKey) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Empty
-          description={
-            <span>
-              请先
-              <button
-                type="button"
-                className="text-[var(--accent-text)] hover:underline"
-                onClick={() =>
-                  openWindow({
-                    type: "page",
-                    title: "Settings",
-                    metadata: { pageId: "external-database" },
-                  })
-                }
-              >
-                配置高德 JS API 密钥
-              </button>
-              以启用地图显示。
-            </span>
-          }
-        />
-      </div>
-    );
-  }
-
-  if (points.length === 0 && !pointsQuery.isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Empty description="暂无带有 GPS 坐标的照片" />
-      </div>
-    );
-  }
+  // ── Overlay state ────────────────────────────────────────────────────
+  const isLoading = geoSettings.isLoading || pointsQuery.isLoading;
+  const noKey = !isLoading && !amapJsKey;
+  const noPoints =
+    !isLoading && !noKey && points.length === 0 && !pointsQuery.isLoading;
+  const showMap = !isLoading && !noKey && !noPoints;
 
   const themes: { key: MapTheme; label: string }[] = [
     { key: "auto", label: "自动" },
@@ -420,50 +381,95 @@ export function PhotoMapView({ appId }: PhotoMapViewProps) {
   ];
 
   return (
-    <div className="relative h-full w-full">
-      {/* Map container */}
+    <div className="relative w-full" style={{ height: "calc(100vh - 120px)" }}>
+      {/* Map container — always mounted so the ref is available for AMap init */}
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* Theme switcher */}
-      <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          onClick={() => setThemeOpen(!themeOpen)}
-        >
-          <Layers className="h-4 w-4" />
-          {themes.find((t) => t.key === mapTheme)?.label}
-        </button>
+      {/* Overlay: loading */}
+      {isLoading && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-900/60">
+          <Spin />
+        </div>
+      )}
 
-        {themeOpen && (
-          <div className="mt-1 overflow-hidden rounded-lg bg-white/95 shadow-lg backdrop-blur-sm dark:bg-neutral-800/95">
-            {themes.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-                  mapTheme === t.key
-                    ? "font-medium text-blue-600 dark:text-blue-400"
-                    : "text-neutral-700 dark:text-neutral-300"
-                }`}
-                onClick={() => handleSetTheme(t.key)}
-              >
-                {mapTheme === t.key && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                )}
-                <span className={mapTheme === t.key ? "" : "pl-3.5"}>
-                  {t.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Overlay: no API key */}
+      {noKey && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-900/60">
+          <Empty
+            description={
+              <span>
+                请先
+                <button
+                  type="button"
+                  className="text-[var(--accent-text)] hover:underline"
+                  onClick={() =>
+                    openWindow({
+                      type: "page",
+                      title: "Settings",
+                      metadata: { pageId: "external-database" },
+                    })
+                  }
+                >
+                  配置高德 JS API 密钥
+                </button>
+                以启用地图显示。
+              </span>
+            }
+          />
+        </div>
+      )}
+
+      {/* Overlay: no GPS photos */}
+      {noPoints && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-900/60">
+          <Empty description="暂无带有 GPS 坐标的照片" />
+        </div>
+      )}
+
+      {/* Theme switcher */}
+      {showMap && (
+        <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            onClick={() => setThemeOpen(!themeOpen)}
+          >
+            <Layers className="h-4 w-4" />
+            {themes.find((t) => t.key === mapTheme)?.label}
+          </button>
+
+          {themeOpen && (
+            <div className="mt-1 overflow-hidden rounded-lg bg-white/95 shadow-lg backdrop-blur-sm dark:bg-neutral-800/95">
+              {themes.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+                    mapTheme === t.key
+                      ? "font-medium text-blue-600 dark:text-blue-400"
+                      : "text-neutral-700 dark:text-neutral-300"
+                  }`}
+                  onClick={() => handleSetTheme(t.key)}
+                >
+                  {mapTheme === t.key && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  )}
+                  <span className={mapTheme === t.key ? "" : "pl-3.5"}>
+                    {t.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Photo count badge */}
-      <div className="absolute bottom-3 left-3 z-10 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur-sm">
-        {points.length} 张照片
-      </div>
+      {showMap && (
+        <div className="absolute bottom-3 left-3 z-10 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur-sm">
+          {points.length} 张照片
+        </div>
+      )}
     </div>
   );
 }
