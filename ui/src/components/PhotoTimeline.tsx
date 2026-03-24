@@ -100,10 +100,18 @@ export function PhotoTimeline({
     return { flatItems: items, dateOffsets: offsets, itemHeights: heights };
   }, [groups, layoutWidth, targetRowHeight]);
 
-  // ── Scroll element (dashboard-scroll-container) ──────────────
+  // ── Scroll element (find nearest scrollable ancestor) ────────
   const scrollElRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    scrollElRef.current = document.getElementById("dashboard-scroll-container");
+    let el = measureRef.current?.parentElement ?? null;
+    while (el) {
+      const ov = getComputedStyle(el).overflowY;
+      if (ov === "auto" || ov === "scroll") {
+        scrollElRef.current = el;
+        return;
+      }
+      el = el.parentElement;
+    }
   }, []);
 
   // ── Virtual scroll ───────────────────────────────────────────

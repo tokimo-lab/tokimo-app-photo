@@ -9,7 +9,6 @@ import {
   MousePointerClick,
   RefreshCw,
   ScanText,
-  Search,
   Sparkles,
   Star,
   Trash2,
@@ -85,7 +84,7 @@ export default function PhotoAppPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [searchMode, setSearchMode] = useState<"filename" | "clip">("filename");
+  const [searchMode] = useState<"filename" | "clip">("filename");
 
   useEffect(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -607,78 +606,28 @@ export default function PhotoAppPage() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 rounded-lg border border-[var(--glass-border)] bg-neutral-100 p-1 dark:bg-neutral-800">
+      {/* Tab bar — iOS 26 style pill segmented control */}
+      <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
         {tabs.map((t) => {
           const Icon = t.icon;
+          const active = tab === t.key;
           return (
             <button
               key={t.key}
               type="button"
-              className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                tab === t.key
-                  ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-                  : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+              className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
+                active
+                  ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
+                  : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
               }`}
               onClick={() => setTab(t.key)}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5" />
               {t.label}
             </button>
           );
         })}
       </div>
-
-      {/* Search bar with mode toggle (timeline tab only) */}
-      {tab === "timeline" && (
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                searchMode === "clip" ? "描述你想找的画面…" : "搜索文件名…"
-              }
-              className="w-full rounded-lg border border-neutral-200 bg-white py-2 pr-3 pl-9 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-blue-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:border-blue-500"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer rounded p-0.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-                onClick={() => setSearchQuery("")}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            title={searchMode === "clip" ? "以文搜图模式" : "文件名搜索模式"}
-            className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-              searchMode === "clip"
-                ? "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-700 dark:bg-purple-950/50 dark:text-purple-300"
-                : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-            }`}
-            onClick={() =>
-              setSearchMode((m) => (m === "clip" ? "filename" : "clip"))
-            }
-          >
-            {searchMode === "clip" ? (
-              <>
-                <Sparkles className="h-4 w-4" />
-                以文搜图
-              </>
-            ) : (
-              <>
-                <Search className="h-4 w-4" />
-                文件名
-              </>
-            )}
-          </button>
-        </div>
-      )}
 
       {/* OCR search results banner */}
       {tab === "timeline" &&
