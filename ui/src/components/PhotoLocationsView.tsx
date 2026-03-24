@@ -1,6 +1,7 @@
 import { Button, Empty, Spin } from "@tokiomo/components";
 import { ChevronRight, MapPin, Navigation } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { PhotoTimeline } from "./PhotoTimeline";
@@ -230,7 +231,20 @@ export function PhotoLocationsView({
 
   if (totalGeoPhotos === 0) {
     return (
-      <Empty description="暂无地理位置数据。请先配置高德 API 密钥并触发逆地理编码。" />
+      <Empty
+        description={
+          <span>
+            暂无地理位置数据。请先
+            <Link
+              to="../settings/external-database?tab=photoGeo"
+              className="text-[var(--accent-text)] hover:underline"
+            >
+              配置高德 API 密钥
+            </Link>
+            并触发逆地理编码。
+          </span>
+        }
+      />
     );
   }
 
