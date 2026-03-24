@@ -17,6 +17,16 @@ pub struct TimelineEntry {
     pub count: i64,
 }
 
+#[derive(Debug, serde::Serialize, DerivePartialModel)]
+#[sea_orm(entity = "photos::Entity")]
+pub struct PhotoMapPoint {
+    pub id: Uuid,
+    #[serde(rename = "lat")]
+    pub gps_latitude: Option<f64>,
+    #[serde(rename = "lng")]
+    pub gps_longitude: Option<f64>,
+}
+
 pub struct PhotoRepo;
 
 impl PhotoRepo {
@@ -785,5 +795,23 @@ impl PhotoRepo {
             .await?;
 
         Ok(Page::new(items, total, page))
+    }
+
+    /// Return all photos with GPS coordinates for map display.
+    pub async fn list_map_points(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+    ) -> Result<Vec<PhotoMapPoint>, AppError> {
+        let items = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::GpsLatitude.is_not_null())
+            .filter(photos::Column::GpsLongitude.is_not_null())
+            .into_partial_model::<PhotoMapPoint>()
+            .all(db)
+            .await?;
+
+        Ok(items)
     }
 }
