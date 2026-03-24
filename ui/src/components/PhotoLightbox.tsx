@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PhotoFaceOutput, PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
@@ -106,8 +107,8 @@ export function PhotoLightbox({
     : undefined;
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex bg-black/90">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex bg-black">
       {/* ── Photo area (flex-1, takes remaining space) ── */}
       <div className="relative flex flex-1 flex-col">
         {/* Top toolbar */}
@@ -295,7 +296,8 @@ export function PhotoLightbox({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -55,7 +55,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <span className="text-white/50">{label}</span>
-      <p className="text-white/90">{value}</p>
+      <p className="break-all text-white/90">{value}</p>
     </div>
   );
 }
@@ -140,7 +140,7 @@ export function PhotoInfoPanel({
     <>
       {/* Title / edit form */}
       {editForm ?? (
-        <h3 className="mb-4 text-base font-semibold">
+        <h3 className="mb-4 break-all text-base font-semibold">
           {detail.title || fallbackTitle}
         </h3>
       )}
