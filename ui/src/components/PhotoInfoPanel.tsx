@@ -2,6 +2,7 @@ import { Camera, ExternalLink, FileText, MapPin } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { PhotoDetailOutput } from "../../generated/rust-api";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
+import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { formatBytes } from "./photo-utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -102,10 +103,14 @@ export function PhotoInfoPanel({
   detail,
   fallbackTitle,
   editForm,
+  hoveredFaceId,
+  onHoverFace,
 }: {
   detail: PhotoDetailOutput;
   fallbackTitle: string;
   editForm: ReactNode | null;
+  hoveredFaceId: number | null;
+  onHoverFace: (faceId: number | null) => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
 
@@ -189,6 +194,15 @@ export function PhotoInfoPanel({
             </button>
           )}
         </InfoSection>
+
+        {/* ── People section ──────────────────────────────────────── */}
+        <PhotoFacesPanel
+          photoId={detail.id}
+          photoWidth={detail.width}
+          photoHeight={detail.height}
+          hoveredFaceId={hoveredFaceId}
+          onHoverFace={onHoverFace}
+        />
 
         {/* ── Camera section ──────────────────────────────────────── */}
         {hasCameraData && (

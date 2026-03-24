@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import type { PhotoOutput } from "../../generated/rust-api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PhotoFaceOutput, PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 
@@ -22,12 +22,20 @@ export function PhotoLightbox({
   const hasPrev = idx > 0;
   const hasNext = idx < allPhotos.length - 1;
   const [showInfo, setShowInfo] = useState(false);
+  const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const detailQuery = api.app.getPhoto.useQuery(
     { photoId: photo.id },
     { enabled: true },
   );
   const detail = detailQuery.data;
+
+  const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
+    { photoId: photo.id },
+    { enabled: showInfo },
+  );
+  const faces = facesQuery.data;
 
   // ── Edit mode state ──────────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
@@ -162,12 +170,28 @@ export function PhotoLightbox({
       {/* Image */}
       <div className="flex h-full w-full items-center justify-center p-12">
         {src ? (
-          <img
-            src={src}
-            alt={photo.title || photo.filename}
-            className="max-h-full max-w-full select-none object-contain"
-            draggable={false}
-          />
+          <div className="relative inline-block max-h-full max-w-full">
+            <img
+              ref={imgRef}
+              src={src}
+              alt={photo.title || photo.filename}
+              className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+              draggable={false}
+            />
+            {/* Face highlight overlays */}
+            {hoveredFaceId != null &&
+              faces &&
+              detail?.width &&
+              detail?.height && (
+                <FaceHighlightOverlay
+                  faces={faces}
+                  hoveredFaceId={hoveredFaceId}
+                  photoWidth={detail.width}
+                  photoHeight={detail.height}
+                  imgRef={imgRef}
+                />
+              )}
+          </div>
         ) : (
           <div className="text-neutral-400">无法加载图片</div>
         )}
@@ -212,6 +236,8 @@ export function PhotoLightbox({
           <PhotoInfoPanel
             detail={detail}
             fallbackTitle={photo.title || photo.filename}
+            hoveredFaceId={hoveredFaceId}
+            onHoverFace={setHoveredFaceId}
             editForm={
               editing ? (
                 <div className="mb-4 space-y-2">
@@ -261,6 +287,104 @@ export function PhotoLightbox({
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
         {idx + 1} / {allPhotos.length} — {photo.filename}
       </div>
+    </div>
+  );
+}
+
+/** Overlay that draws a highlight box around the hovered face on the photo */
+function FaceHighlightOverlay({
+  faces,
+  hoveredFaceId,
+  photoWidth,
+  photoHeight,
+  imgRef,
+}: {
+  faces: PhotoFaceOutput[];
+  hoveredFaceId: number;
+  photoWidth: number;
+  photoHeight: number;
+  imgRef: React.RefObject<HTMLImageElement | null>;
+}) {
+  const [imgRect, setImgRect] = useState<{
+    w: number;
+    h: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    const measure = () => {
+      const rect = img.getBoundingClientRect();
+      const parent = img.parentElement?.getBoundingClientRect();
+      if (!parent) return;
+      // The image uses object-contain, so rendered size may differ from element size
+      const imgAspect = photoWidth / photoHeight;
+      const elemAspect = rect.width / rect.height;
+
+      let renderedW: number;
+      let renderedH: number;
+      if (imgAspect > elemAspect) {
+        renderedW = rect.width;
+        renderedH = rect.width / imgAspect;
+      } else {
+        renderedH = rect.height;
+        renderedW = rect.height * imgAspect;
+      }
+
+      setImgRect({
+        w: renderedW,
+        h: renderedH,
+        offsetX: (rect.width - renderedW) / 2,
+        offsetY: (rect.height - renderedH) / 2,
+      });
+    };
+
+    measure();
+    img.addEventListener("load", measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(img);
+    return () => {
+      img.removeEventListener("load", measure);
+      observer.disconnect();
+    };
+  }, [imgRef, photoWidth, photoHeight]);
+
+  if (!imgRect) return null;
+
+  const scaleX = imgRect.w / photoWidth;
+  const scaleY = imgRect.h / photoHeight;
+
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left: imgRect.offsetX,
+        top: imgRect.offsetY,
+        width: imgRect.w,
+        height: imgRect.h,
+      }}
+    >
+      {faces.map((face) => {
+        const isHovered = face.id === hoveredFaceId;
+        if (!isHovered) return null;
+
+        const pad = Math.max(face.w, face.h) * 0.15;
+        return (
+          <div
+            key={face.id}
+            className="absolute rounded-md border-2 border-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.4)]"
+            style={{
+              left: (face.x - pad) * scaleX,
+              top: (face.y - pad) * scaleY,
+              width: (face.w + pad * 2) * scaleX,
+              height: (face.h + pad * 2) * scaleY,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
