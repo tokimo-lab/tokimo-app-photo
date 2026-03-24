@@ -242,6 +242,14 @@ export function PhotoLightbox({
               fallbackTitle={photo.title || photo.filename}
               hoveredFaceId={hoveredFaceId}
               onHoverFace={setHoveredFaceId}
+              onRefreshComplete={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["api.app.getPhoto"],
+                });
+                queryClient.invalidateQueries({
+                  queryKey: ["api.photoSettings.getPhotoFaces"],
+                });
+              }}
               editForm={
                 editing ? (
                   <div className="mb-4 space-y-2">

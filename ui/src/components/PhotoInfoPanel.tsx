@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import type { PhotoDetailOutput } from "../../generated/rust-api";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
+import { PhotoToolsPanel } from "./PhotoToolsPanel";
 import { formatBytes } from "./photo-utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -105,12 +106,14 @@ export function PhotoInfoPanel({
   editForm,
   hoveredFaceId,
   onHoverFace,
+  onRefreshComplete,
 }: {
   detail: PhotoDetailOutput;
   fallbackTitle: string;
   editForm: ReactNode | null;
   hoveredFaceId: number | null;
   onHoverFace: (faceId: number | null) => void;
+  onRefreshComplete?: () => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
 
@@ -288,6 +291,12 @@ export function PhotoInfoPanel({
             </a>
           </InfoSection>
         )}
+
+        {/* ── Tools section ───────────────────────────────────────── */}
+        <PhotoToolsPanel
+          photoId={detail.id}
+          onRefreshComplete={onRefreshComplete}
+        />
       </div>
 
       {showExifModal && detail.exifData && (
