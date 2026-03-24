@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
-import { PhotoMapView } from "../../components/photo/PhotoMapView";
+import { PhotoLocationTab } from "../../components/photo/PhotoLocationTab";
 import { PhotoPeopleView } from "../../components/photo/PhotoPeopleView";
 import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
 import {
@@ -769,7 +769,14 @@ export default function PhotoAppPage() {
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
         )
       ) : tab === "locations" ? (
-        <PhotoMapView appId={id} />
+        <PhotoLocationTab
+          appId={id}
+          onToggleFavorite={handleToggleFavorite}
+          isSelecting={isSelecting}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
+          targetRowHeight={targetRowHeight}
+        />
       ) : tab === "people" ? (
         <PhotoPeopleView
           appId={id}

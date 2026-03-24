@@ -25,6 +25,8 @@ pub struct PhotoMapPoint {
     pub gps_latitude: Option<f64>,
     #[serde(rename = "lng")]
     pub gps_longitude: Option<f64>,
+    #[serde(rename = "city")]
+    pub geo_city: Option<String>,
 }
 
 pub struct PhotoRepo;
@@ -813,5 +815,38 @@ impl PhotoRepo {
             .await?;
 
         Ok(items)
+    }
+
+    /// Return photos within a geographic bounding box, paginated.
+    pub async fn list_by_bbox(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        min_lat: f64,
+        max_lat: f64,
+        min_lng: f64,
+        max_lng: f64,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let query = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::GpsLatitude.is_not_null())
+            .filter(photos::Column::GpsLongitude.is_not_null())
+            .filter(photos::Column::GpsLatitude.gte(min_lat))
+            .filter(photos::Column::GpsLatitude.lte(max_lat))
+            .filter(photos::Column::GpsLongitude.gte(min_lng))
+            .filter(photos::Column::GpsLongitude.lte(max_lng))
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size as u64)
+            .fetch_page(page.page.saturating_sub(1) as u64)
+            .await?;
+
+        Ok(Page::new(items, total, page))
     }
 }
