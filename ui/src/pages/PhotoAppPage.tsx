@@ -13,8 +13,11 @@ import {
   Grid3x3,
   MapPin,
   ScanText,
+  Search,
+  Sparkles,
   Star,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +27,7 @@ import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
 import { PhotoLocationsView } from "../../components/photo/PhotoLocationsView";
+import { PhotoPeopleView } from "../../components/photo/PhotoPeopleView";
 import { PhotoSelectionBar } from "../../components/photo/PhotoSelectionBar";
 import {
   loadSavedSizeIndex,
@@ -41,6 +45,7 @@ type TabKey =
   | "folders"
   | "favorites"
   | "locations"
+  | "people"
   | "albums"
   | "trash";
 
@@ -49,6 +54,7 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "folders", label: "文件夹", icon: FolderOpen },
   { key: "favorites", label: "收藏", icon: Star },
   { key: "locations", label: "地点", icon: MapPin },
+  { key: "people", label: "人物", icon: Users },
   { key: "albums", label: "相册", icon: Grid3x3 },
   { key: "trash", label: "回收站", icon: Trash2 },
 ];
@@ -84,6 +90,7 @@ export default function PhotoAppPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchMode, setSearchMode] = useState<"filename" | "clip">("filename");
 
   useEffect(() => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -196,6 +203,20 @@ export default function PhotoAppPage() {
   const [ocrFilterActive, setOcrFilterActive] = useState(false);
   const [ocrDismissed, setOcrDismissed] = useState(false);
 
+  // ── CLIP text-to-image search ─────────────────────────────────────────
+  const clipQuery = api.photoSettings.clipSearch.useQuery(
+    { appId: id!, q: debouncedSearch },
+    {
+      enabled:
+        !!id &&
+        searchMode === "clip" &&
+        !!debouncedSearch &&
+        debouncedSearch.length >= 2 &&
+        tab === "timeline",
+    },
+  );
+  const clipResults = clipQuery.data ?? [];
+
   // Reset OCR filter state when search changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger on search change
   useEffect(() => {
@@ -288,6 +309,10 @@ export default function PhotoAppPage() {
           : tab === "trash"
             ? trashedQuery.isLoading && trashPage === 1
             : false;
+
+  // CLIP mode is active when we have a valid search in clip mode on timeline tab
+  const isClipActive =
+    searchMode === "clip" && debouncedSearch.length >= 2 && tab === "timeline";
 
   const syncMutation = api.app.sync.useMutation({
     onSuccess: () => {
@@ -589,6 +614,57 @@ export default function PhotoAppPage() {
         })}
       </div>
 
+      {/* Search bar with mode toggle (timeline tab only) */}
+      {tab === "timeline" && (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                searchMode === "clip" ? "描述你想找的画面…" : "搜索文件名…"
+              }
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 pr-3 pl-9 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-blue-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:focus:border-blue-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer rounded p-0.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+                onClick={() => setSearchQuery("")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            title={searchMode === "clip" ? "以文搜图模式" : "文件名搜索模式"}
+            className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              searchMode === "clip"
+                ? "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-700 dark:bg-purple-950/50 dark:text-purple-300"
+                : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            }`}
+            onClick={() =>
+              setSearchMode((m) => (m === "clip" ? "filename" : "clip"))
+            }
+          >
+            {searchMode === "clip" ? (
+              <>
+                <Sparkles className="h-4 w-4" />
+                以文搜图
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4" />
+                文件名
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* OCR search results banner */}
       {tab === "timeline" &&
         debouncedSearch.length >= 2 &&
@@ -640,6 +716,48 @@ export default function PhotoAppPage() {
         <div className="flex h-64 items-center justify-center">
           <Spin />
         </div>
+      ) : isClipActive ? (
+        clipQuery.isLoading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Spin />
+          </div>
+        ) : clipResults.length > 0 ? (
+          <div>
+            <div className="mb-3 flex items-center gap-2 px-1">
+              <Sparkles className="h-4 w-4 text-purple-500" />
+              <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                找到 {clipResults.length} 张相似照片
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {clipResults.map((result) => (
+                <div
+                  key={result.photoId}
+                  className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
+                >
+                  <img
+                    src={`/api/photos/${result.photoId}/thumbnail`}
+                    alt={result.filename}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  {/* Similarity badge */}
+                  <div className="absolute top-1.5 right-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
+                    {Math.round(result.similarity * 100)}%
+                  </div>
+                  {/* Filename on hover */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="truncate text-xs text-white">
+                      {result.filename}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <Empty description="未找到匹配的照片，试试换个描述" />
+        )
       ) : tab === "timeline" ? (
         allTimelinePhotos.length > 0 ? (
           <PhotoTimeline
@@ -689,6 +807,15 @@ export default function PhotoAppPage() {
         )
       ) : tab === "locations" ? (
         <PhotoLocationsView
+          appId={id}
+          onToggleFavorite={handleToggleFavorite}
+          isSelecting={isSelecting}
+          selectedIds={selectedIds}
+          onSelect={handleSelect}
+          targetRowHeight={targetRowHeight}
+        />
+      ) : tab === "people" ? (
+        <PhotoPeopleView
           appId={id}
           onToggleFavorite={handleToggleFavorite}
           isSelecting={isSelecting}
