@@ -7,13 +7,13 @@ import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 
 export function PhotoFoldersView({
-  libraryId,
+  appId,
   onToggleFavorite,
   isSelecting,
   selectedIds,
   onSelect,
 }: {
-  libraryId: string;
+  appId: string;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   isSelecting?: boolean;
   selectedIds?: Set<string>;
@@ -22,9 +22,9 @@ export function PhotoFoldersView({
   const [currentPath, setCurrentPath] = useState("/");
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
 
-  const foldersQuery = api.mediaLibrary.listPhotoFolders.useQuery(
-    { libraryId, path: currentPath },
-    { enabled: !!libraryId },
+  const foldersQuery = api.app.listPhotoFolders.useQuery(
+    { appId, path: currentPath },
+    { enabled: !!appId },
   );
 
   const folders = foldersQuery.data?.folders ?? [];

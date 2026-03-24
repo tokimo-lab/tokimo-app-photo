@@ -42,7 +42,7 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "trash", label: "回收站", icon: Trash2 },
 ];
 
-export default function PhotoLibraryPage() {
+export default function PhotoAppPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const message = useMessage();
@@ -139,14 +139,11 @@ export default function PhotoLibraryPage() {
   const accTrashRef = useRef<PhotoOutput[]>([]);
 
   // ── Queries ────────────────────────────────────────────────────────────
-  const libraryQuery = api.mediaLibrary.getById.useQuery(
-    { id: id! },
-    { enabled: !!id },
-  );
+  const libraryQuery = api.app.getById.useQuery({ id: id! }, { enabled: !!id });
 
-  const photosQuery = api.mediaLibrary.listPhotos.useQuery(
+  const photosQuery = api.app.listPhotos.useQuery(
     {
-      libraryId: id!,
+      appId: id!,
       page: timelinePage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
@@ -157,9 +154,9 @@ export default function PhotoLibraryPage() {
     { enabled: !!id && tab === "timeline" },
   );
 
-  const favoritesQuery = api.mediaLibrary.listPhotos.useQuery(
+  const favoritesQuery = api.app.listPhotos.useQuery(
     {
-      libraryId: id!,
+      appId: id!,
       page: favPage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
@@ -169,13 +166,13 @@ export default function PhotoLibraryPage() {
     { enabled: !!id && tab === "favorites" },
   );
 
-  const albumsQuery = api.mediaLibrary.listPhotoAlbums.useQuery(
-    { libraryId: id! },
+  const albumsQuery = api.app.listPhotoAlbums.useQuery(
+    { appId: id! },
     { enabled: !!id && tab === "albums" },
   );
 
-  const trashedQuery = api.mediaLibrary.listTrashedPhotos.useQuery(
-    { libraryId: id!, page: trashPage, pageSize: PAGE_SIZE },
+  const trashedQuery = api.app.listTrashedPhotos.useQuery(
+    { appId: id!, page: trashPage, pageSize: PAGE_SIZE },
     { enabled: !!id && tab === "trash" },
   );
 
@@ -255,7 +252,7 @@ export default function PhotoLibraryPage() {
             ? trashedQuery.isLoading && trashPage === 1
             : false;
 
-  const syncMutation = api.mediaLibrary.sync.useMutation({
+  const syncMutation = api.app.sync.useMutation({
     onSuccess: () => {
       message.success("同步已开始");
       setTimelinePage(1);
@@ -266,7 +263,7 @@ export default function PhotoLibraryPage() {
   });
 
   // ── Favorite toggle ─────────────────────────────────────────────────────
-  const toggleFavMutation = api.mediaLibrary.togglePhotoFavorite.useMutation({
+  const toggleFavMutation = api.app.togglePhotoFavorite.useMutation({
     onSuccess: () => {
       void photosQuery.refetch();
       void favoritesQuery.refetch();
@@ -281,7 +278,7 @@ export default function PhotoLibraryPage() {
   );
 
   // ── Batch operations ──────────────────────────────────────────────────
-  const batchFavMutation = api.mediaLibrary.batchFavorite.useMutation({
+  const batchFavMutation = api.app.batchFavorite.useMutation({
     onSuccess: (data) => {
       message.success(`已更新 ${data.updated} 张照片`);
       clearSelection();
@@ -291,7 +288,7 @@ export default function PhotoLibraryPage() {
     onError: (e) => message.error(e.message || "操作失败"),
   });
 
-  const addToAlbumMutation = api.mediaLibrary.addPhotosToAlbum.useMutation({
+  const addToAlbumMutation = api.app.addPhotosToAlbum.useMutation({
     onSuccess: () => {
       message.success("已添加到相册");
       clearSelection();
@@ -304,7 +301,7 @@ export default function PhotoLibraryPage() {
   const handleBatchFavorite = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchFavMutation.mutate({
-      libraryId: id,
+      appId: id,
       photoIds: [...selectedIds],
       favorite: true,
     });
@@ -313,7 +310,7 @@ export default function PhotoLibraryPage() {
   const handleBatchUnfavorite = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchFavMutation.mutate({
-      libraryId: id,
+      appId: id,
       photoIds: [...selectedIds],
       favorite: false,
     });
@@ -330,11 +327,11 @@ export default function PhotoLibraryPage() {
   );
 
   // ── Batch hide mutation ────────────────────────────────────────
-  const batchHideMutation = api.mediaLibrary.batchHide.useMutation();
+  const batchHideMutation = api.app.batchHide.useMutation();
   const handleBatchHide = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchHideMutation.mutate(
-      { libraryId: id, photoIds: [...selectedIds], hidden: true },
+      { appId: id, photoIds: [...selectedIds], hidden: true },
       {
         onSuccess: () => {
           message.success(`已隐藏 ${selectedIds.size} 张照片`);
@@ -355,13 +352,13 @@ export default function PhotoLibraryPage() {
   ]);
 
   // ── Trash mutation ────────────────────────────────────────────
-  const trashMutation = api.mediaLibrary.trashPhotos.useMutation();
+  const trashMutation = api.app.trashPhotos.useMutation();
   const handleTrash = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
       return;
     trashMutation.mutate(
-      { libraryId: id, photoIds: [...selectedIds] },
+      { appId: id, photoIds: [...selectedIds] },
       {
         onSuccess: () => {
           message.success(`已将 ${selectedIds.size} 张照片移到回收站`);
@@ -375,7 +372,7 @@ export default function PhotoLibraryPage() {
   }, [id, selectedIds, trashMutation, message, photosQuery, favoritesQuery]);
 
   // ── Trash operations ──────────────────────────────────────────────────
-  const restoreMutation = api.mediaLibrary.restorePhotos.useMutation({
+  const restoreMutation = api.app.restorePhotos.useMutation({
     onSuccess: (data) => {
       message.success(`已恢复 ${data.restored} 张照片`);
       clearSelection();
@@ -387,7 +384,7 @@ export default function PhotoLibraryPage() {
     onError: (e) => message.error(e.message || "恢复失败"),
   });
 
-  const permanentDeleteMutation = api.mediaLibrary.permanentDelete.useMutation({
+  const permanentDeleteMutation = api.app.permanentDelete.useMutation({
     onSuccess: (data) => {
       message.success(`已永久删除 ${data.deleted} 张照片`);
       clearSelection();
@@ -400,14 +397,14 @@ export default function PhotoLibraryPage() {
 
   const handleRestore = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    restoreMutation.mutate({ libraryId: id, photoIds: [...selectedIds] });
+    restoreMutation.mutate({ appId: id, photoIds: [...selectedIds] });
   }, [id, selectedIds, restoreMutation.mutate]);
 
   const handlePermanentDelete = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     if (!window.confirm("永久删除选中的照片？此操作不可恢复！")) return;
     permanentDeleteMutation.mutate({
-      libraryId: id,
+      appId: id,
       photoIds: [...selectedIds],
     });
   }, [id, selectedIds, permanentDeleteMutation.mutate]);
@@ -471,7 +468,7 @@ export default function PhotoLibraryPage() {
       if (!id) return undefined;
       return (
         <TopBarSearch
-          libraryId={id}
+          appId={id}
           isTv={false}
           onSelect={() => {}}
           recentItems={[]}
@@ -564,7 +561,7 @@ export default function PhotoLibraryPage() {
         allTimelinePhotos.length > 0 ? (
           <PhotoTimeline
             photos={allTimelinePhotos}
-            libraryId={id!}
+            appId={id!}
             total={timelineTotal}
             hasMore={timelineHasMore}
             onLoadMore={loadMoreTimeline}
@@ -577,11 +574,11 @@ export default function PhotoLibraryPage() {
             targetRowHeight={targetRowHeight}
           />
         ) : (
-          <Empty description="暂无照片，请先同步媒体库" />
+          <Empty description="暂无照片，请先同步应用" />
         )
       ) : tab === "folders" ? (
         <PhotoFoldersView
-          libraryId={id}
+          appId={id}
           onToggleFavorite={handleToggleFavorite}
           isSelecting={isSelecting}
           selectedIds={selectedIds}
@@ -591,7 +588,7 @@ export default function PhotoLibraryPage() {
         allFavPhotos.length > 0 ? (
           <PhotoTimeline
             photos={allFavPhotos}
-            libraryId={id!}
+            appId={id!}
             total={favTotal}
             hasMore={favHasMore}
             onLoadMore={loadMoreFav}
@@ -632,7 +629,7 @@ export default function PhotoLibraryPage() {
             </div>
             <PhotoTimeline
               photos={allTrashPhotos}
-              libraryId={id!}
+              appId={id!}
               total={trashTotal}
               hasMore={trashHasMore}
               onLoadMore={loadMoreTrash}
@@ -649,7 +646,7 @@ export default function PhotoLibraryPage() {
         )
       ) : (
         <PhotoAlbumsView
-          libraryId={id}
+          appId={id}
           albums={albums}
           isLoading={albumsQuery.isLoading}
           onToggleFavorite={handleToggleFavorite}
@@ -671,7 +668,7 @@ export default function PhotoLibraryPage() {
       {/* Album picker dialog */}
       {showAlbumPicker && (
         <AlbumPickerDialog
-          libraryId={id}
+          appId={id}
           selectedCount={selectedIds.size}
           onPick={handleAddToAlbum}
           onClose={() => setShowAlbumPicker(false)}

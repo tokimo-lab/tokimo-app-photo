@@ -5,20 +5,20 @@ import type { PhotoAlbumOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 
 export function AlbumPickerDialog({
-  libraryId,
+  appId,
   selectedCount,
   onPick,
   onClose,
   isPending,
 }: {
-  libraryId: string;
+  appId: string;
   selectedCount: number;
   onPick: (albumId: string) => void;
   onClose: () => void;
   isPending: boolean;
 }) {
-  const albumsQuery = api.mediaLibrary.listPhotoAlbums.useQuery(
-    { libraryId },
+  const albumsQuery = api.app.listPhotoAlbums.useQuery(
+    { appId },
     { enabled: true },
   );
   const albums = albumsQuery.data ?? [];
@@ -26,7 +26,7 @@ export function AlbumPickerDialog({
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const createMutation = api.mediaLibrary.createPhotoAlbum.useMutation({
+  const createMutation = api.app.createPhotoAlbum.useMutation({
     onSuccess: (album: PhotoAlbumOutput) => {
       void albumsQuery.refetch();
       onPick(album.id);
@@ -35,7 +35,7 @@ export function AlbumPickerDialog({
 
   const handleCreate = () => {
     if (!newName.trim()) return;
-    createMutation.mutate({ libraryId, name: newName.trim() });
+    createMutation.mutate({ appId, name: newName.trim() });
   };
 
   return (

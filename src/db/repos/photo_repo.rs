@@ -23,7 +23,7 @@ impl PhotoRepo {
     /// List photos with pagination, sorting, and optional search
     pub async fn list(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         page: &PageInput,
         sort_by: &str,
         sort_dir: &str,
@@ -32,7 +32,7 @@ impl PhotoRepo {
         before_date: Option<&str>,
     ) -> Result<Page<PhotoOutput>, AppError> {
         let mut query = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::IsHidden.eq(false))
             .filter(photos::Column::DeletedAt.is_null());
 
@@ -124,10 +124,10 @@ impl PhotoRepo {
     /// List photo albums
     pub async fn list_albums(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
     ) -> Result<Vec<PhotoAlbumOutput>, AppError> {
         let items = photo_albums::Entity::find()
-            .filter(photo_albums::Column::LibraryId.eq(library_id))
+            .filter(photo_albums::Column::AppId.eq(app_id))
             .order_by_asc(photo_albums::Column::SortOrder)
             .into_partial_model::<PhotoAlbumOutput>()
             .all(db)
@@ -138,11 +138,11 @@ impl PhotoRepo {
     /// Get timeline data — photos grouped by date
     pub async fn timeline(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
         let query = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::IsHidden.eq(false))
             .filter(photos::Column::DeletedAt.is_null())
             .order_by_desc(photos::Column::TakenAt)
@@ -190,7 +190,7 @@ impl PhotoRepo {
     /// List subdirectories and photos within a specific directory path.
     pub async fn list_folders(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         dir_path: &str,
     ) -> Result<(Vec<FolderInfo>, Vec<PhotoOutput>), AppError> {
         use std::collections::BTreeMap;
@@ -203,7 +203,7 @@ impl PhotoRepo {
         };
 
         let all_photos = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::IsHidden.eq(false))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(photos::Column::Path.starts_with(&prefix))
@@ -246,13 +246,13 @@ impl PhotoRepo {
         Ok((folders, direct_photos))
     }
 
-    /// Count photos in library
+    /// Count photos in app
     pub async fn count(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
     ) -> Result<u64, AppError> {
         let count = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .count(db)
             .await?;
         Ok(count)
@@ -261,13 +261,13 @@ impl PhotoRepo {
     /// Create a photo album
     pub async fn create_album(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         name: &str,
         description: Option<&str>,
     ) -> Result<PhotoAlbumOutput, AppError> {
         let album_id = Uuid::new_v4();
         let max_sort = photo_albums::Entity::find()
-            .filter(photo_albums::Column::LibraryId.eq(library_id))
+            .filter(photo_albums::Column::AppId.eq(app_id))
             .select_only()
             .column_as(photo_albums::Column::SortOrder.max(), "max_sort")
             .into_tuple::<Option<i32>>()
@@ -278,7 +278,7 @@ impl PhotoRepo {
 
         let active = photo_albums::ActiveModel {
             id: Set(album_id),
-            library_id: Set(library_id),
+            app_id: Set(app_id),
             name: Set(name.to_string()),
             description: Set(description.map(|s| s.to_string())),
             album_type: Set("manual".to_string()),
@@ -406,14 +406,14 @@ impl PhotoRepo {
         Ok(result.rows_affected)
     }
 
-    /// Batch delete photos by IDs within a library
+    /// Batch delete photos by IDs within an app
     pub async fn batch_delete(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<u64, AppError> {
         let result = photos::Entity::delete_many()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .exec(db)
             .await?;
@@ -481,12 +481,12 @@ impl PhotoRepo {
     /// Soft-delete (trash) photos by setting deleted_at
     pub async fn trash_photos(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<u64, AppError> {
         let now = chrono::Utc::now().fixed_offset();
         let result = photos::Entity::update_many()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_null())
             .col_expr(photos::Column::DeletedAt, Expr::value(now))
@@ -498,11 +498,11 @@ impl PhotoRepo {
     /// Restore photos from trash by clearing deleted_at
     pub async fn restore_photos(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<u64, AppError> {
         let result = photos::Entity::update_many()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_not_null())
             .col_expr(
@@ -517,11 +517,11 @@ impl PhotoRepo {
     /// List trashed photos (deleted_at IS NOT NULL)
     pub async fn list_trashed(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
         let query = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_not_null())
             .order_by_desc(photos::Column::DeletedAt);
 
@@ -538,11 +538,11 @@ impl PhotoRepo {
     /// Permanently delete photos that are already trashed
     pub async fn permanent_delete(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<u64, AppError> {
         let result = photos::Entity::delete_many()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_not_null())
             .exec(db)
@@ -553,10 +553,10 @@ impl PhotoRepo {
     /// Get all photos with a source for full rescan
     pub async fn get_all_photos_for_rescan(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
     ) -> Result<Vec<(Uuid, String, Uuid)>, AppError> {
         let rows = photos::Entity::find()
-            .filter(photos::Column::LibraryId.eq(library_id))
+            .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::SourceId.is_not_null())
             .select_only()
             .column(photos::Column::Id)
@@ -690,10 +690,10 @@ impl PhotoRepo {
         Ok(())
     }
 
-    /// Get timeline index: year/month counts for a library (all photos, not paginated)
+    /// Get timeline index: year/month counts for an app (all photos, not paginated)
     pub async fn timeline_index(
         db: &DatabaseConnection,
-        library_id: Uuid,
+        app_id: Uuid,
     ) -> Result<Vec<TimelineEntry>, AppError> {
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -703,14 +703,14 @@ impl PhotoRepo {
                 EXTRACT(MONTH FROM taken_at)::int AS month,
                 COUNT(*) AS count
             FROM photos
-            WHERE library_id = $1
+            WHERE app_id = $1
               AND taken_at IS NOT NULL
               AND is_hidden = false
               AND deleted_at IS NULL
             GROUP BY year, month
             ORDER BY year DESC, month DESC
             "#,
-            [library_id.into()],
+            [app_id.into()],
         );
         let results = db
             .query_all_raw(stmt)

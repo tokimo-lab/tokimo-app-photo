@@ -20,7 +20,7 @@ type VirtualItem =
 
 export function PhotoTimeline({
   photos,
-  libraryId,
+  appId,
   total,
   hasMore,
   onLoadMore,
@@ -33,7 +33,7 @@ export function PhotoTimeline({
   targetRowHeight = 220,
 }: {
   photos: PhotoOutput[];
-  libraryId: string;
+  appId: string;
   total?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -260,7 +260,7 @@ export function PhotoTimeline({
 
       {/* Non-linear timeline scrubber on the right edge */}
       <TimelineScrubber
-        libraryId={libraryId}
+        appId={appId}
         dateOffsets={dateOffsets}
         currentVisibleDate={currentVisibleDate}
         scrollToDate={scrollToDate}

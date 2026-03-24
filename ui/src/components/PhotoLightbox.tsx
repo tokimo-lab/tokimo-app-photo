@@ -23,7 +23,7 @@ export function PhotoLightbox({
   const hasNext = idx < allPhotos.length - 1;
   const [showInfo, setShowInfo] = useState(false);
 
-  const detailQuery = api.mediaLibrary.getPhoto.useQuery(
+  const detailQuery = api.app.getPhoto.useQuery(
     { photoId: photo.id },
     { enabled: true },
   );
@@ -36,7 +36,7 @@ export function PhotoLightbox({
   const [editDate, setEditDate] = useState("");
   const queryClient = useQueryClient();
 
-  const updateMutation = api.mediaLibrary.updatePhoto.useMutation();
+  const updateMutation = api.app.updatePhoto.useMutation();
 
   const startEdit = useCallback(() => {
     setEditTitle(detail?.title || photo.title || "");
@@ -57,7 +57,7 @@ export function PhotoLightbox({
         onSuccess: () => {
           setEditing(false);
           queryClient.invalidateQueries({
-            queryKey: ["api.mediaLibrary.getPhoto"],
+            queryKey: ["api.app.getPhoto"],
           });
         },
       },

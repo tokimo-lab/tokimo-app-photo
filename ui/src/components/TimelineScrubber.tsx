@@ -255,12 +255,12 @@ function useTimelineLayout(
 
 // ── Component ───────────────────────────────────────────────────
 export function TimelineScrubber({
-  libraryId,
+  appId,
   dateOffsets: _dateOffsets,
   currentVisibleDate,
   scrollToDate,
 }: {
-  libraryId: string;
+  appId: string;
   dateOffsets: Map<string, number>;
   currentVisibleDate: string | null;
   scrollToDate: (datePrefix: string, smooth: boolean) => void;
@@ -274,9 +274,9 @@ export function TimelineScrubber({
     text: string;
   } | null>(null);
 
-  const { data: timelineEntries } = api.mediaLibrary.getTimelineIndex.useQuery(
-    { libraryId },
-    { enabled: !!libraryId },
+  const { data: timelineEntries } = api.app.getTimelineIndex.useQuery(
+    { appId },
+    { enabled: !!appId },
   );
   const { marks, datePositions, posToDateLabel } = useTimelineLayout(
     timelineEntries ?? [],
