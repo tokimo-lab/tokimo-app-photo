@@ -25,7 +25,7 @@ pub async fn handle(
     info!("[photo_face_detect] Starting face detection batch for app {app_id}");
 
     let count =
-        PhotoFaceService::detect_app(db, &state.http_client, state, app_uuid).await?;
+        PhotoFaceService::detect_app(db, state, app_uuid).await?;
 
     info!("[photo_face_detect] Done: {count} photos processed");
 

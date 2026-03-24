@@ -24,7 +24,7 @@ pub async fn handle(
 
     info!("[photo_clip] Starting CLIP embed batch for app {app_id}");
 
-    let count = PhotoClipService::embed_app(db, &state.http_client, state, app_uuid).await?;
+    let count = PhotoClipService::embed_app(db, state, app_uuid).await?;
 
     info!("[photo_clip] Done: {count} photos processed");
 

@@ -24,7 +24,7 @@ pub async fn handle(
 
     info!("[photo_ocr] Starting OCR batch for app {app_id}");
 
-    let count = PhotoOcrService::ocr_app(db, &state.http_client, state, app_uuid).await?;
+    let count = PhotoOcrService::ocr_app(db, state, app_uuid).await?;
 
     info!("[photo_ocr] Done: {count} photos processed");
 
