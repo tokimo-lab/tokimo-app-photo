@@ -748,4 +748,42 @@ impl PhotoRepo {
 
         Ok(Page::new(items, total, page))
     }
+
+    /// List photos filtered by geo location fields.
+    pub async fn list_by_location(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        page: &PageInput,
+        province: Option<&str>,
+        city: Option<&str>,
+        district: Option<&str>,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let mut query = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false));
+
+        if let Some(prov) = province {
+            query = query.filter(photos::Column::GeoProvince.eq(prov));
+        }
+        if let Some(c) = city {
+            query = query.filter(photos::Column::GeoCity.eq(c));
+        }
+        if let Some(d) = district {
+            query = query.filter(photos::Column::GeoDistrict.eq(d));
+        }
+
+        let query = query
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
+            .await?;
+
+        Ok(Page::new(items, total, page))
+    }
 }

@@ -59,6 +59,18 @@ pub struct Model {
     pub created_at: Option<DateTimeWithTimeZone>,
     pub updated_at: Option<DateTimeWithTimeZone>,
     pub deleted_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_adcode: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_address: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_city: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_district: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_province: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_township: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
