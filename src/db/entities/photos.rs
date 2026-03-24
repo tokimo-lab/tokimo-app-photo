@@ -71,6 +71,7 @@ pub struct Model {
     pub geo_province: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub geo_township: Option<String>,
+    pub ocr_scanned_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -99,6 +100,8 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     PhotoAlbums,
+    #[sea_orm(has_many = "super::photo_ocr_results::Entity")]
+    PhotoOcrResults,
 }
 
 impl Related<super::apps::Entity> for Entity {
@@ -116,6 +119,12 @@ impl Related<super::file_systems::Entity> for Entity {
 impl Related<super::photo_albums::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::PhotoAlbums.def()
+    }
+}
+
+impl Related<super::photo_ocr_results::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoOcrResults.def()
     }
 }
 
