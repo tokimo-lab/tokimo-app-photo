@@ -68,13 +68,7 @@ export default function PhotoAppPage() {
     setSelectedIds(new Set());
     setIsSelecting(false);
     setSearchQuery("");
-    // Reset pagination on tab switch
-    setTimelinePage(1);
-    setFavPage(1);
-    setTrashPage(1);
-    accTimelineRef.current = [];
-    accFavRef.current = [];
-    accTrashRef.current = [];
+    // Don't reset pagination — each tab keeps its scroll position & loaded pages
   }, []);
 
   // ── Grid size state ──────────────────────────────────────────────────
@@ -252,11 +246,9 @@ export default function PhotoAppPage() {
   }, [photosQuery.data, timelinePage]);
 
   const allTimelinePhotosRaw =
-    timelinePage === 1 && photosQuery.data
-      ? photosQuery.data.items
-      : accTimelineRef.current.length > 0
-        ? accTimelineRef.current
-        : (photosQuery.data?.items ?? []);
+    accTimelineRef.current.length > 0
+      ? accTimelineRef.current
+      : (photosQuery.data?.items ?? []);
 
   const allTimelinePhotos = ocrFilterActive
     ? allTimelinePhotosRaw.filter((p) => ocrPhotoIds.has(p.id))
@@ -278,11 +270,9 @@ export default function PhotoAppPage() {
   }, [favoritesQuery.data, favPage]);
 
   const allFavPhotos =
-    favPage === 1 && favoritesQuery.data
-      ? favoritesQuery.data.items
-      : accFavRef.current.length > 0
-        ? accFavRef.current
-        : (favoritesQuery.data?.items ?? []);
+    accFavRef.current.length > 0
+      ? accFavRef.current
+      : (favoritesQuery.data?.items ?? []);
   const favHasMore = allFavPhotos.length < favTotal;
 
   // Accumulate trash photos across pages
@@ -299,11 +289,9 @@ export default function PhotoAppPage() {
   }, [trashedQuery.data, trashPage]);
 
   const allTrashPhotos =
-    trashPage === 1 && trashedQuery.data
-      ? trashedQuery.data.items
-      : accTrashRef.current.length > 0
-        ? accTrashRef.current
-        : (trashedQuery.data?.items ?? []);
+    accTrashRef.current.length > 0
+      ? accTrashRef.current
+      : (trashedQuery.data?.items ?? []);
   const trashHasMore = allTrashPhotos.length < trashTotal;
 
   const albums = albumsQuery.data ?? [];
