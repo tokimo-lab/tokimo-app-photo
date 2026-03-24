@@ -100,6 +100,10 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     PhotoAlbums,
+    #[sea_orm(has_one = "super::photo_clip_vectors::Entity")]
+    PhotoClipVectors,
+    #[sea_orm(has_many = "super::photo_faces::Entity")]
+    PhotoFaces,
     #[sea_orm(has_many = "super::photo_ocr_results::Entity")]
     PhotoOcrResults,
 }
@@ -119,6 +123,18 @@ impl Related<super::file_systems::Entity> for Entity {
 impl Related<super::photo_albums::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::PhotoAlbums.def()
+    }
+}
+
+impl Related<super::photo_clip_vectors::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoClipVectors.def()
+    }
+}
+
+impl Related<super::photo_faces::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoFaces.def()
     }
 }
 

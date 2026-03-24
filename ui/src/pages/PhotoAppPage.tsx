@@ -12,8 +12,10 @@ import {
   FolderOpen,
   Grid3x3,
   MapPin,
+  ScanText,
   Star,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -178,6 +180,34 @@ export default function PhotoAppPage() {
     { enabled: !!id && tab === "trash" },
   );
 
+  // ── OCR text search ──────────────────────────────────────────────────
+  const ocrQuery = api.photoSettings.ocrSearch.useQuery(
+    { appId: id!, q: debouncedSearch! },
+    {
+      enabled:
+        !!id &&
+        !!debouncedSearch &&
+        debouncedSearch.length >= 2 &&
+        tab === "timeline",
+    },
+  );
+
+  const ocrResults = ocrQuery.data ?? [];
+  const [ocrFilterActive, setOcrFilterActive] = useState(false);
+  const [ocrDismissed, setOcrDismissed] = useState(false);
+
+  // Reset OCR filter state when search changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger on search change
+  useEffect(() => {
+    setOcrFilterActive(false);
+    setOcrDismissed(false);
+  }, [debouncedSearch]);
+
+  const ocrPhotoIds = useMemo(
+    () => new Set(ocrResults.map((r) => r.photoId)),
+    [ocrResults],
+  );
+
   // Accumulate timeline photos across pages
   const timelineTotal = photosQuery.data?.total ?? 0;
   useEffect(() => {
@@ -191,13 +221,18 @@ export default function PhotoAppPage() {
     }
   }, [photosQuery.data, timelinePage]);
 
-  const allTimelinePhotos =
+  const allTimelinePhotosRaw =
     timelinePage === 1 && photosQuery.data
       ? photosQuery.data.items
       : accTimelineRef.current.length > 0
         ? accTimelineRef.current
         : (photosQuery.data?.items ?? []);
-  const timelineHasMore = allTimelinePhotos.length < timelineTotal;
+
+  const allTimelinePhotos = ocrFilterActive
+    ? allTimelinePhotosRaw.filter((p) => ocrPhotoIds.has(p.id))
+    : allTimelinePhotosRaw;
+  const timelineHasMore =
+    !ocrFilterActive && allTimelinePhotos.length < timelineTotal;
 
   // Accumulate favorites across pages
   const favTotal = favoritesQuery.data?.total ?? 0;
@@ -554,6 +589,52 @@ export default function PhotoAppPage() {
         })}
       </div>
 
+      {/* OCR search results banner */}
+      {tab === "timeline" &&
+        debouncedSearch.length >= 2 &&
+        !ocrDismissed &&
+        ocrResults.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/50">
+            <ScanText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            {ocrFilterActive ? (
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                正在显示 {ocrResults.length} 张 OCR 匹配照片（包含「
+                {debouncedSearch}」的文字）
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="cursor-pointer text-sm text-blue-700 hover:underline dark:text-blue-300"
+                onClick={() => setOcrFilterActive(true)}
+              >
+                还找到 {ocrResults.length} 张包含「{debouncedSearch}
+                」文字的照片，点击查看
+              </button>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              {ocrFilterActive && (
+                <button
+                  type="button"
+                  className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
+                  onClick={() => setOcrFilterActive(false)}
+                >
+                  显示全部
+                </button>
+              )}
+              <button
+                type="button"
+                className="cursor-pointer rounded p-0.5 text-blue-400 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+                onClick={() => {
+                  setOcrDismissed(true);
+                  setOcrFilterActive(false);
+                }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
       {/* Content */}
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
@@ -575,6 +656,8 @@ export default function PhotoAppPage() {
             onSeekToDate={seekToDate}
             targetRowHeight={targetRowHeight}
           />
+        ) : ocrFilterActive ? (
+          <Empty description="当前加载的照片中没有 OCR 匹配结果" />
         ) : (
           <Empty description="暂无照片，请先同步应用" />
         )
