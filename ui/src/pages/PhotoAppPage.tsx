@@ -58,6 +58,7 @@ export default function PhotoAppPage() {
   const { params } = useWindowNav();
   const id = params.appId as string | undefined;
   const message = useMessage();
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const [tab, setTabRaw] = useState<TabKey>(
     (params.tab as TabKey) || "timeline",
@@ -79,6 +80,20 @@ export default function PhotoAppPage() {
   // ── Grid size state ──────────────────────────────────────────────────
   const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
   const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
+
+  // Hide scrollbar on the scroll parent (photo uses timeline scrubber instead)
+  useEffect(() => {
+    let el = rootRef.current?.parentElement ?? null;
+    while (el) {
+      const ov = getComputedStyle(el).overflowY;
+      if (ov === "auto" || ov === "scroll") {
+        el.classList.add("hide-scrollbar");
+        const target = el;
+        return () => target.classList.remove("hide-scrollbar");
+      }
+      el = el.parentElement;
+    }
+  }, []);
 
   // ── Search state ─────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -591,7 +606,7 @@ export default function PhotoAppPage() {
   if (!id) return null;
 
   return (
-    <div className="space-y-3">
+    <div ref={rootRef} className="space-y-3">
       {/* Tab bar — iOS 26 style pill, centered */}
       <div className="relative flex items-center justify-center">
         <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
@@ -615,8 +630,8 @@ export default function PhotoAppPage() {
             );
           })}
         </div>
-        {/* Photo count — positioned absolutely so it doesn't affect centering */}
-        <div className="absolute right-0">
+        {/* Photo count — right-aligned, clear of timeline scrubber */}
+        <div className="absolute right-16 text-right">
           {tab === "timeline" && timelineTotal > 0 && (
             <Tag>{timelineTotal} 张</Tag>
           )}
