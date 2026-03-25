@@ -1183,6 +1183,7 @@ interface OcrBlock {
   w: number;
   h: number;
   chars: OcrCharPos[];
+  paragraphId: number;
 }
 
 interface OcrTextAnchor {
@@ -1265,7 +1266,7 @@ function ocrPositionAtPoint(
       return { blockIdx: i, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
     }
   }
-  // Nearest block — penalise blocks outside the anchor's column
+  // Nearest block — penalise blocks outside the anchor's paragraph
   const anchorB = anchorBlockIdx != null ? blocks[anchorBlockIdx] : null;
   let bestDist = Number.POSITIVE_INFINITY;
   let bestIdx = 0;
@@ -1275,8 +1276,11 @@ function ocrPositionAtPoint(
     const hd = px < b.x ? b.x - px : px > b.x + b.w ? px - b.x - b.w : 0;
     let d = vd * 3 + hd;
     if (anchorB) {
-      const overlap = b.x < anchorB.x + anchorB.w && b.x + b.w > anchorB.x;
-      if (!overlap) d += 10000;
+      const sameParagraph =
+        anchorB.paragraphId > 0 && b.paragraphId > 0
+          ? b.paragraphId === anchorB.paragraphId
+          : b.x < anchorB.x + anchorB.w && b.x + b.w > anchorB.x;
+      if (!sameParagraph) d += 10000;
     }
     if (d < bestDist) {
       bestDist = d;
@@ -1290,14 +1294,20 @@ function ocrPositionAtPoint(
   return { blockIdx: bestIdx, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
 }
 
-/** Check whether an intermediate block belongs to the same visual column
- *  as the start/end blocks.  Uses a small fixed padding — percentage-based
- *  padding is far too generous for wide paragraph blocks. */
-function isBlockInSelectionColumn(
+/** Check whether an intermediate block belongs to the same paragraph as the
+ *  start/end blocks.  When paragraphId > 0 (PP-OCRv5 with clustering), uses
+ *  exact paragraph match.  Falls back to spatial column heuristic for legacy
+ *  OCR results (paragraphId === 0). */
+function isBlockInSelectionParagraph(
   block: OcrBlock,
   startBlock: OcrBlock,
   endBlock: OcrBlock,
 ): boolean {
+  // PP-OCRv5 paragraph grouping — exact match
+  if (startBlock.paragraphId > 0 && endBlock.paragraphId > 0) {
+    return block.paragraphId === startBlock.paragraphId;
+  }
+  // Fallback: spatial column heuristic (for legacy v4 results)
   const xMin = Math.min(startBlock.x, endBlock.x);
   const xMax = Math.max(startBlock.x + startBlock.w, endBlock.x + endBlock.w);
   const pad = 50;
@@ -1320,7 +1330,7 @@ function extractOcrSelectedText(
   const parts: string[] = [];
   parts.push(startB.textChars.slice(sChar).join(""));
   for (let i = sBlock + 1; i < eBlock; i++) {
-    if (isBlockInSelectionColumn(blocks[i], startB, endB)) {
+    if (isBlockInSelectionParagraph(blocks[i], startB, endB)) {
       parts.push(blocks[i].text);
     }
   }
@@ -1346,7 +1356,7 @@ function computeOcrCharHighlights(
     if (
       i !== sBlock &&
       i !== eBlock &&
-      !isBlockInSelectionColumn(b, startB, endB)
+      !isBlockInSelectionParagraph(b, startB, endB)
     )
       continue;
     const from = i === sBlock ? sChar : 0;
@@ -1460,6 +1470,7 @@ function OcrBlockSelectLayer({
         w: bw,
         h: bh,
         chars,
+        paragraphId: r.paragraphId ?? 0,
       };
     });
   }, [sorted, imgRect, photoWidth, photoHeight]);

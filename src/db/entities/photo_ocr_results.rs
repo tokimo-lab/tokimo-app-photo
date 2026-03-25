@@ -22,6 +22,7 @@ pub struct Model {
     #[sea_orm(column_type = "Double", nullable)]
     pub score: Option<f64>,
     pub created_at: DateTimeWithTimeZone,
+    pub paragraph_id: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
