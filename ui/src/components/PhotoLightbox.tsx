@@ -179,8 +179,8 @@ export function PhotoLightbox({
       return;
     }
 
-    // Info panel won't be visible on mount (detail not loaded yet)
-    const target = computeCenterRect(photo.width, photo.height, false);
+    // Use showInfo (from localStorage) to compute correct target position
+    const target = computeCenterRect(photo.width, photo.height, showInfo);
     setFlyRect(thumbRect);
     setFlyTransition(false);
 
@@ -425,100 +425,115 @@ export function PhotoLightbox({
         </div>
 
         {/* ── Info panel (fixed-width side panel) ── */}
-        {showInfo && detail && (
+        {showInfo && (
           <div className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-neutral-900/95 text-sm text-white backdrop-blur">
-            {/* Sticky header */}
-            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
-              <span className="text-sm font-semibold text-neutral-300">
-                照片信息
-              </span>
-              {!editing ? (
-                <button
-                  type="button"
-                  onClick={startEdit}
-                  className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-400 hover:bg-white/10"
-                >
-                  编辑
-                </button>
-              ) : (
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={saveEdit}
-                    className="cursor-pointer rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-500"
-                  >
-                    保存
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditing(false)}
-                    className="cursor-pointer rounded px-2 py-0.5 text-xs text-neutral-400 hover:bg-white/10"
-                  >
-                    取消
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              <PhotoInfoPanel
-                detail={detail}
-                fallbackTitle={photo.title || photo.filename}
-                hoveredFaceId={hoveredFaceId}
-                onHoverFace={setHoveredFaceId}
-                onNavigateToPerson={onNavigateToPerson}
-                onRefreshComplete={() => {
-                  queryClient.invalidateQueries({
-                    queryKey: ["/api/photos/{id}"],
-                  });
-                  queryClient.invalidateQueries({
-                    queryKey: ["/api/photos/{id}/faces"],
-                  });
-                }}
-                editForm={
-                  editing ? (
-                    <div className="mb-4 space-y-2">
-                      <label className="block">
-                        <span className="mb-1 block text-xs text-neutral-500">
-                          标题
-                        </span>
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                          placeholder="照片标题"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1 block text-xs text-neutral-500">
-                          描述
-                        </span>
-                        <textarea
-                          value={editDesc}
-                          onChange={(e) => setEditDesc(e.target.value)}
-                          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                          rows={2}
-                          placeholder="照片描述"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1 block text-xs text-neutral-500">
-                          拍摄时间
-                        </span>
-                        <input
-                          type="datetime-local"
-                          value={editDate}
-                          onChange={(e) => setEditDate(e.target.value)}
-                          className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
-                        />
-                      </label>
+            {detail ? (
+              <>
+                {/* Sticky header */}
+                <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+                  <span className="text-sm font-semibold text-neutral-300">
+                    照片信息
+                  </span>
+                  {!editing ? (
+                    <button
+                      type="button"
+                      onClick={startEdit}
+                      className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-400 hover:bg-white/10"
+                    >
+                      编辑
+                    </button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={saveEdit}
+                        className="cursor-pointer rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-500"
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(false)}
+                        className="cursor-pointer rounded px-2 py-0.5 text-xs text-neutral-400 hover:bg-white/10"
+                      >
+                        取消
+                      </button>
                     </div>
-                  ) : null
-                }
-              />
-            </div>
+                  )}
+                </div>
+
+                {/* Scrollable content */}
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  <PhotoInfoPanel
+                    detail={detail}
+                    fallbackTitle={photo.title || photo.filename}
+                    hoveredFaceId={hoveredFaceId}
+                    onHoverFace={setHoveredFaceId}
+                    onNavigateToPerson={onNavigateToPerson}
+                    onRefreshComplete={() => {
+                      queryClient.invalidateQueries({
+                        queryKey: ["/api/photos/{id}"],
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: ["/api/photos/{id}/faces"],
+                      });
+                    }}
+                    editForm={
+                      editing ? (
+                        <div className="mb-4 space-y-2">
+                          <label className="block">
+                            <span className="mb-1 block text-xs text-neutral-500">
+                              标题
+                            </span>
+                            <input
+                              type="text"
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                              placeholder="照片标题"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs text-neutral-500">
+                              描述
+                            </span>
+                            <textarea
+                              value={editDesc}
+                              onChange={(e) => setEditDesc(e.target.value)}
+                              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                              rows={2}
+                              placeholder="照片描述"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs text-neutral-500">
+                              拍摄时间
+                            </span>
+                            <input
+                              type="datetime-local"
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                            />
+                          </label>
+                        </div>
+                      ) : null
+                    }
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+                  <span className="text-sm font-semibold text-neutral-300">
+                    照片信息
+                  </span>
+                </div>
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="text-xs text-neutral-500">加载中…</div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
