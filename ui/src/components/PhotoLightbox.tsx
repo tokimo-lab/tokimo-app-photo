@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PhotoFaceOutput, PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
@@ -283,6 +283,14 @@ export function PhotoLightbox({
   const contentVisible = animState === "open";
   const isExitFade = animState === "exiting" && flyRect == null;
 
+  // Compute the display size the image should occupy so the thumbnail
+  // scales UP to match the full-res layout (prevents tiny-thumbnail flash).
+  const thumbDisplaySize = useMemo(() => {
+    if (!photo.width || !photo.height) return undefined;
+    const rect = computeCenterRect(photo.width, photo.height, showInfo);
+    return { width: rect.width, height: rect.height };
+  }, [photo.width, photo.height, showInfo]);
+
   let backdropOpacity: number;
   if (animState === "open") {
     backdropOpacity = 1;
@@ -407,13 +415,14 @@ export function PhotoLightbox({
           <div className="flex flex-1 items-center justify-center p-12">
             {thumbSrc || fullSrc ? (
               <div className="relative inline-block max-h-full max-w-full">
-                {/* Thumbnail layer: stable size reference until full-res loads */}
+                {/* Thumbnail layer: scaled to full-res display size */}
                 {thumbSrc && !fullLoaded && (
                   <img
                     ref={fullLoaded ? undefined : imgRef}
                     src={thumbSrc}
                     alt={photo.title || photo.filename}
                     className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                    style={thumbDisplaySize}
                     draggable={false}
                   />
                 )}
