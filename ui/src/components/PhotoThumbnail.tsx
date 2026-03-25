@@ -42,6 +42,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
 
   return (
     <div
+      data-photo-id={photo.id}
       className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
         !loaded && src ? "skeleton-shimmer" : ""
       } ${fillContainer ? "h-full w-full" : "aspect-square"} ${
