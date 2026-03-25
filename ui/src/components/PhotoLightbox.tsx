@@ -807,13 +807,13 @@ export function PhotoLightbox({
                       imgRef={imgRef}
                     />
                   )}
-                {/* Live Text: selectable invisible OCR text (iOS-style) */}
+                {/* Live Text: block-based selectable OCR overlay (iOS-style) */}
                 {!isZoomed &&
                   ocrResults &&
                   ocrResults.length > 0 &&
                   detail?.width &&
                   detail?.height && (
-                    <OcrSelectableTextLayer
+                    <OcrBlockSelectLayer
                       ocrResults={ocrResults}
                       photoWidth={detail.width}
                       photoHeight={detail.height}
@@ -1157,12 +1157,12 @@ function OcrHighlightOverlay({
 }
 
 /**
- * iOS Live Text–style selectable text overlay.
- * Renders invisible text at OCR bounding box positions so users can
- * select, copy and right-click text directly on the photo.
- * Uses scaleX to stretch text to exactly match bounding box width (PDF.js technique).
+ * iOS Live Text–style block selection overlay.
+ * Renders invisible blocks at OCR bounding box positions. Custom mouse
+ * interaction: drag to select a rectangle region, blocks that intersect
+ * the rectangle are highlighted. Ctrl+C / right-click menu to copy.
  */
-function OcrSelectableTextLayer({
+function OcrBlockSelectLayer({
   ocrResults,
   photoWidth,
   photoHeight,
@@ -1173,23 +1173,31 @@ function OcrSelectableTextLayer({
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
 }) {
+  const layerRef = useRef<HTMLDivElement>(null);
   const [imgRect, setImgRect] = useState<{
     w: number;
     h: number;
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [dragState, setDragState] = useState<{
+    startX: number;
+    startY: number;
+    curX: number;
+    curY: number;
+  } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
+  // Measure rendered image rect
   useEffect(() => {
     const img = imgRef.current;
     if (!img) return;
-
     const measure = () => {
       const rect = img.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
       const imgAspect = photoWidth / photoHeight;
       const elemAspect = rect.width / rect.height;
-
       let renderedW: number;
       let renderedH: number;
       if (imgAspect > elemAspect) {
@@ -1199,7 +1207,6 @@ function OcrSelectableTextLayer({
         renderedH = rect.height;
         renderedW = rect.height * imgAspect;
       }
-
       setImgRect({
         w: renderedW,
         h: renderedH,
@@ -1207,7 +1214,6 @@ function OcrSelectableTextLayer({
         offsetY: (rect.height - renderedH) / 2,
       });
     };
-
     measure();
     img.addEventListener("load", measure);
     const observer = new ResizeObserver(measure);
@@ -1218,86 +1224,250 @@ function OcrSelectableTextLayer({
     };
   }, [imgRef, photoWidth, photoHeight]);
 
+  const sorted = useMemo(
+    () =>
+      [...ocrResults]
+        .filter((r) => r.x != null && r.y != null && r.w != null && r.h != null)
+        .sort((a, b) => {
+          const dy = (a.y ?? 0) - (b.y ?? 0);
+          return Math.abs(dy) > 5 ? dy : (a.x ?? 0) - (b.x ?? 0);
+        }),
+    [ocrResults],
+  );
+
+  // Compute display blocks from sorted OCR items + imgRect
+  const blocks = useMemo(() => {
+    if (!imgRect) return [];
+    const scX = imgRect.w / photoWidth;
+    const scY = imgRect.h / photoHeight;
+    return sorted.map((r) => ({
+      id: r.id,
+      text: r.text,
+      x: (r.x as number) * scX,
+      y: (r.y as number) * scY,
+      w: (r.w as number) * scX,
+      h: (r.h as number) * scY,
+    }));
+  }, [sorted, imgRect, photoWidth, photoHeight]);
+
+  // Build a stable ref for blocks so event handlers always see the latest
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
+  // Get selected text in reading order
+  const getSelectedText = useCallback(
+    (ids: Set<string>) => {
+      if (ids.size === 0) return "";
+      return blocksRef.current
+        .filter((b) => ids.has(b.id))
+        .map((b) => b.text)
+        .join("\n");
+    },
+    [], // blocksRef is a ref — stable
+  );
+
+  const handleCopy = useCallback(() => {
+    const text = getSelectedText(selectedIds);
+    if (text) navigator.clipboard.writeText(text);
+    setMenuPos(null);
+  }, [selectedIds, getSelectedText]);
+
+  // Keyboard shortcut: Ctrl+C / Escape
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        const text = getSelectedText(selectedIds);
+        if (text) navigator.clipboard.writeText(text);
+      }
+      if (e.key === "Escape") {
+        setSelectedIds(new Set());
+        setMenuPos(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedIds, getSelectedText]);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!menuPos) return;
+    const onClick = () => setMenuPos(null);
+    window.addEventListener("pointerdown", onClick);
+    return () => window.removeEventListener("pointerdown", onClick);
+  }, [menuPos]);
+
   if (!imgRect) return null;
 
-  const scaleX = imgRect.w / photoWidth;
-  const scaleY = imgRect.h / photoHeight;
+  // Helpers (pure functions, no hooks below here)
+  const rectsOverlap = (
+    ax: number,
+    ay: number,
+    aw: number,
+    ah: number,
+    bx: number,
+    by: number,
+    bw: number,
+    bh: number,
+  ) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 
-  const sorted = [...ocrResults]
-    .filter((r) => r.x != null && r.y != null && r.w != null && r.h != null)
-    .sort((a, b) => {
-      const dy = (a.y ?? 0) - (b.y ?? 0);
-      return Math.abs(dy) > 5 ? dy : (a.x ?? 0) - (b.x ?? 0);
-    });
-
-  return (
-    <div
-      className="ocr-text-layer absolute"
-      style={{
-        left: imgRect.offsetX,
-        top: imgRect.offsetY,
-        width: imgRect.w,
-        height: imgRect.h,
-      }}
-    >
-      {sorted.map((r) => (
-        <OcrTextSpan
-          key={r.id}
-          text={r.text}
-          left={(r.x as number) * scaleX}
-          top={(r.y as number) * scaleY}
-          targetW={(r.w as number) * scaleX}
-          targetH={(r.h as number) * scaleY}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Single OCR text span that measures itself and applies scaleX to match bbox. */
-function OcrTextSpan({
-  text,
-  left,
-  top,
-  targetW,
-  targetH,
-}: {
-  text: string;
-  left: number;
-  top: number;
-  targetW: number;
-  targetH: number;
-}) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [sx, setSx] = useState(1);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Measure the natural text width (before any scaleX)
-    const natural = el.scrollWidth;
-    if (natural > 0) {
-      setSx(targetW / natural);
+  const findBlocksInRect = (x1: number, y1: number, x2: number, y2: number) => {
+    const rx = Math.min(x1, x2);
+    const ry = Math.min(y1, y2);
+    const rw = Math.abs(x2 - x1);
+    const rh = Math.abs(y2 - y1);
+    const ids = new Set<string>();
+    for (const b of blocks) {
+      if (rectsOverlap(rx, ry, rw, rh, b.x, b.y, b.w, b.h)) {
+        ids.add(b.id);
+      }
     }
-  }, [targetW]);
+    return ids;
+  };
+
+  const findBlockAtPoint = (px: number, py: number) =>
+    blocks.find(
+      (b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h,
+    );
+
+  const getLayerCoords = (e: React.MouseEvent) => {
+    const layer = layerRef.current;
+    if (!layer) return { x: 0, y: 0 };
+    const rect = layer.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    setMenuPos(null);
+    const { x, y } = getLayerCoords(e);
+    setDragState({ startX: x, startY: y, curX: x, curY: y });
+    setSelectedIds(new Set());
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    e.stopPropagation();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragState) return;
+    const { x, y } = getLayerCoords(e);
+    setDragState((prev) => (prev ? { ...prev, curX: x, curY: y } : null));
+    const ids = findBlocksInRect(dragState.startX, dragState.startY, x, y);
+    setSelectedIds(ids);
+    e.stopPropagation();
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragState) return;
+    const { x, y } = getLayerCoords(e);
+    const dx = Math.abs(x - dragState.startX);
+    const dy = Math.abs(y - dragState.startY);
+    if (dx < 3 && dy < 3) {
+      const block = findBlockAtPoint(x, y);
+      setSelectedIds(block ? new Set([block.id]) : new Set());
+    }
+    setDragState(null);
+    e.stopPropagation();
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const { x, y } = getLayerCoords(e);
+    if (selectedIds.size === 0) {
+      const block = findBlockAtPoint(x, y);
+      if (block) {
+        setSelectedIds(new Set([block.id]));
+      } else {
+        return;
+      }
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  };
+
+  // Drag selection rectangle (visual feedback)
+  let dragRect: { x: number; y: number; w: number; h: number } | null = null;
+  if (dragState) {
+    const dx = Math.abs(dragState.curX - dragState.startX);
+    const dy = Math.abs(dragState.curY - dragState.startY);
+    if (dx > 3 || dy > 3) {
+      dragRect = {
+        x: Math.min(dragState.startX, dragState.curX),
+        y: Math.min(dragState.startY, dragState.curY),
+        w: dx,
+        h: dy,
+      };
+    }
+  }
 
   return (
-    <span
-      ref={ref}
-      className="absolute cursor-text select-text"
-      style={{
-        left,
-        top,
-        height: targetH,
-        fontSize: `${targetH}px`,
-        lineHeight: `${targetH}px`,
-        transform: `scaleX(${sx})`,
-        transformOrigin: "0% 0%",
-        whiteSpace: "pre",
-        color: "transparent",
-      }}
-    >
-      {text}
-    </span>
+    <>
+      <div
+        ref={layerRef}
+        role="application"
+        className="absolute"
+        style={{
+          left: imgRect.offsetX,
+          top: imgRect.offsetY,
+          width: imgRect.w,
+          height: imgRect.h,
+          cursor: "text",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onContextMenu={handleContextMenu}
+      >
+        {/* Selected block highlights */}
+        {blocks.map(
+          (b) =>
+            selectedIds.has(b.id) && (
+              <div
+                key={b.id}
+                className="pointer-events-none absolute rounded-sm"
+                style={{
+                  left: b.x,
+                  top: b.y,
+                  width: b.w,
+                  height: b.h,
+                  background: "rgba(56, 139, 253, 0.35)",
+                }}
+              />
+            ),
+        )}
+        {/* Drag selection rectangle */}
+        {dragRect && (
+          <div
+            className="pointer-events-none absolute border border-blue-400/50"
+            style={{
+              left: dragRect.x,
+              top: dragRect.y,
+              width: dragRect.w,
+              height: dragRect.h,
+              background: "rgba(56, 139, 253, 0.08)",
+            }}
+          />
+        )}
+      </div>
+      {/* Context menu portal */}
+      {menuPos &&
+        selectedIds.size > 0 &&
+        createPortal(
+          <div
+            className="fixed z-[99999] min-w-[120px] rounded-md border border-white/20 bg-neutral-800 py-1 shadow-xl"
+            style={{ left: menuPos.x, top: menuPos.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-white hover:bg-white/10"
+              onClick={handleCopy}
+            >
+              复制文字
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
