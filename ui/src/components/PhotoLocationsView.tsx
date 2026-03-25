@@ -1,9 +1,9 @@
 import { Button, Empty, Spin } from "@tokiomo/components";
 import { ChevronRight, MapPin, Navigation } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useWindowNav } from "@/system";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { useWindowNav } from "../window-manager/WindowNavContext";
 import { PhotoTimeline } from "./PhotoTimeline";
 import { PAGE_SIZE } from "./photo-utils";
 

@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MenuBarConfig } from "@/system";
+import { useMenuBar, useMessage, useWindowNav } from "@/system";
 import { AlbumPickerDialog } from "../../components/photo/AlbumPickerDialog";
 import { PhotoAlbumsView } from "../../components/photo/PhotoAlbumsView";
 import { PhotoFoldersView } from "../../components/photo/PhotoFoldersView";
@@ -29,11 +31,8 @@ import {
 } from "../../components/photo/PhotoSizeSlider";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
-import { useWindowNav } from "../../components/window-manager/WindowNavContext";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { useMenuBar, useMessage } from "../../hooks";
-import type { MenuBarConfig } from "../../hooks/MenuBarContext";
 
 type TabKey =
   | "timeline"

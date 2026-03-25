@@ -4,8 +4,8 @@ import { Empty, Spin } from "@tokiomo/components";
 import { Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
+import { useWindowNav } from "@/system";
 import { api } from "../../generated/rust-api";
-import { useWindowNav } from "../window-manager/WindowNavContext";
 
 // ── Types ────────────────────────────────────────────────────────────────
 type MapTheme = "auto" | "light" | "dark" | "satellite";
