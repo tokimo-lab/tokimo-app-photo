@@ -275,8 +275,6 @@ export function PhotoLightbox({
 
   // Don't start loading full-res until enter animation finishes
   const shouldLoadFull = animState !== "entering";
-  // Show thumbnail until full-res is ready
-  const displaySrc = fullLoaded ? fullSrc : (thumbSrc ?? fullSrc);
 
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
@@ -407,27 +405,37 @@ export function PhotoLightbox({
 
           {/* Image */}
           <div className="flex flex-1 items-center justify-center p-12">
-            {displaySrc ? (
+            {thumbSrc || fullSrc ? (
               <div className="relative inline-block max-h-full max-w-full">
-                <img
-                  ref={imgRef}
-                  src={displaySrc}
-                  alt={photo.title || photo.filename}
-                  className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
-                  draggable={false}
-                />
-                {/* Hidden preloader: load full-res in background, swap when ready */}
-                {shouldLoadFull &&
-                  !fullLoaded &&
-                  fullSrc &&
-                  fullSrc !== displaySrc && (
-                    <img
-                      src={fullSrc}
-                      alt=""
-                      className="hidden"
-                      onLoad={() => setFullLoaded(true)}
-                    />
-                  )}
+                {/* Thumbnail layer: stable size reference until full-res loads */}
+                {thumbSrc && !fullLoaded && (
+                  <img
+                    ref={fullLoaded ? undefined : imgRef}
+                    src={thumbSrc}
+                    alt={photo.title || photo.filename}
+                    className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                    draggable={false}
+                  />
+                )}
+                {/* Full-res layer: replaces thumbnail once loaded */}
+                {fullLoaded && fullSrc && (
+                  <img
+                    ref={imgRef}
+                    src={fullSrc}
+                    alt={photo.title || photo.filename}
+                    className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                    draggable={false}
+                  />
+                )}
+                {/* Hidden preloader: load full-res in background */}
+                {shouldLoadFull && !fullLoaded && fullSrc && (
+                  <img
+                    src={fullSrc}
+                    alt=""
+                    className="hidden"
+                    onLoad={() => setFullLoaded(true)}
+                  />
+                )}
                 {hoveredFaceId != null &&
                   faces &&
                   detail?.width &&
