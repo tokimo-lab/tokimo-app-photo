@@ -114,6 +114,8 @@ export function PhotoInfoPanel({
   editForm,
   hoveredFaceId,
   onHoverFace,
+  hoveredOcrId,
+  onHoverOcr,
   onRefreshComplete,
   onNavigateToPerson,
 }: {
@@ -122,6 +124,8 @@ export function PhotoInfoPanel({
   editForm: ReactNode | null;
   hoveredFaceId: number | null;
   onHoverFace: (faceId: number | null) => void;
+  hoveredOcrId?: string | null;
+  onHoverOcr?: (ocrId: string | null) => void;
   onRefreshComplete?: () => void;
   onNavigateToPerson?: (personId: string) => void;
 }) {
@@ -316,7 +320,13 @@ export function PhotoInfoPanel({
               {ocrResults.map((r) => (
                 <p
                   key={r.id}
-                  className="rounded bg-white/5 px-2 py-1 text-sm leading-relaxed text-white/80"
+                  className={`cursor-default rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+                    hoveredOcrId === r.id
+                      ? "bg-emerald-400/15 text-white"
+                      : "bg-white/5 text-white/80 hover:bg-white/10"
+                  }`}
+                  onMouseEnter={() => onHoverOcr?.(r.id)}
+                  onMouseLeave={() => onHoverOcr?.(null)}
                 >
                   {r.text}
                   {r.score != null && (

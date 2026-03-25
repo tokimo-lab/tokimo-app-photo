@@ -2,7 +2,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { PhotoFaceOutput, PhotoOutput } from "../../generated/rust-api";
+import type {
+  PhotoFaceOutput,
+  PhotoOcrResultItem,
+  PhotoOutput,
+} from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { THUMB_WIDTH } from "./photo-utils";
@@ -105,6 +109,7 @@ export function PhotoLightbox({
     });
   }, []);
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
+  const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
   // ── Fly animation state ────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ export function PhotoLightbox({
   // ── Progressive image loading: thumbnail first, then full-res ─────────────
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
+  const [fullDecoded, setFullDecoded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0); // 0..1
   const prevPhotoId = useRef(photo.id);
   const abortRef = useRef<AbortController | null>(null);
@@ -132,6 +138,7 @@ export function PhotoLightbox({
   if (prevPhotoId.current !== photo.id) {
     prevPhotoId.current = photo.id;
     setFullLoaded(false);
+    setFullDecoded(false);
     setLoadProgress(0);
     if (fullBlobUrl) {
       URL.revokeObjectURL(fullBlobUrl);
@@ -154,6 +161,12 @@ export function PhotoLightbox({
     { enabled: showInfo },
   );
   const faces = facesQuery.data;
+
+  const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
+    { photoId: photo.id },
+    { enabled: showInfo },
+  );
+  const ocrResults = ocrQuery.data;
 
   // ── Edit mode state ──────────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
@@ -496,10 +509,10 @@ export function PhotoLightbox({
           <div className="flex flex-1 items-center justify-center p-12">
             {thumbSrc || fullSrc ? (
               <div className="relative inline-block max-h-full max-w-full">
-                {/* Thumbnail layer: scaled to full-res display size */}
-                {thumbSrc && !fullLoaded && (
+                {/* Thumbnail layer: stays visible until full-res is decoded */}
+                {thumbSrc && !fullDecoded && (
                   <img
-                    ref={fullLoaded ? undefined : imgRef}
+                    ref={fullDecoded ? undefined : imgRef}
                     src={thumbSrc}
                     alt={photo.title || photo.filename}
                     className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
@@ -507,14 +520,15 @@ export function PhotoLightbox({
                     draggable={false}
                   />
                 )}
-                {/* Full-res layer: replaces thumbnail once loaded */}
-                {fullLoaded && fullBlobUrl && (
+                {/* Full-res layer: starts rendering once blob URL is ready */}
+                {fullBlobUrl && (
                   <img
-                    ref={imgRef}
+                    ref={fullDecoded ? imgRef : undefined}
                     src={fullBlobUrl}
                     alt={photo.title || photo.filename}
-                    className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                    className={`max-h-[calc(100vh-6rem)] max-w-full select-none object-contain ${!fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
                     draggable={false}
+                    onLoad={() => setFullDecoded(true)}
                   />
                 )}
                 {/* Real download progress bar */}
@@ -538,6 +552,18 @@ export function PhotoLightbox({
                     <FaceHighlightOverlay
                       faces={faces}
                       hoveredFaceId={hoveredFaceId}
+                      photoWidth={detail.width}
+                      photoHeight={detail.height}
+                      imgRef={imgRef}
+                    />
+                  )}
+                {hoveredOcrId != null &&
+                  ocrResults &&
+                  detail?.width &&
+                  detail?.height && (
+                    <OcrHighlightOverlay
+                      ocrResults={ocrResults}
+                      hoveredOcrId={hoveredOcrId}
                       photoWidth={detail.width}
                       photoHeight={detail.height}
                       imgRef={imgRef}
@@ -600,6 +626,8 @@ export function PhotoLightbox({
                     fallbackTitle={photo.title || photo.filename}
                     hoveredFaceId={hoveredFaceId}
                     onHoverFace={setHoveredFaceId}
+                    hoveredOcrId={hoveredOcrId}
+                    onHoverOcr={setHoveredOcrId}
                     onNavigateToPerson={onNavigateToPerson}
                     onRefreshComplete={() => {
                       queryClient.invalidateQueries({
@@ -607,6 +635,9 @@ export function PhotoLightbox({
                       });
                       queryClient.invalidateQueries({
                         queryKey: ["/api/photos/{id}/faces"],
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: ["/api/photos/{id}/ocr-results"],
                       });
                     }}
                     editForm={
@@ -763,6 +794,104 @@ function FaceHighlightOverlay({
               top: (face.y - pad) * scaleY,
               width: (face.w + pad * 2) * scaleX,
               height: (face.h + pad * 2) * scaleY,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** Overlay that highlights OCR bounding box regions on the image. */
+function OcrHighlightOverlay({
+  ocrResults,
+  hoveredOcrId,
+  photoWidth,
+  photoHeight,
+  imgRef,
+}: {
+  ocrResults: PhotoOcrResultItem[];
+  hoveredOcrId: string;
+  photoWidth: number;
+  photoHeight: number;
+  imgRef: React.RefObject<HTMLImageElement | null>;
+}) {
+  const [imgRect, setImgRect] = useState<{
+    w: number;
+    h: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    const measure = () => {
+      const rect = img.getBoundingClientRect();
+      const parent = img.parentElement?.getBoundingClientRect();
+      if (!parent) return;
+      const imgAspect = photoWidth / photoHeight;
+      const elemAspect = rect.width / rect.height;
+
+      let renderedW: number;
+      let renderedH: number;
+      if (imgAspect > elemAspect) {
+        renderedW = rect.width;
+        renderedH = rect.width / imgAspect;
+      } else {
+        renderedH = rect.height;
+        renderedW = rect.height * imgAspect;
+      }
+
+      setImgRect({
+        w: renderedW,
+        h: renderedH,
+        offsetX: (rect.width - renderedW) / 2,
+        offsetY: (rect.height - renderedH) / 2,
+      });
+    };
+
+    measure();
+    img.addEventListener("load", measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(img);
+    return () => {
+      img.removeEventListener("load", measure);
+      observer.disconnect();
+    };
+  }, [imgRef, photoWidth, photoHeight]);
+
+  if (!imgRect) return null;
+
+  const scaleX = imgRect.w / photoWidth;
+  const scaleY = imgRect.h / photoHeight;
+
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left: imgRect.offsetX,
+        top: imgRect.offsetY,
+        width: imgRect.w,
+        height: imgRect.h,
+      }}
+    >
+      {ocrResults.map((r) => {
+        if (r.id !== hoveredOcrId) return null;
+        if (r.x == null || r.y == null || r.w == null || r.h == null)
+          return null;
+
+        const pad = 4;
+        return (
+          <div
+            key={r.id}
+            className="absolute rounded border-2 border-emerald-400 bg-emerald-400/15 shadow-[0_0_12px_rgba(52,211,153,0.4)]"
+            style={{
+              left: r.x * scaleX - pad,
+              top: r.y * scaleY - pad,
+              width: r.w * scaleX + pad * 2,
+              height: r.h * scaleY + pad * 2,
             }}
           />
         );
