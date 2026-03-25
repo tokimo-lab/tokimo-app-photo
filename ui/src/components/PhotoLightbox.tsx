@@ -1156,11 +1156,185 @@ function OcrHighlightOverlay({
   );
 }
 
+// ---- Character-level OCR selection helpers ----
+
+let _ocrMeasureCtx: CanvasRenderingContext2D | null = null;
+function getOcrMeasureCtx(): CanvasRenderingContext2D {
+  if (!_ocrMeasureCtx) {
+    _ocrMeasureCtx = document.createElement("canvas").getContext("2d")!;
+  }
+  return _ocrMeasureCtx;
+}
+
+interface OcrCharPos {
+  /** Offset from block left edge in display pixels */
+  x: number;
+  /** Display width of this character */
+  w: number;
+}
+
+interface OcrBlock {
+  id: string;
+  text: string;
+  /** Array.from(text) — handles surrogate pairs */
+  textChars: string[];
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  chars: OcrCharPos[];
+}
+
+interface OcrTextAnchor {
+  blockIdx: number;
+  charIdx: number;
+}
+
+/** Estimate per-character positions within a block using canvas measureText */
+function measureOcrCharPositions(
+  text: string,
+  blockW: number,
+  blockH: number,
+): { chars: OcrCharPos[]; textChars: string[] } {
+  const textChars = Array.from(text);
+  if (textChars.length === 0) return { chars: [], textChars };
+  const ctx = getOcrMeasureCtx();
+  ctx.font = `${Math.round(blockH)}px sans-serif`;
+  let totalW = 0;
+  const widths: number[] = [];
+  for (const ch of textChars) {
+    const w = ctx.measureText(ch).width;
+    widths.push(w);
+    totalW += w;
+  }
+  const scale = totalW > 0 ? blockW / totalW : 1;
+  const chars: OcrCharPos[] = [];
+  let cumX = 0;
+  for (const w of widths) {
+    const sw = w * scale;
+    chars.push({ x: cumX, w: sw });
+    cumX += sw;
+  }
+  return { chars, textChars };
+}
+
+/** Find the character index at a local X position within a block */
+function ocrCharIdxAtX(chars: OcrCharPos[], localX: number): number {
+  for (let i = 0; i < chars.length; i++) {
+    if (localX < chars[i].x + chars[i].w / 2) return i;
+  }
+  return chars.length;
+}
+
+function normalizeOcrAnchors(
+  a: OcrTextAnchor,
+  b: OcrTextAnchor,
+): { sBlock: number; sChar: number; eBlock: number; eChar: number } {
+  if (
+    a.blockIdx < b.blockIdx ||
+    (a.blockIdx === b.blockIdx && a.charIdx <= b.charIdx)
+  ) {
+    return {
+      sBlock: a.blockIdx,
+      sChar: a.charIdx,
+      eBlock: b.blockIdx,
+      eChar: b.charIdx,
+    };
+  }
+  return {
+    sBlock: b.blockIdx,
+    sChar: b.charIdx,
+    eBlock: a.blockIdx,
+    eChar: a.charIdx,
+  };
+}
+
+/** Find the block+char position nearest to a layer-local coordinate */
+function ocrPositionAtPoint(
+  blocks: OcrBlock[],
+  px: number,
+  py: number,
+): OcrTextAnchor | null {
+  if (blocks.length === 0) return null;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+      return { blockIdx: i, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
+    }
+  }
+  // Nearest block (weight vertical proximity 3x)
+  let bestDist = Number.POSITIVE_INFINITY;
+  let bestIdx = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const vd = py < b.y ? b.y - py : py > b.y + b.h ? py - b.y - b.h : 0;
+    const hd = px < b.x ? b.x - px : px > b.x + b.w ? px - b.x - b.w : 0;
+    const d = vd * 3 + hd;
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  const b = blocks[bestIdx];
+  if (px <= b.x) return { blockIdx: bestIdx, charIdx: 0 };
+  if (px >= b.x + b.w)
+    return { blockIdx: bestIdx, charIdx: b.textChars.length };
+  return { blockIdx: bestIdx, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
+}
+
+/** Extract selected text for a character-level range */
+function extractOcrSelectedText(
+  blocks: OcrBlock[],
+  anchor: OcrTextAnchor,
+  focus: OcrTextAnchor,
+): string {
+  const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(anchor, focus);
+  if (sBlock === eBlock && sChar === eChar) return "";
+  if (sBlock === eBlock) {
+    return blocks[sBlock].textChars.slice(sChar, eChar).join("");
+  }
+  const parts: string[] = [];
+  parts.push(blocks[sBlock].textChars.slice(sChar).join(""));
+  for (let i = sBlock + 1; i < eBlock; i++) {
+    parts.push(blocks[i].text);
+  }
+  parts.push(blocks[eBlock].textChars.slice(0, eChar).join(""));
+  return parts.join("\n");
+}
+
+/** Compute per-character highlight rectangles */
+function computeOcrCharHighlights(
+  blocks: OcrBlock[],
+  anchor: OcrTextAnchor,
+  focus: OcrTextAnchor,
+): { x: number; y: number; w: number; h: number; key: string }[] {
+  const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(anchor, focus);
+  if (sBlock === eBlock && sChar === eChar) return [];
+  const out: { x: number; y: number; w: number; h: number; key: string }[] = [];
+  for (let i = sBlock; i <= eBlock; i++) {
+    const b = blocks[i];
+    if (b.chars.length === 0) continue;
+    const from = i === sBlock ? sChar : 0;
+    const to = i === eBlock ? eChar : b.textChars.length;
+    if (from >= to) continue;
+    const x0 = from < b.chars.length ? b.chars[from].x : b.w;
+    const x1 = to >= b.chars.length ? b.w : b.chars[to].x;
+    out.push({
+      x: b.x + x0,
+      y: b.y,
+      w: x1 - x0,
+      h: b.h,
+      key: `hl-${i}-${from}-${to}`,
+    });
+  }
+  return out;
+}
+
 /**
- * iOS Live Text–style block selection overlay.
- * Renders invisible blocks at OCR bounding box positions. Custom mouse
- * interaction: drag to select a rectangle region, blocks that intersect
- * the rectangle are highlighted. Ctrl+C / right-click menu to copy.
+ * iOS Live Text style character-level selection overlay.
+ * Estimates per-character positions via canvas measureText and supports
+ * precise drag selection across OCR blocks. Double-click selects a whole
+ * block, right-click shows copy menu.
  */
 function OcrBlockSelectLayer({
   ocrResults,
@@ -1180,14 +1354,12 @@ function OcrBlockSelectLayer({
     offsetX: number;
     offsetY: number;
   } | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [dragState, setDragState] = useState<{
-    startX: number;
-    startY: number;
-    curX: number;
-    curY: number;
+  const [selection, setSelection] = useState<{
+    anchor: OcrTextAnchor;
+    focus: OcrTextAnchor;
   } | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingRef = useRef(false);
 
   // Measure rendered image rect
   useEffect(() => {
@@ -1235,60 +1407,63 @@ function OcrBlockSelectLayer({
     [ocrResults],
   );
 
-  // Compute display blocks from sorted OCR items + imgRect
+  // Build blocks with per-character positions
   const blocks = useMemo(() => {
     if (!imgRect) return [];
     const scX = imgRect.w / photoWidth;
     const scY = imgRect.h / photoHeight;
-    return sorted.map((r) => ({
-      id: r.id,
-      text: r.text,
-      x: (r.x as number) * scX,
-      y: (r.y as number) * scY,
-      w: (r.w as number) * scX,
-      h: (r.h as number) * scY,
-    }));
+    return sorted.map((r): OcrBlock => {
+      const bw = (r.w as number) * scX;
+      const bh = (r.h as number) * scY;
+      const { chars, textChars } = measureOcrCharPositions(r.text, bw, bh);
+      return {
+        id: r.id,
+        text: r.text,
+        textChars,
+        x: (r.x as number) * scX,
+        y: (r.y as number) * scY,
+        w: bw,
+        h: bh,
+        chars,
+      };
+    });
   }, [sorted, imgRect, photoWidth, photoHeight]);
 
-  // Build a stable ref for blocks so event handlers always see the latest
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
 
-  // Get selected text in reading order
-  const getSelectedText = useCallback(
-    (ids: Set<string>) => {
-      if (ids.size === 0) return "";
-      return blocksRef.current
-        .filter((b) => ids.has(b.id))
-        .map((b) => b.text)
-        .join("\n");
-    },
-    [], // blocksRef is a ref — stable
-  );
+  const getSelectedText = useCallback(() => {
+    const sel = selectionRef.current;
+    const blks = blocksRef.current;
+    if (!sel) return "";
+    return extractOcrSelectedText(blks, sel.anchor, sel.focus);
+  }, []);
 
   const handleCopy = useCallback(() => {
-    const text = getSelectedText(selectedIds);
+    const text = getSelectedText();
     if (text) navigator.clipboard.writeText(text);
     setMenuPos(null);
-  }, [selectedIds, getSelectedText]);
+  }, [getSelectedText]);
 
-  // Keyboard shortcut: Ctrl+C / Escape
+  // Keyboard: Ctrl+C / Escape
   useEffect(() => {
-    if (selectedIds.size === 0) return;
+    if (!selection) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "c") {
         e.preventDefault();
-        const text = getSelectedText(selectedIds);
+        const text = getSelectedText();
         if (text) navigator.clipboard.writeText(text);
       }
       if (e.key === "Escape") {
-        setSelectedIds(new Set());
+        setSelection(null);
         setMenuPos(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIds, getSelectedText]);
+  }, [selection, getSelectedText]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -1300,36 +1475,7 @@ function OcrBlockSelectLayer({
 
   if (!imgRect) return null;
 
-  // Helpers (pure functions, no hooks below here)
-  const rectsOverlap = (
-    ax: number,
-    ay: number,
-    aw: number,
-    ah: number,
-    bx: number,
-    by: number,
-    bw: number,
-    bh: number,
-  ) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-
-  const findBlocksInRect = (x1: number, y1: number, x2: number, y2: number) => {
-    const rx = Math.min(x1, x2);
-    const ry = Math.min(y1, y2);
-    const rw = Math.abs(x2 - x1);
-    const rh = Math.abs(y2 - y1);
-    const ids = new Set<string>();
-    for (const b of blocks) {
-      if (rectsOverlap(rx, ry, rw, rh, b.x, b.y, b.w, b.h)) {
-        ids.add(b.id);
-      }
-    }
-    return ids;
-  };
-
-  const findBlockAtPoint = (px: number, py: number) =>
-    blocks.find(
-      (b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h,
-    );
+  // --- Pure helpers + event handlers (no hooks below) ---
 
   const getLayerCoords = (e: React.MouseEvent) => {
     const layer = layerRef.current;
@@ -1338,67 +1484,95 @@ function OcrBlockSelectLayer({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
+  const hitBlockIdx = (px: number, py: number) =>
+    blocks.findIndex(
+      (b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h,
+    );
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     setMenuPos(null);
     const { x, y } = getLayerCoords(e);
-    setDragState({ startX: x, startY: y, curX: x, curY: y });
-    setSelectedIds(new Set());
+    const idx = hitBlockIdx(x, y);
+    if (idx >= 0) {
+      const charIdx = ocrCharIdxAtX(blocks[idx].chars, x - blocks[idx].x);
+      const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
+      setSelection({ anchor, focus: anchor });
+      isDraggingRef.current = true;
+    } else {
+      setSelection(null);
+      isDraggingRef.current = false;
+    }
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     e.stopPropagation();
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!dragState) return;
+    if (!isDraggingRef.current) return;
     const { x, y } = getLayerCoords(e);
-    setDragState((prev) => (prev ? { ...prev, curX: x, curY: y } : null));
-    const ids = findBlocksInRect(dragState.startX, dragState.startY, x, y);
-    setSelectedIds(ids);
+    const pos = ocrPositionAtPoint(blocks, x, y);
+    if (pos) {
+      setSelection((prev) =>
+        prev ? { anchor: prev.anchor, focus: pos } : null,
+      );
+    }
     e.stopPropagation();
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!dragState) return;
+    isDraggingRef.current = false;
+    e.stopPropagation();
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
     const { x, y } = getLayerCoords(e);
-    const dx = Math.abs(x - dragState.startX);
-    const dy = Math.abs(y - dragState.startY);
-    if (dx < 3 && dy < 3) {
-      const block = findBlockAtPoint(x, y);
-      setSelectedIds(block ? new Set([block.id]) : new Set());
+    const idx = hitBlockIdx(x, y);
+    if (idx >= 0) {
+      setSelection({
+        anchor: { blockIdx: idx, charIdx: 0 },
+        focus: { blockIdx: idx, charIdx: blocks[idx].textChars.length },
+      });
     }
-    setDragState(null);
     e.stopPropagation();
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
     const { x, y } = getLayerCoords(e);
-    if (selectedIds.size === 0) {
-      const block = findBlockAtPoint(x, y);
-      if (block) {
-        setSelectedIds(new Set([block.id]));
-      } else {
+    const hasNonEmptySelection =
+      selection &&
+      !(
+        selection.anchor.blockIdx === selection.focus.blockIdx &&
+        selection.anchor.charIdx === selection.focus.charIdx
+      );
+    if (hasNonEmptySelection) {
+      const idx = hitBlockIdx(x, y);
+      const { sBlock, eBlock } = normalizeOcrAnchors(
+        selection.anchor,
+        selection.focus,
+      );
+      if (idx >= sBlock && idx <= eBlock) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenuPos({ x: e.clientX, y: e.clientY });
         return;
       }
     }
-    e.preventDefault();
-    e.stopPropagation();
-    setMenuPos({ x: e.clientX, y: e.clientY });
+    // Select entire block under cursor
+    const idx = hitBlockIdx(x, y);
+    if (idx >= 0) {
+      setSelection({
+        anchor: { blockIdx: idx, charIdx: 0 },
+        focus: { blockIdx: idx, charIdx: blocks[idx].textChars.length },
+      });
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuPos({ x: e.clientX, y: e.clientY });
+    }
   };
 
-  // Drag selection rectangle (visual feedback)
-  let dragRect: { x: number; y: number; w: number; h: number } | null = null;
-  if (dragState) {
-    const dx = Math.abs(dragState.curX - dragState.startX);
-    const dy = Math.abs(dragState.curY - dragState.startY);
-    if (dx > 3 || dy > 3) {
-      dragRect = {
-        x: Math.min(dragState.startX, dragState.curX),
-        y: Math.min(dragState.startY, dragState.curY),
-        w: dx,
-        h: dy,
-      };
-    }
-  }
+  const highlights = selection
+    ? computeOcrCharHighlights(blocks, selection.anchor, selection.focus)
+    : [];
 
   return (
     <>
@@ -1416,42 +1590,25 @@ function OcrBlockSelectLayer({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
       >
-        {/* Selected block highlights */}
-        {blocks.map(
-          (b) =>
-            selectedIds.has(b.id) && (
-              <div
-                key={b.id}
-                className="pointer-events-none absolute rounded-sm"
-                style={{
-                  left: b.x,
-                  top: b.y,
-                  width: b.w,
-                  height: b.h,
-                  background: "rgba(56, 139, 253, 0.35)",
-                }}
-              />
-            ),
-        )}
-        {/* Drag selection rectangle */}
-        {dragRect && (
+        {highlights.map((hl) => (
           <div
-            className="pointer-events-none absolute border border-blue-400/50"
+            key={hl.key}
+            className="pointer-events-none absolute rounded-[2px]"
             style={{
-              left: dragRect.x,
-              top: dragRect.y,
-              width: dragRect.w,
-              height: dragRect.h,
-              background: "rgba(56, 139, 253, 0.08)",
+              left: hl.x,
+              top: hl.y,
+              width: hl.w,
+              height: hl.h,
+              background: "rgba(56, 139, 253, 0.35)",
             }}
           />
-        )}
+        ))}
       </div>
-      {/* Context menu portal */}
       {menuPos &&
-        selectedIds.size > 0 &&
+        selection &&
         createPortal(
           <div
             className="fixed z-[99999] min-w-[120px] rounded-md border border-white/20 bg-neutral-800 py-1 shadow-xl"
