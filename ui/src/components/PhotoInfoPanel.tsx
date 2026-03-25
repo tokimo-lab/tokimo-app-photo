@@ -9,6 +9,7 @@ import {
 import { type ReactNode, useState } from "react";
 import type { PhotoDetailOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
+import { getOcrModelName } from "../../lib/ocr-models";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
@@ -340,6 +341,12 @@ export function PhotoInfoPanel({
             {detail.ocrScannedAt && (
               <p className="mt-2 text-xs text-white/30">
                 识别于 {new Date(detail.ocrScannedAt).toLocaleString("zh-CN")}
+                {(() => {
+                  const modelName = getOcrModelName(
+                    ocrResults[0]?.modelName ?? null,
+                  );
+                  return modelName ? ` · 识别模型: ${modelName}` : null;
+                })()}
               </p>
             )}
           </InfoSection>
