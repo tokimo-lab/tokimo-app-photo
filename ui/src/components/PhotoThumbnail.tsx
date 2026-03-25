@@ -43,8 +43,8 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   return (
     <div
       className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
-        fillContainer ? "h-full w-full" : "aspect-square"
-      } ${
+        !loaded && src ? "skeleton-shimmer" : ""
+      } ${fillContainer ? "h-full w-full" : "aspect-square"} ${
         isSelected
           ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900"
           : ""
