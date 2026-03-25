@@ -1160,6 +1160,7 @@ function OcrHighlightOverlay({
  * iOS Live Text–style selectable text overlay.
  * Renders invisible text at OCR bounding box positions so users can
  * select, copy and right-click text directly on the photo.
+ * Uses scaleX to stretch text to exactly match bounding box width (PDF.js technique).
  */
 function OcrSelectableTextLayer({
   ocrResults,
@@ -1222,7 +1223,6 @@ function OcrSelectableTextLayer({
   const scaleX = imgRect.w / photoWidth;
   const scaleY = imgRect.h / photoHeight;
 
-  // Sort OCR results top-to-bottom then left-to-right for natural selection order
   const sorted = [...ocrResults]
     .filter((r) => r.x != null && r.y != null && r.w != null && r.h != null)
     .sort((a, b) => {
@@ -1240,32 +1240,64 @@ function OcrSelectableTextLayer({
         height: imgRect.h,
       }}
     >
-      {sorted.map((r) => {
-        const x = r.x as number;
-        const y = r.y as number;
-        const w = r.w as number;
-        const h = r.h as number;
-        const fontSize = h * scaleY;
-
-        return (
-          <span
-            key={r.id}
-            className="absolute cursor-text whitespace-pre select-text"
-            style={{
-              left: x * scaleX,
-              top: y * scaleY,
-              width: w * scaleX,
-              height: h * scaleY,
-              fontSize: `${fontSize}px`,
-              lineHeight: `${h * scaleY}px`,
-              color: "transparent",
-              overflow: "hidden",
-            }}
-          >
-            {r.text}
-          </span>
-        );
-      })}
+      {sorted.map((r) => (
+        <OcrTextSpan
+          key={r.id}
+          text={r.text}
+          left={(r.x as number) * scaleX}
+          top={(r.y as number) * scaleY}
+          targetW={(r.w as number) * scaleX}
+          targetH={(r.h as number) * scaleY}
+        />
+      ))}
     </div>
+  );
+}
+
+/** Single OCR text span that measures itself and applies scaleX to match bbox. */
+function OcrTextSpan({
+  text,
+  left,
+  top,
+  targetW,
+  targetH,
+}: {
+  text: string;
+  left: number;
+  top: number;
+  targetW: number;
+  targetH: number;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [sx, setSx] = useState(1);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Measure the natural text width (before any scaleX)
+    const natural = el.scrollWidth;
+    if (natural > 0) {
+      setSx(targetW / natural);
+    }
+  }, [targetW]);
+
+  return (
+    <span
+      ref={ref}
+      className="absolute cursor-text select-text"
+      style={{
+        left,
+        top,
+        height: targetH,
+        fontSize: `${targetH}px`,
+        lineHeight: `${targetH}px`,
+        transform: `scaleX(${sx})`,
+        transformOrigin: "0% 0%",
+        whiteSpace: "pre",
+        color: "transparent",
+      }}
+    >
+      {text}
+    </span>
   );
 }
