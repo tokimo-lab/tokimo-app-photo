@@ -436,6 +436,20 @@ export function PhotoLightbox({
                     draggable={false}
                   />
                 )}
+                {/* Subtle loading indicator while full-res loads */}
+                {shouldLoadFull && !fullLoaded && fullSrc && (
+                  <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
+                    <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-white/30"
+                        style={{
+                          animation:
+                            "lightbox-loading 1.8s ease-in-out infinite",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {/* Hidden preloader: load full-res in background */}
                 {shouldLoadFull && !fullLoaded && fullSrc && (
                   <img
