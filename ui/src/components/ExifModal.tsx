@@ -1,4 +1,5 @@
 import { Modal } from "@tokiomo/components";
+import { useRef } from "react";
 
 export function stripExifQuotes(value: string): string {
   if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
@@ -14,6 +15,8 @@ interface ExifModalProps {
 
 export function ExifModal({ exifData, onClose }: ExifModalProps) {
   const sortedKeys = Object.keys(exifData).sort();
+  // Force portal to document.body to escape FloatingWindow's ModalContainerContext
+  const bodyRef = useRef(document.body);
 
   return (
     <Modal
@@ -23,6 +26,7 @@ export function ExifModal({ exifData, onClose }: ExifModalProps) {
       footer={null}
       width={640}
       zIndex={10000}
+      container={bodyRef}
     >
       <div className="space-y-px font-mono text-sm">
         {sortedKeys.map((key, i) => (
