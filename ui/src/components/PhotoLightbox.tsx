@@ -1364,11 +1364,14 @@ function computeOcrCharHighlights(
     if (from >= to) continue;
     const x0 = from < b.chars.length ? b.chars[from].x : b.w;
     const x1 = to >= b.chars.length ? b.w : b.chars[to].x;
+    // Extend highlight vertically to match visual text line height
+    // (OCR bounding boxes are tightly cropped around strokes)
+    const vPad = b.h * 0.25;
     out.push({
       x: b.x + x0,
-      y: b.y,
+      y: b.y - vPad,
       w: x1 - x0,
-      h: b.h,
+      h: b.h + vPad * 2,
       key: `hl-${i}-${from}-${to}`,
     });
   }
