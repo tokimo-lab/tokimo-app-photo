@@ -320,8 +320,16 @@ export function PhotoLightbox({
     const container = imageContainerRef.current;
     if (!img || !container) return;
 
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
+    // Use content area (minus padding) as the effective viewport
+    const styles = getComputedStyle(container);
+    const cw =
+      container.clientWidth -
+      parseFloat(styles.paddingLeft) -
+      parseFloat(styles.paddingRight);
+    const ch =
+      container.clientHeight -
+      parseFloat(styles.paddingTop) -
+      parseFloat(styles.paddingBottom);
     const iw = img.clientWidth * scale;
     const ih = img.clientHeight * scale;
 
