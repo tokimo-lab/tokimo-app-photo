@@ -303,6 +303,37 @@ export function PhotoLightbox({
   const MIN_SCALE = 1;
   const MAX_SCALE = 20;
 
+  // Clamp a single axis: image must cover at least 2/3 of viewport (black border ≤ 1/3)
+  const clampAxis = useCallback(
+    (p: number, scaledImg: number, container: number): number => {
+      if (scaledImg <= container) return 0; // image fits → center
+      const maxP = scaledImg / 2 - container / 6;
+      return Math.min(maxP, Math.max(-maxP, p));
+    },
+    [],
+  );
+
+  // Snap-back effect: after drag ends or zoom changes, clamp pan with transition
+  useEffect(() => {
+    if (dragging) return;
+    const img = imgRef.current;
+    const container = imageContainerRef.current;
+    if (!img || !container) return;
+
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = img.clientWidth * scale;
+    const ih = img.clientHeight * scale;
+
+    const cx = clampAxis(panX, iw, cw);
+    const cy = clampAxis(panY, ih, ch);
+
+    if (cx !== panX || cy !== panY) {
+      setPanX(cx);
+      setPanY(cy);
+    }
+  }, [scale, panX, panY, dragging, clampAxis]);
+
   // Use native wheel listener with { passive: false } to allow preventDefault
   useEffect(() => {
     const container = imageContainerRef.current;
@@ -601,7 +632,9 @@ export function PhotoLightbox({
                 style={{
                   transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
                   transformOrigin: "center center",
-                  transition: dragging ? "none" : "transform 0.15s ease-out",
+                  transition: dragging
+                    ? "none"
+                    : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
                 }}
               >
                 {/* Thumbnail layer: stays visible until full-res is decoded */}
