@@ -121,6 +121,13 @@ export function PhotoLightbox({
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const isZoomed = scale > 1.01;
+  // Refs mirror state so the native wheel listener (empty deps) reads fresh values
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const panXRef = useRef(panX);
+  panXRef.current = panX;
+  const panYRef = useRef(panY);
+  panYRef.current = panY;
 
   // ── Fly animation state ────────────────────────────────────────────────────
   const [animState, setAnimState] = useState<AnimState>(() => {
@@ -358,20 +365,104 @@ export function PhotoLightbox({
     const container = imageContainerRef.current;
     if (!container) return;
 
+    const getContentSize = () => {
+      const s = getComputedStyle(container);
+      return {
+        w:
+          container.clientWidth -
+          parseFloat(s.paddingLeft) -
+          parseFloat(s.paddingRight),
+        h:
+          container.clientHeight -
+          parseFloat(s.paddingTop) -
+          parseFloat(s.paddingBottom),
+      };
+    };
+
+    // Compute the gap (black border) on each side for one axis.
+    // Positive gap = visible black border.
+    const gaps = (pan: number, imgHalf: number, vpHalf: number) => ({
+      lo: pan - imgHalf + vpHalf, // left / top gap
+      hi: vpHalf - pan - imgHalf, // right / bottom gap
+    });
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const cx = e.clientX - (rect.left + rect.width / 2);
-      const cy = e.clientY - (rect.top + rect.height / 2);
+      const img = imgRef.current;
+      if (!img) return;
 
-      setScale((prev) => {
-        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev * factor));
-        const ratio = 1 - next / prev;
-        setPanX((px) => px + (cx - px) * ratio);
-        setPanY((py) => py + (cy - py) * ratio);
-        return next;
-      });
+      const rect = container.getBoundingClientRect();
+      const cursorX = e.clientX - (rect.left + rect.width / 2);
+      const cursorY = e.clientY - (rect.top + rect.height / 2);
+
+      const oldS = scaleRef.current;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const newS = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldS * factor));
+      if (newS === oldS) return;
+
+      const ratio = 1 - newS / oldS;
+      const oldPX = panXRef.current;
+      const oldPY = panYRef.current;
+      let nx = oldPX + (cursorX - oldPX) * ratio;
+      let ny = oldPY + (cursorY - oldPY) * ratio;
+
+      const vp = getContentSize();
+      const imgW = img.clientWidth;
+      const imgH = img.clientHeight;
+      const oldIW = imgW * oldS;
+      const oldIH = imgH * oldS;
+      const newIW = imgW * newS;
+      const newIH = imgH * newS;
+
+      const zoomingIn = newS > oldS;
+
+      if (zoomingIn) {
+        // ── Zoom in: black borders must not grow ──
+        const oldGX = gaps(oldPX, oldIW / 2, vp.w / 2);
+        const oldGY = gaps(oldPY, oldIH / 2, vp.h / 2);
+
+        // Clamp X: if a positive gap would increase, pin that edge
+        const newGXlo = nx - newIW / 2 + vp.w / 2;
+        if (oldGX.lo > 0 && newGXlo > oldGX.lo) {
+          nx -= newGXlo - oldGX.lo;
+        }
+        const newGXhi = vp.w / 2 - nx - newIW / 2;
+        if (oldGX.hi > 0 && newGXhi > oldGX.hi) {
+          nx += newGXhi - oldGX.hi;
+        }
+
+        // Clamp Y
+        const newGYlo = ny - newIH / 2 + vp.h / 2;
+        if (oldGY.lo > 0 && newGYlo > oldGY.lo) {
+          ny -= newGYlo - oldGY.lo;
+        }
+        const newGYhi = vp.h / 2 - ny - newIH / 2;
+        if (oldGY.hi > 0 && newGYhi > oldGY.hi) {
+          ny += newGYhi - oldGY.hi;
+        }
+      } else {
+        // ── Zoom out: apply 1/3 boundary clamp immediately ──
+        const overflows = newIW > vp.w || newIH > vp.h;
+        if (!overflows) {
+          nx = 0;
+          ny = 0;
+        } else {
+          const clampZoomOut = (p: number, imgSize: number, vpSize: number) => {
+            if (imgSize <= vpSize) {
+              const maxP = vpSize / 3;
+              return Math.min(maxP, Math.max(-maxP, p));
+            }
+            const maxP = imgSize / 2 - vpSize / 6;
+            return Math.min(maxP, Math.max(-maxP, p));
+          };
+          nx = clampZoomOut(nx, newIW, vp.w);
+          ny = clampZoomOut(ny, newIH, vp.h);
+        }
+      }
+
+      setScale(newS);
+      setPanX(nx);
+      setPanY(ny);
     };
 
     container.addEventListener("wheel", onWheel, { passive: false });
