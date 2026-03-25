@@ -1,6 +1,14 @@
-import { Camera, ExternalLink, FileText, MapPin } from "lucide-react";
+import {
+  Camera,
+  ExternalLink,
+  FileText,
+  MapPin,
+  ScanText,
+  Sparkles,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { PhotoDetailOutput } from "../../generated/rust-api";
+import { api } from "../../generated/rust-api";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
@@ -118,6 +126,11 @@ export function PhotoInfoPanel({
   onNavigateToPerson?: (personId: string) => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
+
+  const { data: ocrResults } = api.photoSettings.getPhotoOcrResults.useQuery(
+    { photoId: detail.id },
+    { enabled: !!detail.id },
+  );
 
   const hasCameraData =
     detail.cameraMake ||
@@ -293,6 +306,41 @@ export function PhotoInfoPanel({
               <ExternalLink className="h-3.5 w-3.5" />
               在高德地图中打开
             </a>
+          </InfoSection>
+        )}
+
+        {/* ── OCR text section ──────────────────────────────────── */}
+        {ocrResults && ocrResults.length > 0 && (
+          <InfoSection icon={<ScanText className="h-3 w-3" />} title="文字识别">
+            <div className="space-y-1.5">
+              {ocrResults.map((r) => (
+                <p
+                  key={r.id}
+                  className="rounded bg-white/5 px-2 py-1 text-sm leading-relaxed text-white/80"
+                >
+                  {r.text}
+                  {r.score != null && (
+                    <span className="ml-2 text-xs text-white/30">
+                      {Math.round(r.score * 100)}%
+                    </span>
+                  )}
+                </p>
+              ))}
+            </div>
+            {detail.ocrScannedAt && (
+              <p className="mt-2 text-xs text-white/30">
+                识别于 {new Date(detail.ocrScannedAt).toLocaleString("zh-CN")}
+              </p>
+            )}
+          </InfoSection>
+        )}
+
+        {/* ── AI recognition section ─────────────────────────────── */}
+        {detail.description && (
+          <InfoSection icon={<Sparkles className="h-3 w-3" />} title="智能描述">
+            <p className="text-sm leading-relaxed text-white/80">
+              {detail.description}
+            </p>
           </InfoSection>
         )}
 
