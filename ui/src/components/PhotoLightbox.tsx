@@ -117,9 +117,19 @@ export function PhotoLightbox({
   const [flyRect, setFlyRect] = useState<FlyRect | null>(null);
   const [flyTransition, setFlyTransition] = useState(false);
 
+  // ── Progressive image loading: thumbnail first, then full-res ─────────────
+  const [fullLoaded, setFullLoaded] = useState(false);
+  const prevPhotoId = useRef(photo.id);
+
   const thumbSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
+
+  // Reset fullLoaded when navigating to a different photo
+  if (prevPhotoId.current !== photo.id) {
+    prevPhotoId.current = photo.id;
+    setFullLoaded(false);
+  }
 
   const detailQuery = api.app.getPhoto.useQuery(
     { photoId: photo.id },
@@ -257,11 +267,17 @@ export function PhotoLightbox({
     /\.heic$/i.test(photo.filename) ||
     /\.heif$/i.test(photo.filename);
 
-  const src = photo.sourceId
+  const fullSrc = photo.sourceId
     ? isHeic
       ? `/api/photos/${photo.id}/thumbnail?w=1920`
       : `/api/photos/${photo.id}/image`
     : undefined;
+
+  // Don't start loading full-res until enter animation finishes
+  const shouldLoadFull = animState !== "entering";
+  // Show thumbnail until full-res is ready
+  const displaySrc = fullLoaded ? fullSrc : (thumbSrc ?? fullSrc);
+
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
   // ── Animation-derived values ───────────────────────────────────────────────
@@ -391,15 +407,27 @@ export function PhotoLightbox({
 
           {/* Image */}
           <div className="flex flex-1 items-center justify-center p-12">
-            {src ? (
+            {displaySrc ? (
               <div className="relative inline-block max-h-full max-w-full">
                 <img
                   ref={imgRef}
-                  src={src}
+                  src={displaySrc}
                   alt={photo.title || photo.filename}
                   className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
                   draggable={false}
                 />
+                {/* Hidden preloader: load full-res in background, swap when ready */}
+                {shouldLoadFull &&
+                  !fullLoaded &&
+                  fullSrc &&
+                  fullSrc !== displaySrc && (
+                    <img
+                      src={fullSrc}
+                      alt=""
+                      className="hidden"
+                      onLoad={() => setFullLoaded(true)}
+                    />
+                  )}
                 {hoveredFaceId != null &&
                   faces &&
                   detail?.width &&
