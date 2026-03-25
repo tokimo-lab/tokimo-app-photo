@@ -320,7 +320,7 @@ export function PhotoInfoPanel({
               {ocrResults.map((r) => (
                 <p
                   key={r.id}
-                  className={`cursor-default rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+                  className={`cursor-default break-all rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
                     hoveredOcrId === r.id
                       ? "bg-emerald-400/15 text-white"
                       : "bg-white/5 text-white/80 hover:bg-white/10"

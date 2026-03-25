@@ -184,7 +184,7 @@ export function PhotoLightbox({
 
   const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
     { photoId: photo.id },
-    { enabled: showInfo },
+    { enabled: true },
   );
   const ocrResults = ocrQuery.data;
 
@@ -807,6 +807,19 @@ export function PhotoLightbox({
                       imgRef={imgRef}
                     />
                   )}
+                {/* Live Text: selectable invisible OCR text (iOS-style) */}
+                {!isZoomed &&
+                  ocrResults &&
+                  ocrResults.length > 0 &&
+                  detail?.width &&
+                  detail?.height && (
+                    <OcrSelectableTextLayer
+                      ocrResults={ocrResults}
+                      photoWidth={detail.width}
+                      photoHeight={detail.height}
+                      imgRef={imgRef}
+                    />
+                  )}
               </div>
             ) : (
               <div className="text-neutral-400">无法加载图片</div>
@@ -1137,6 +1150,120 @@ function OcrHighlightOverlay({
               height: r.h * scaleY + pad * 2,
             }}
           />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * iOS Live Text–style selectable text overlay.
+ * Renders invisible text at OCR bounding box positions so users can
+ * select, copy and right-click text directly on the photo.
+ */
+function OcrSelectableTextLayer({
+  ocrResults,
+  photoWidth,
+  photoHeight,
+  imgRef,
+}: {
+  ocrResults: PhotoOcrResultItem[];
+  photoWidth: number;
+  photoHeight: number;
+  imgRef: React.RefObject<HTMLImageElement | null>;
+}) {
+  const [imgRect, setImgRect] = useState<{
+    w: number;
+    h: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    const measure = () => {
+      const rect = img.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const imgAspect = photoWidth / photoHeight;
+      const elemAspect = rect.width / rect.height;
+
+      let renderedW: number;
+      let renderedH: number;
+      if (imgAspect > elemAspect) {
+        renderedW = rect.width;
+        renderedH = rect.width / imgAspect;
+      } else {
+        renderedH = rect.height;
+        renderedW = rect.height * imgAspect;
+      }
+
+      setImgRect({
+        w: renderedW,
+        h: renderedH,
+        offsetX: (rect.width - renderedW) / 2,
+        offsetY: (rect.height - renderedH) / 2,
+      });
+    };
+
+    measure();
+    img.addEventListener("load", measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(img);
+    return () => {
+      img.removeEventListener("load", measure);
+      observer.disconnect();
+    };
+  }, [imgRef, photoWidth, photoHeight]);
+
+  if (!imgRect) return null;
+
+  const scaleX = imgRect.w / photoWidth;
+  const scaleY = imgRect.h / photoHeight;
+
+  // Sort OCR results top-to-bottom then left-to-right for natural selection order
+  const sorted = [...ocrResults]
+    .filter((r) => r.x != null && r.y != null && r.w != null && r.h != null)
+    .sort((a, b) => {
+      const dy = (a.y ?? 0) - (b.y ?? 0);
+      return Math.abs(dy) > 5 ? dy : (a.x ?? 0) - (b.x ?? 0);
+    });
+
+  return (
+    <div
+      className="ocr-text-layer absolute"
+      style={{
+        left: imgRect.offsetX,
+        top: imgRect.offsetY,
+        width: imgRect.w,
+        height: imgRect.h,
+      }}
+    >
+      {sorted.map((r) => {
+        const x = r.x as number;
+        const y = r.y as number;
+        const w = r.w as number;
+        const h = r.h as number;
+        const fontSize = h * scaleY;
+
+        return (
+          <span
+            key={r.id}
+            className="absolute cursor-text whitespace-pre select-text"
+            style={{
+              left: x * scaleX,
+              top: y * scaleY,
+              width: w * scaleX,
+              height: h * scaleY,
+              fontSize: `${fontSize}px`,
+              lineHeight: `${h * scaleY}px`,
+              color: "transparent",
+              overflow: "hidden",
+            }}
+          >
+            {r.text}
+          </span>
         );
       })}
     </div>
