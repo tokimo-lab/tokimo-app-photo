@@ -1291,7 +1291,8 @@ function ocrPositionAtPoint(
 }
 
 /** Check whether an intermediate block belongs to the same visual column
- *  as the start/end blocks (generous X-overlap test). */
+ *  as the start/end blocks.  Uses a small fixed padding — percentage-based
+ *  padding is far too generous for wide paragraph blocks. */
 function isBlockInSelectionColumn(
   block: OcrBlock,
   startBlock: OcrBlock,
@@ -1299,7 +1300,7 @@ function isBlockInSelectionColumn(
 ): boolean {
   const xMin = Math.min(startBlock.x, endBlock.x);
   const xMax = Math.max(startBlock.x + startBlock.w, endBlock.x + endBlock.w);
-  const pad = Math.max((xMax - xMin) * 0.5, 30);
+  const pad = 50;
   return block.x + block.w > xMin - pad && block.x < xMax + pad;
 }
 
