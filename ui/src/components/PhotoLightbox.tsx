@@ -303,16 +303,7 @@ export function PhotoLightbox({
   const MIN_SCALE = 1;
   const MAX_SCALE = 20;
 
-  // Clamp a single axis: image must cover at least 2/3 of viewport (black border ≤ 1/3)
-  const clampAxis = useCallback(
-    (p: number, scaledImg: number, container: number): number => {
-      if (scaledImg <= container) return 0; // image fits → center
-      const maxP = scaledImg / 2 - container / 6;
-      return Math.min(maxP, Math.max(-maxP, p));
-    },
-    [],
-  );
-
+  // Clamp pan: if image overflows in ANY direction, allow panning both axes (black border ≤ 1/3)
   // Snap-back effect: after drag ends or zoom changes, clamp pan with transition
   useEffect(() => {
     if (dragging) return;
@@ -320,7 +311,6 @@ export function PhotoLightbox({
     const container = imageContainerRef.current;
     if (!img || !container) return;
 
-    // Use content area (minus padding) as the effective viewport
     const styles = getComputedStyle(container);
     const cw =
       container.clientWidth -
@@ -333,14 +323,35 @@ export function PhotoLightbox({
     const iw = img.clientWidth * scale;
     const ih = img.clientHeight * scale;
 
-    const cx = clampAxis(panX, iw, cw);
-    const cy = clampAxis(panY, ih, ch);
+    // If image fits entirely in both axes → center
+    const overflows = iw > cw || ih > ch;
+    if (!overflows) {
+      if (panX !== 0 || panY !== 0) {
+        setPanX(0);
+        setPanY(0);
+      }
+      return;
+    }
+
+    // At least one axis overflows: clamp each axis by its own 1/3 rule
+    const clamp = (p: number, img: number, vp: number) => {
+      if (img <= vp) {
+        // This axis fits, but allow up to 1/3 viewport of pan
+        const maxP = vp / 3;
+        return Math.min(maxP, Math.max(-maxP, p));
+      }
+      const maxP = img / 2 - vp / 6;
+      return Math.min(maxP, Math.max(-maxP, p));
+    };
+
+    const cx = clamp(panX, iw, cw);
+    const cy = clamp(panY, ih, ch);
 
     if (cx !== panX || cy !== panY) {
       setPanX(cx);
       setPanY(cy);
     }
-  }, [scale, panX, panY, dragging, clampAxis]);
+  }, [scale, panX, panY, dragging]);
 
   // Use native wheel listener with { passive: false } to allow preventDefault
   useEffect(() => {
