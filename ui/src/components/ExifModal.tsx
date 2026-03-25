@@ -22,6 +22,7 @@ export function ExifModal({ exifData, onClose }: ExifModalProps) {
       onCancel={onClose}
       footer={null}
       width={640}
+      zIndex={10000}
     >
       <div className="space-y-px font-mono text-sm">
         {sortedKeys.map((key, i) => (
