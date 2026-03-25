@@ -1249,11 +1249,14 @@ function normalizeOcrAnchors(
   };
 }
 
-/** Find the block+char position nearest to a layer-local coordinate */
+/** Find the block+char position nearest to a layer-local coordinate.
+ *  When anchorBlockIdx is provided, strongly prefer blocks in the same
+ *  visual column (X-overlap with anchor) to prevent cross-column jumps. */
 function ocrPositionAtPoint(
   blocks: OcrBlock[],
   px: number,
   py: number,
+  anchorBlockIdx?: number,
 ): OcrTextAnchor | null {
   if (blocks.length === 0) return null;
   for (let i = 0; i < blocks.length; i++) {
@@ -1262,14 +1265,19 @@ function ocrPositionAtPoint(
       return { blockIdx: i, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
     }
   }
-  // Nearest block (weight vertical proximity 3x)
+  // Nearest block — penalise blocks outside the anchor's column
+  const anchorB = anchorBlockIdx != null ? blocks[anchorBlockIdx] : null;
   let bestDist = Number.POSITIVE_INFINITY;
   let bestIdx = 0;
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     const vd = py < b.y ? b.y - py : py > b.y + b.h ? py - b.y - b.h : 0;
     const hd = px < b.x ? b.x - px : px > b.x + b.w ? px - b.x - b.w : 0;
-    const d = vd * 3 + hd;
+    let d = vd * 3 + hd;
+    if (anchorB) {
+      const overlap = b.x < anchorB.x + anchorB.w && b.x + b.w > anchorB.x;
+      if (!overlap) d += 10000;
+    }
     if (d < bestDist) {
       bestDist = d;
       bestIdx = i;
@@ -1282,7 +1290,20 @@ function ocrPositionAtPoint(
   return { blockIdx: bestIdx, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
 }
 
-/** Extract selected text for a character-level range */
+/** Check whether an intermediate block belongs to the same visual column
+ *  as the start/end blocks (generous X-overlap test). */
+function isBlockInSelectionColumn(
+  block: OcrBlock,
+  startBlock: OcrBlock,
+  endBlock: OcrBlock,
+): boolean {
+  const xMin = Math.min(startBlock.x, endBlock.x);
+  const xMax = Math.max(startBlock.x + startBlock.w, endBlock.x + endBlock.w);
+  const pad = Math.max((xMax - xMin) * 0.5, 30);
+  return block.x + block.w > xMin - pad && block.x < xMax + pad;
+}
+
+/** Extract selected text for a character-level range (column-aware) */
 function extractOcrSelectedText(
   blocks: OcrBlock[],
   anchor: OcrTextAnchor,
@@ -1293,16 +1314,20 @@ function extractOcrSelectedText(
   if (sBlock === eBlock) {
     return blocks[sBlock].textChars.slice(sChar, eChar).join("");
   }
+  const startB = blocks[sBlock];
+  const endB = blocks[eBlock];
   const parts: string[] = [];
-  parts.push(blocks[sBlock].textChars.slice(sChar).join(""));
+  parts.push(startB.textChars.slice(sChar).join(""));
   for (let i = sBlock + 1; i < eBlock; i++) {
-    parts.push(blocks[i].text);
+    if (isBlockInSelectionColumn(blocks[i], startB, endB)) {
+      parts.push(blocks[i].text);
+    }
   }
-  parts.push(blocks[eBlock].textChars.slice(0, eChar).join(""));
+  parts.push(endB.textChars.slice(0, eChar).join(""));
   return parts.join("\n");
 }
 
-/** Compute per-character highlight rectangles */
+/** Compute per-character highlight rectangles (column-aware) */
 function computeOcrCharHighlights(
   blocks: OcrBlock[],
   anchor: OcrTextAnchor,
@@ -1310,10 +1335,19 @@ function computeOcrCharHighlights(
 ): { x: number; y: number; w: number; h: number; key: string }[] {
   const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(anchor, focus);
   if (sBlock === eBlock && sChar === eChar) return [];
+  const startB = blocks[sBlock];
+  const endB = blocks[eBlock];
   const out: { x: number; y: number; w: number; h: number; key: string }[] = [];
   for (let i = sBlock; i <= eBlock; i++) {
     const b = blocks[i];
     if (b.chars.length === 0) continue;
+    // Skip intermediate blocks outside the selection column
+    if (
+      i !== sBlock &&
+      i !== eBlock &&
+      !isBlockInSelectionColumn(b, startB, endB)
+    )
+      continue;
     const from = i === sBlock ? sChar : 0;
     const to = i === eBlock ? eChar : b.textChars.length;
     if (from >= to) continue;
@@ -1498,11 +1532,11 @@ function OcrBlockSelectLayer({
       const charIdx = ocrCharIdxAtX(blocks[idx].chars, x - blocks[idx].x);
       const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
       setSelection({ anchor, focus: anchor });
-      isDraggingRef.current = true;
     } else {
+      // Started in empty space — clear selection but still track drag
       setSelection(null);
-      isDraggingRef.current = false;
     }
+    isDraggingRef.current = true;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     e.stopPropagation();
   };
@@ -1510,11 +1544,23 @@ function OcrBlockSelectLayer({
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
     const { x, y } = getLayerCoords(e);
-    const pos = ocrPositionAtPoint(blocks, x, y);
-    if (pos) {
-      setSelection((prev) =>
-        prev ? { anchor: prev.anchor, focus: pos } : null,
-      );
+    const sel = selectionRef.current;
+    if (!sel) {
+      // Started from empty space — begin selection when cursor enters a block
+      const idx = hitBlockIdx(x, y);
+      if (idx >= 0) {
+        const charIdx = ocrCharIdxAtX(blocks[idx].chars, x - blocks[idx].x);
+        const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
+        setSelection({ anchor, focus: anchor });
+      }
+    } else {
+      // Extend existing selection with column bias
+      const pos = ocrPositionAtPoint(blocks, x, y, sel.anchor.blockIdx);
+      if (pos) {
+        setSelection((prev) =>
+          prev ? { anchor: prev.anchor, focus: pos } : null,
+        );
+      }
     }
     e.stopPropagation();
   };
