@@ -119,16 +119,28 @@ export function PhotoLightbox({
 
   // ── Progressive image loading: thumbnail first, then full-res ─────────────
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
+  const [loadProgress, setLoadProgress] = useState(0); // 0..1
   const prevPhotoId = useRef(photo.id);
+  const abortRef = useRef<AbortController | null>(null);
 
   const thumbSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
 
-  // Reset fullLoaded when navigating to a different photo
+  // Reset state when navigating to a different photo
   if (prevPhotoId.current !== photo.id) {
     prevPhotoId.current = photo.id;
     setFullLoaded(false);
+    setLoadProgress(0);
+    if (fullBlobUrl) {
+      URL.revokeObjectURL(fullBlobUrl);
+      setFullBlobUrl(null);
+    }
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
   }
 
   const detailQuery = api.app.getPhoto.useQuery(
@@ -275,6 +287,75 @@ export function PhotoLightbox({
 
   // Don't start loading full-res until enter animation finishes
   const shouldLoadFull = animState !== "entering";
+
+  // ── Fetch full-res image with real progress tracking ────────────────────────
+  useEffect(() => {
+    if (!shouldLoadFull || fullLoaded || !fullSrc) return;
+
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    (async () => {
+      try {
+        const res = await fetch(fullSrc, { signal: abort.signal });
+        const contentLength = res.headers.get("Content-Length");
+        const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
+
+        if (!res.body) {
+          const blob = await res.blob();
+          if (abort.signal.aborted) return;
+          const url = URL.createObjectURL(blob);
+          setFullBlobUrl(url);
+          setLoadProgress(1);
+          setFullLoaded(true);
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const chunks: BlobPart[] = [];
+        let received = 0;
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          if (total > 0) {
+            setLoadProgress(Math.min(received / total, 1));
+          } else {
+            setLoadProgress(Math.min(received / (received + 200_000), 0.95));
+          }
+        }
+
+        if (abort.signal.aborted) return;
+
+        const blob = new Blob(chunks, {
+          type: res.headers.get("Content-Type") || "image/jpeg",
+        });
+        const url = URL.createObjectURL(blob);
+        setFullBlobUrl(url);
+        setLoadProgress(1);
+        setFullLoaded(true);
+      } catch {
+        if (!abort.signal.aborted) {
+          setLoadProgress(0);
+        }
+      }
+    })();
+
+    return () => {
+      abort.abort();
+      abortRef.current = null;
+    };
+  }, [shouldLoadFull, fullLoaded, fullSrc]);
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    const url = fullBlobUrl;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [fullBlobUrl]);
 
   const isFav = detail?.isFavorite ?? photo.isFavorite;
 
@@ -427,37 +508,28 @@ export function PhotoLightbox({
                   />
                 )}
                 {/* Full-res layer: replaces thumbnail once loaded */}
-                {fullLoaded && fullSrc && (
+                {fullLoaded && fullBlobUrl && (
                   <img
                     ref={imgRef}
-                    src={fullSrc}
+                    src={fullBlobUrl}
                     alt={photo.title || photo.filename}
                     className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
                     draggable={false}
                   />
                 )}
-                {/* Subtle loading indicator while full-res loads */}
+                {/* Real download progress bar */}
                 {shouldLoadFull && !fullLoaded && fullSrc && (
                   <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
                     <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
                       <div
                         className="h-full rounded-full bg-white/30"
                         style={{
-                          animation:
-                            "lightbox-loading 1.8s ease-in-out infinite",
+                          width: `${loadProgress * 100}%`,
+                          transition: "width 150ms ease-out",
                         }}
                       />
                     </div>
                   </div>
-                )}
-                {/* Hidden preloader: load full-res in background */}
-                {shouldLoadFull && !fullLoaded && fullSrc && (
-                  <img
-                    src={fullSrc}
-                    alt=""
-                    className="hidden"
-                    onLoad={() => setFullLoaded(true)}
-                  />
                 )}
                 {hoveredFaceId != null &&
                   faces &&
