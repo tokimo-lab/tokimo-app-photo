@@ -112,6 +112,16 @@ export function PhotoLightbox({
   const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
+  // ── Zoom & Pan state ──────────────────────────────────────────────────────
+  const [scale, setScale] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const isDragging = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const isZoomed = scale > 1.01;
+
   // ── Fly animation state ────────────────────────────────────────────────────
   const [animState, setAnimState] = useState<AnimState>(() => {
     if (!photo.sourceId || photo.width == null || photo.height == null)
@@ -140,6 +150,9 @@ export function PhotoLightbox({
     setFullLoaded(false);
     setFullDecoded(false);
     setLoadProgress(0);
+    setScale(1);
+    setPanX(0);
+    setPanY(0);
     if (fullBlobUrl) {
       URL.revokeObjectURL(fullBlobUrl);
       setFullBlobUrl(null);
@@ -285,6 +298,69 @@ export function PhotoLightbox({
     onToggleFavorite,
     toggleInfo,
   ]);
+
+  // ── Zoom & Pan handlers ─────────────────────────────────────────────────────
+  const MIN_SCALE = 1;
+  const MAX_SCALE = 20;
+
+  // Use native wheel listener with { passive: false } to allow preventDefault
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const cx = e.clientX - (rect.left + rect.width / 2);
+      const cy = e.clientY - (rect.top + rect.height / 2);
+
+      setScale((prev) => {
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev * factor));
+        const ratio = 1 - next / prev;
+        setPanX((px) => px + (cx - px) * ratio);
+        setPanY((py) => py + (cy - py) * ratio);
+        return next;
+      });
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0 || !isZoomed) return;
+      isDragging.current = true;
+      setDragging(true);
+      dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [isZoomed, panX, panY],
+  );
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    setPanX(dragStart.current.panX + dx);
+    setPanY(dragStart.current.panY + dy);
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    isDragging.current = false;
+    setDragging(false);
+  }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    if (isZoomed) {
+      setScale(1);
+      setPanX(0);
+      setPanY(0);
+    } else {
+      setScale(3);
+    }
+  }, [isZoomed]);
 
   const isHeic =
     photo.mimeType === "image/heif" ||
@@ -506,9 +582,28 @@ export function PhotoLightbox({
           )}
 
           {/* Image */}
-          <div className="flex flex-1 items-center justify-center p-12">
+          <div
+            ref={imageContainerRef}
+            role="application"
+            className="flex flex-1 items-center justify-center overflow-hidden p-12"
+            style={{
+              cursor: dragging ? "grabbing" : isZoomed ? "grab" : "default",
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onDoubleClick={handleDoubleClick}
+          >
             {thumbSrc || fullSrc ? (
-              <div className="relative inline-block max-h-full max-w-full">
+              <div
+                className="relative inline-block max-h-full max-w-full"
+                style={{
+                  transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+                  transformOrigin: "center center",
+                  transition: dragging ? "none" : "transform 0.15s ease-out",
+                }}
+              >
                 {/* Thumbnail layer: stays visible until full-res is decoded */}
                 {thumbSrc && !fullDecoded && (
                   <img
@@ -578,6 +673,11 @@ export function PhotoLightbox({
           {/* Bottom bar */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
             {idx + 1} / {allPhotos.length} — {photo.filename}
+            {isZoomed && (
+              <span className="ml-2 text-white/50">
+                {Math.round(scale * 100)}%
+              </span>
+            )}
           </div>
         </div>
 
