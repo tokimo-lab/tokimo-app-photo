@@ -1163,14 +1163,6 @@ function OcrHighlightOverlay({
 
 // ---- Character-level OCR selection helpers ----
 
-let _ocrMeasureCtx: CanvasRenderingContext2D | null = null;
-function getOcrMeasureCtx(): CanvasRenderingContext2D {
-  if (!_ocrMeasureCtx) {
-    _ocrMeasureCtx = document.createElement("canvas").getContext("2d")!;
-  }
-  return _ocrMeasureCtx;
-}
-
 interface OcrCharPos {
   /** Offset from block left edge in display pixels */
   x: number;
@@ -1196,31 +1188,22 @@ interface OcrTextAnchor {
   charIdx: number;
 }
 
-/** Estimate per-character positions within a block using canvas measureText */
+/** Estimate per-character positions within a block.
+ *  Uses uniform (equal-width) distribution — the source font is unknown so
+ *  proportional font measurement causes systematic offsets. Equal-width is
+ *  a safer default that works well for both monospace and proportional text. */
 function measureOcrCharPositions(
   text: string,
   blockW: number,
-  blockH: number,
+  _blockH: number,
 ): { chars: OcrCharPos[]; textChars: string[] } {
   const textChars = Array.from(text);
   if (textChars.length === 0) return { chars: [], textChars };
-  const ctx = getOcrMeasureCtx();
-  ctx.font = `${Math.round(blockH)}px sans-serif`;
-  let totalW = 0;
-  const widths: number[] = [];
-  for (const ch of textChars) {
-    const w = ctx.measureText(ch).width;
-    widths.push(w);
-    totalW += w;
-  }
-  const scale = totalW > 0 ? blockW / totalW : 1;
-  const chars: OcrCharPos[] = [];
-  let cumX = 0;
-  for (const w of widths) {
-    const sw = w * scale;
-    chars.push({ x: cumX, w: sw });
-    cumX += sw;
-  }
+  const charW = blockW / textChars.length;
+  const chars: OcrCharPos[] = textChars.map((_, i) => ({
+    x: i * charW,
+    w: charW,
+  }));
   return { chars, textChars };
 }
 
