@@ -110,6 +110,9 @@ export function PhotoLightbox({
   }, []);
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
   const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
+  const [selectedOcrBlockIds, setSelectedOcrBlockIds] = useState<Set<string>>(
+    new Set(),
+  );
   const imgRef = useRef<HTMLImageElement>(null);
 
   // ── Zoom & Pan state ──────────────────────────────────────────────────────
@@ -808,8 +811,7 @@ export function PhotoLightbox({
                     />
                   )}
                 {/* Live Text: block-based selectable OCR overlay (iOS-style) */}
-                {!isZoomed &&
-                  ocrResults &&
+                {ocrResults &&
                   ocrResults.length > 0 &&
                   detail?.width &&
                   detail?.height && (
@@ -818,6 +820,8 @@ export function PhotoLightbox({
                       photoWidth={detail.width}
                       photoHeight={detail.height}
                       imgRef={imgRef}
+                      isZoomed={isZoomed}
+                      onSelectedBlockIds={setSelectedOcrBlockIds}
                     />
                   )}
               </div>
@@ -884,6 +888,7 @@ export function PhotoLightbox({
                     onHoverFace={setHoveredFaceId}
                     hoveredOcrId={hoveredOcrId}
                     onHoverOcr={setHoveredOcrId}
+                    selectedOcrBlockIds={selectedOcrBlockIds}
                     onNavigateToPerson={onNavigateToPerson}
                     onRefreshComplete={() => {
                       queryClient.invalidateQueries({
@@ -1389,11 +1394,15 @@ function OcrBlockSelectLayer({
   photoWidth,
   photoHeight,
   imgRef,
+  isZoomed,
+  onSelectedBlockIds,
 }: {
   ocrResults: PhotoOcrResultItem[];
   photoWidth: number;
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
+  isZoomed?: boolean;
+  onSelectedBlockIds?: (ids: Set<string>) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [imgRect, setImgRect] = useState<{
@@ -1514,6 +1523,39 @@ function OcrBlockSelectLayer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selection, getSelectedText]);
 
+  // Notify parent about which OCR block IDs are currently selected
+  useEffect(() => {
+    if (!onSelectedBlockIds) return;
+    if (!selection) {
+      onSelectedBlockIds(new Set());
+      return;
+    }
+    const { sBlock, eBlock } = normalizeOcrAnchors(
+      selection.anchor,
+      selection.focus,
+    );
+    if (
+      sBlock === eBlock &&
+      selection.anchor.charIdx === selection.focus.charIdx
+    ) {
+      onSelectedBlockIds(new Set());
+      return;
+    }
+    const ids = new Set<string>();
+    const startB = blocks[sBlock];
+    const endB = blocks[eBlock];
+    for (let i = sBlock; i <= eBlock; i++) {
+      if (
+        i === sBlock ||
+        i === eBlock ||
+        isBlockInSelectionParagraph(blocks[i], startB, endB)
+      ) {
+        ids.add(blocks[i].id);
+      }
+    }
+    onSelectedBlockIds(ids);
+  }, [selection, blocks, onSelectedBlockIds]);
+
   // Close context menu on outside click
   useEffect(() => {
     if (!menuPos) return;
@@ -1547,13 +1589,19 @@ function OcrBlockSelectLayer({
       const charIdx = ocrCharIdxAtX(blocks[idx].chars, x - blocks[idx].x);
       const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
       setSelection({ anchor, focus: anchor });
-    } else {
-      // Started in empty space — clear selection but still track drag
+      isDraggingRef.current = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      e.stopPropagation();
+    } else if (isZoomed) {
+      // Not on text block while zoomed — let event pass through to pan handler
       setSelection(null);
+    } else {
+      // Not zoomed — started in empty space, clear selection but track drag
+      setSelection(null);
+      isDraggingRef.current = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      e.stopPropagation();
     }
-    isDraggingRef.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    e.stopPropagation();
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -1646,7 +1694,8 @@ function OcrBlockSelectLayer({
           top: imgRect.offsetY,
           width: imgRect.w,
           height: imgRect.h,
-          cursor: "text",
+          cursor: isZoomed ? "inherit" : "text",
+          pointerEvents: isZoomed ? "none" : "auto",
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1667,6 +1716,29 @@ function OcrBlockSelectLayer({
             }}
           />
         ))}
+        {/* When zoomed, render invisible hit-area divs over each text block
+            so only text areas capture pointer events (non-text → pan) */}
+        {isZoomed &&
+          blocks.map((b) => (
+            <div
+              key={`hit-${b.id}`}
+              role="application"
+              className="absolute"
+              style={{
+                left: b.x,
+                top: b.y,
+                width: b.w,
+                height: b.h,
+                cursor: "text",
+                pointerEvents: "auto",
+              }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onDoubleClick={handleDoubleClick}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
       </div>
       {menuPos &&
         selection &&

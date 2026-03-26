@@ -119,6 +119,7 @@ export function PhotoInfoPanel({
   onHoverFace,
   hoveredOcrId,
   onHoverOcr,
+  selectedOcrBlockIds,
   onRefreshComplete,
   onNavigateToPerson,
 }: {
@@ -129,6 +130,7 @@ export function PhotoInfoPanel({
   onHoverFace: (faceId: number | null) => void;
   hoveredOcrId?: string | null;
   onHoverOcr?: (ocrId: string | null) => void;
+  selectedOcrBlockIds?: Set<string>;
   onRefreshComplete?: () => void;
   onNavigateToPerson?: (personId: string) => void;
 }) {
@@ -327,7 +329,9 @@ export function PhotoInfoPanel({
                   className={`cursor-default break-all rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
                     hoveredOcrId === r.id
                       ? "bg-emerald-400/15 text-white"
-                      : "bg-white/5 text-white/80 hover:bg-white/10"
+                      : selectedOcrBlockIds?.has(r.id)
+                        ? "bg-blue-400/20 text-white"
+                        : "bg-white/5 text-white/80 hover:bg-white/10"
                   }`}
                   onMouseEnter={() => onHoverOcr?.(r.id)}
                   onMouseLeave={() => onHoverOcr?.(null)}
