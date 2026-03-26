@@ -119,7 +119,7 @@ export function PhotoInfoPanel({
   onHoverFace,
   hoveredOcrId,
   onHoverOcr,
-  selectedOcrBlockIds,
+  ocrSelectionRanges,
   onRefreshComplete,
   onNavigateToPerson,
 }: {
@@ -130,7 +130,7 @@ export function PhotoInfoPanel({
   onHoverFace: (faceId: number | null) => void;
   hoveredOcrId?: string | null;
   onHoverOcr?: (ocrId: string | null) => void;
-  selectedOcrBlockIds?: Set<string>;
+  ocrSelectionRanges?: Map<string, { start: number; end: number }>;
   onRefreshComplete?: () => void;
   onNavigateToPerson?: (personId: string) => void;
 }) {
@@ -323,27 +323,43 @@ export function PhotoInfoPanel({
         {ocrResults && ocrResults.length > 0 && (
           <InfoSection icon={<ScanText className="h-3 w-3" />} title="文字识别">
             <div className="space-y-1.5">
-              {ocrResults.map((r) => (
-                <p
-                  key={r.id}
-                  className={`cursor-default break-all rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
-                    hoveredOcrId === r.id
-                      ? "bg-emerald-400/15 text-white"
-                      : selectedOcrBlockIds?.has(r.id)
-                        ? "bg-blue-400/20 text-white"
-                        : "bg-white/5 text-white/80 hover:bg-white/10"
-                  }`}
-                  onMouseEnter={() => onHoverOcr?.(r.id)}
-                  onMouseLeave={() => onHoverOcr?.(null)}
-                >
-                  {r.text}
-                  {r.score != null && (
-                    <span className="ml-2 text-xs text-white/30">
-                      {Math.round(r.score * 100)}%
-                    </span>
-                  )}
-                </p>
-              ))}
+              {ocrResults.map((r) => {
+                const range = ocrSelectionRanges?.get(r.id);
+                const textChars = Array.from(r.text);
+                const isHovered = hoveredOcrId === r.id;
+                const hasRange = range && range.start < range.end;
+                return (
+                  <p
+                    key={r.id}
+                    className={`cursor-default break-all rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+                      isHovered
+                        ? "bg-emerald-400/15 text-white"
+                        : hasRange
+                          ? "bg-white/5 text-white"
+                          : "bg-white/5 text-white/80 hover:bg-white/10"
+                    }`}
+                    onMouseEnter={() => onHoverOcr?.(r.id)}
+                    onMouseLeave={() => onHoverOcr?.(null)}
+                  >
+                    {hasRange ? (
+                      <>
+                        {textChars.slice(0, range.start).join("")}
+                        <mark className="rounded-sm bg-blue-400/30 text-white">
+                          {textChars.slice(range.start, range.end).join("")}
+                        </mark>
+                        {textChars.slice(range.end).join("")}
+                      </>
+                    ) : (
+                      r.text
+                    )}
+                    {r.score != null && (
+                      <span className="ml-2 text-xs text-white/30">
+                        {Math.round(r.score * 100)}%
+                      </span>
+                    )}
+                  </p>
+                );
+              })}
             </div>
             {detail.ocrScannedAt && (
               <p className="mt-2 flex items-center gap-1 text-xs text-white/30">

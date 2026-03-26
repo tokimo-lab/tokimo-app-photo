@@ -110,9 +110,9 @@ export function PhotoLightbox({
   }, []);
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
   const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
-  const [selectedOcrBlockIds, setSelectedOcrBlockIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [ocrSelectionRanges, setOcrSelectionRanges] = useState<
+    Map<string, { start: number; end: number }>
+  >(new Map());
   const imgRef = useRef<HTMLImageElement>(null);
 
   // ── Zoom & Pan state ──────────────────────────────────────────────────────
@@ -821,7 +821,7 @@ export function PhotoLightbox({
                       photoHeight={detail.height}
                       imgRef={imgRef}
                       isZoomed={isZoomed}
-                      onSelectedBlockIds={setSelectedOcrBlockIds}
+                      onSelectionRanges={setOcrSelectionRanges}
                     />
                   )}
               </div>
@@ -888,7 +888,7 @@ export function PhotoLightbox({
                     onHoverFace={setHoveredFaceId}
                     hoveredOcrId={hoveredOcrId}
                     onHoverOcr={setHoveredOcrId}
-                    selectedOcrBlockIds={selectedOcrBlockIds}
+                    ocrSelectionRanges={ocrSelectionRanges}
                     onNavigateToPerson={onNavigateToPerson}
                     onRefreshComplete={() => {
                       queryClient.invalidateQueries({
@@ -1299,27 +1299,7 @@ function ocrPositionAtPoint(
   return { blockIdx: bestIdx, charIdx: ocrCharIdxAtX(b.chars, px - b.x) };
 }
 
-/** Check whether an intermediate block belongs to the same paragraph as the
- *  start/end blocks.  When paragraphId > 0 (PP-OCRv5 with clustering), uses
- *  exact paragraph match.  Falls back to spatial column heuristic for legacy
- *  OCR results (paragraphId === 0). */
-function isBlockInSelectionParagraph(
-  block: OcrBlock,
-  startBlock: OcrBlock,
-  endBlock: OcrBlock,
-): boolean {
-  // PP-OCRv5 paragraph grouping — exact match
-  if (startBlock.paragraphId > 0 && endBlock.paragraphId > 0) {
-    return block.paragraphId === startBlock.paragraphId;
-  }
-  // Fallback: spatial column heuristic (for legacy v4 results)
-  const xMin = Math.min(startBlock.x, endBlock.x);
-  const xMax = Math.max(startBlock.x + startBlock.w, endBlock.x + endBlock.w);
-  const pad = 50;
-  return block.x + block.w > xMin - pad && block.x < xMax + pad;
-}
-
-/** Extract selected text for a character-level range (column-aware) */
+/** Extract selected text for a character-level range (rectangle selection: all blocks included) */
 function extractOcrSelectedText(
   blocks: OcrBlock[],
   anchor: OcrTextAnchor,
@@ -1330,20 +1310,16 @@ function extractOcrSelectedText(
   if (sBlock === eBlock) {
     return blocks[sBlock].textChars.slice(sChar, eChar).join("");
   }
-  const startB = blocks[sBlock];
-  const endB = blocks[eBlock];
   const parts: string[] = [];
-  parts.push(startB.textChars.slice(sChar).join(""));
+  parts.push(blocks[sBlock].textChars.slice(sChar).join(""));
   for (let i = sBlock + 1; i < eBlock; i++) {
-    if (isBlockInSelectionParagraph(blocks[i], startB, endB)) {
-      parts.push(blocks[i].text);
-    }
+    parts.push(blocks[i].text);
   }
-  parts.push(endB.textChars.slice(0, eChar).join(""));
+  parts.push(blocks[eBlock].textChars.slice(0, eChar).join(""));
   return parts.join("\n");
 }
 
-/** Compute per-character highlight rectangles (column-aware) */
+/** Compute per-character highlight rectangles (rectangle selection: all blocks between start and end) */
 function computeOcrCharHighlights(
   blocks: OcrBlock[],
   anchor: OcrTextAnchor,
@@ -1351,26 +1327,15 @@ function computeOcrCharHighlights(
 ): { x: number; y: number; w: number; h: number; key: string }[] {
   const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(anchor, focus);
   if (sBlock === eBlock && sChar === eChar) return [];
-  const startB = blocks[sBlock];
-  const endB = blocks[eBlock];
   const out: { x: number; y: number; w: number; h: number; key: string }[] = [];
   for (let i = sBlock; i <= eBlock; i++) {
     const b = blocks[i];
     if (b.chars.length === 0) continue;
-    // Skip intermediate blocks outside the selection column
-    if (
-      i !== sBlock &&
-      i !== eBlock &&
-      !isBlockInSelectionParagraph(b, startB, endB)
-    )
-      continue;
     const from = i === sBlock ? sChar : 0;
     const to = i === eBlock ? eChar : b.textChars.length;
     if (from >= to) continue;
     const x0 = from < b.chars.length ? b.chars[from].x : b.w;
     const x1 = to >= b.chars.length ? b.w : b.chars[to].x;
-    // Extend highlight vertically to match visual text line height
-    // (OCR bounding boxes are tightly cropped around strokes)
     const vPad = b.h * 0.25;
     out.push({
       x: b.x + x0,
@@ -1395,14 +1360,16 @@ function OcrBlockSelectLayer({
   photoHeight,
   imgRef,
   isZoomed,
-  onSelectedBlockIds,
+  onSelectionRanges,
 }: {
   ocrResults: PhotoOcrResultItem[];
   photoWidth: number;
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
   isZoomed?: boolean;
-  onSelectedBlockIds?: (ids: Set<string>) => void;
+  onSelectionRanges?: (
+    ranges: Map<string, { start: number; end: number }>,
+  ) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [imgRect, setImgRect] = useState<{
@@ -1417,6 +1384,7 @@ function OcrBlockSelectLayer({
   } | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
+  const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   // Measure rendered image rect
   useEffect(() => {
@@ -1523,38 +1491,32 @@ function OcrBlockSelectLayer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selection, getSelectedText]);
 
-  // Notify parent about which OCR block IDs are currently selected
+  // Notify parent about character-level selection ranges per block
   useEffect(() => {
-    if (!onSelectedBlockIds) return;
+    if (!onSelectionRanges) return;
     if (!selection) {
-      onSelectedBlockIds(new Set());
+      onSelectionRanges(new Map());
       return;
     }
-    const { sBlock, eBlock } = normalizeOcrAnchors(
+    const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(
       selection.anchor,
       selection.focus,
     );
-    if (
-      sBlock === eBlock &&
-      selection.anchor.charIdx === selection.focus.charIdx
-    ) {
-      onSelectedBlockIds(new Set());
+    if (sBlock === eBlock && sChar === eChar) {
+      onSelectionRanges(new Map());
       return;
     }
-    const ids = new Set<string>();
-    const startB = blocks[sBlock];
-    const endB = blocks[eBlock];
+    const ranges = new Map<string, { start: number; end: number }>();
     for (let i = sBlock; i <= eBlock; i++) {
-      if (
-        i === sBlock ||
-        i === eBlock ||
-        isBlockInSelectionParagraph(blocks[i], startB, endB)
-      ) {
-        ids.add(blocks[i].id);
+      const b = blocks[i];
+      const from = i === sBlock ? sChar : 0;
+      const to = i === eBlock ? eChar : b.textChars.length;
+      if (from < to) {
+        ranges.set(b.id, { start: from, end: to });
       }
     }
-    onSelectedBlockIds(ids);
-  }, [selection, blocks, onSelectedBlockIds]);
+    onSelectionRanges(ranges);
+  }, [selection, blocks, onSelectionRanges]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -1572,7 +1534,17 @@ function OcrBlockSelectLayer({
     const layer = layerRef.current;
     if (!layer) return { x: 0, y: 0 };
     const rect = layer.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    // getBoundingClientRect returns screen-space coords (affected by CSS transforms).
+    // Block positions are in CSS-space (unscaled). Compute the scale factor
+    // between screen size and CSS size to convert correctly.
+    const cssW = imgRect?.w ?? rect.width;
+    const cssH = imgRect?.h ?? rect.height;
+    const sx = rect.width / cssW;
+    const sy = rect.height / cssH;
+    return {
+      x: (e.clientX - rect.left) / sx,
+      y: (e.clientY - rect.top) / sy,
+    };
   };
 
   const hitBlockIdx = (px: number, py: number) =>
@@ -1589,6 +1561,7 @@ function OcrBlockSelectLayer({
       const charIdx = ocrCharIdxAtX(blocks[idx].chars, x - blocks[idx].x);
       const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
       setSelection({ anchor, focus: anchor });
+      dragOriginRef.current = { x, y };
       isDraggingRef.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       e.stopPropagation();
@@ -1598,6 +1571,7 @@ function OcrBlockSelectLayer({
     } else {
       // Not zoomed — started in empty space, clear selection but track drag
       setSelection(null);
+      dragOriginRef.current = { x, y };
       isDraggingRef.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       e.stopPropagation();
@@ -1608,7 +1582,8 @@ function OcrBlockSelectLayer({
     if (!isDraggingRef.current) return;
     const { x, y } = getLayerCoords(e);
     const sel = selectionRef.current;
-    if (!sel) {
+    const origin = dragOriginRef.current;
+    if (!sel && origin) {
       // Started from empty space — begin selection when cursor enters a block
       const idx = hitBlockIdx(x, y);
       if (idx >= 0) {
@@ -1616,13 +1591,47 @@ function OcrBlockSelectLayer({
         const anchor: OcrTextAnchor = { blockIdx: idx, charIdx };
         setSelection({ anchor, focus: anchor });
       }
-    } else {
-      // Extend existing selection with column bias
-      const pos = ocrPositionAtPoint(blocks, x, y, sel.anchor.blockIdx);
-      if (pos) {
-        setSelection((prev) =>
-          prev ? { anchor: prev.anchor, focus: pos } : null,
-        );
+    } else if (sel && origin) {
+      // Rectangle-based selection: find all blocks within the drag rectangle
+      const rx0 = Math.min(origin.x, x);
+      const ry0 = Math.min(origin.y, y);
+      const rx1 = Math.max(origin.x, x);
+      const ry1 = Math.max(origin.y, y);
+
+      // Find first and last blocks that overlap the rectangle
+      let firstIdx = -1;
+      let lastIdx = -1;
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        const bx1 = b.x + b.w;
+        const by1 = b.y + b.h;
+        if (bx1 > rx0 && b.x < rx1 && by1 > ry0 && b.y < ry1) {
+          if (firstIdx < 0) firstIdx = i;
+          lastIdx = i;
+        }
+      }
+
+      if (firstIdx >= 0) {
+        // Compute precise char positions for first and last blocks
+        const fb = blocks[firstIdx];
+        const lb = blocks[lastIdx];
+        const startChar =
+          firstIdx === sel.anchor.blockIdx
+            ? sel.anchor.charIdx
+            : ocrCharIdxAtX(fb.chars, Math.max(0, rx0 - fb.x));
+        const endChar = ocrCharIdxAtX(lb.chars, Math.min(lb.w, rx1 - lb.x));
+        setSelection({
+          anchor: { blockIdx: firstIdx, charIdx: startChar },
+          focus: { blockIdx: lastIdx, charIdx: endChar },
+        });
+      } else {
+        // No blocks in rectangle — keep current position for nearest block
+        const pos = ocrPositionAtPoint(blocks, x, y, sel.anchor.blockIdx);
+        if (pos) {
+          setSelection((prev) =>
+            prev ? { anchor: prev.anchor, focus: pos } : null,
+          );
+        }
       }
     }
     e.stopPropagation();
