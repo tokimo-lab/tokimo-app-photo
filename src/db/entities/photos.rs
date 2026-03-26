@@ -72,6 +72,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub geo_township: Option<String>,
     pub ocr_scanned_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub ocr_debug_info: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -4,6 +4,7 @@ import {
   FileText,
   MapPin,
   ScanText,
+  SearchCode,
   Sparkles,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -11,6 +12,7 @@ import type { PhotoDetailOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { getOcrModelName } from "../../lib/ocr-models";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
+import { OcrDebugModal } from "./OcrDebugModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
 import { formatBytes } from "./photo-utils";
@@ -131,6 +133,7 @@ export function PhotoInfoPanel({
   onNavigateToPerson?: (personId: string) => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
+  const [showOcrDebug, setShowOcrDebug] = useState(false);
 
   const { data: ocrResults } = api.photoSettings.getPhotoOcrResults.useQuery(
     { photoId: detail.id },
@@ -339,14 +342,26 @@ export function PhotoInfoPanel({
               ))}
             </div>
             {detail.ocrScannedAt && (
-              <p className="mt-2 text-xs text-white/30">
-                识别于 {new Date(detail.ocrScannedAt).toLocaleString("zh-CN")}
-                {(() => {
-                  const modelName = getOcrModelName(
-                    ocrResults[0]?.modelName ?? null,
-                  );
-                  return modelName ? ` · 识别模型: ${modelName}` : null;
-                })()}
+              <p className="mt-2 flex items-center gap-1 text-xs text-white/30">
+                <span>
+                  识别于 {new Date(detail.ocrScannedAt).toLocaleString("zh-CN")}
+                  {(() => {
+                    const modelName = getOcrModelName(
+                      ocrResults[0]?.modelName ?? null,
+                    );
+                    return modelName ? ` · 识别模型: ${modelName}` : null;
+                  })()}
+                </span>
+                {detail.ocrDebugInfo && (
+                  <button
+                    type="button"
+                    className="ml-1 inline-flex items-center rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
+                    title="查看多模型识别详情"
+                    onClick={() => setShowOcrDebug(true)}
+                  >
+                    <SearchCode className="h-3 w-3" />
+                  </button>
+                )}
               </p>
             )}
           </InfoSection>
@@ -372,6 +387,14 @@ export function PhotoInfoPanel({
         <ExifModal
           exifData={detail.exifData}
           onClose={() => setShowExifModal(false)}
+        />
+      )}
+
+      {showOcrDebug && detail.ocrDebugInfo && ocrResults && (
+        <OcrDebugModal
+          debugInfo={detail.ocrDebugInfo}
+          mergedTexts={ocrResults.map((r) => r.text)}
+          onClose={() => setShowOcrDebug(false)}
         />
       )}
     </>
