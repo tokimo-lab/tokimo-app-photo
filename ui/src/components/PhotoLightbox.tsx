@@ -843,7 +843,7 @@ export function PhotoLightbox({
 
         {/* ── Info panel (fixed-width side panel) ── */}
         {showInfo && (
-          <div className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-neutral-900/95 text-sm text-white backdrop-blur">
+          <div className="flex w-80 shrink-0 flex-col border-l border-[var(--border-base)] bg-[var(--sidebar-bg)] text-sm text-white backdrop-blur">
             {detail ? (
               <>
                 {/* Sticky header */}
