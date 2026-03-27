@@ -26,7 +26,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const [showLiveVideo, setShowLiveVideo] = useState(false);
@@ -46,13 +46,17 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     onSelect?.(photo);
   };
 
+  // Ref callback: auto-play as soon as the <video> element mounts
+  const liveVideoRefCb = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (el) {
+      el.play().catch(() => {});
+    }
+  }, []);
+
   const handleMouseEnter = useCallback(() => {
     if (!isLive || isSelecting) return;
     setShowLiveVideo(true);
-    // Start playback after the video element mounts
-    requestAnimationFrame(() => {
-      videoRef.current?.play().catch(() => {});
-    });
   }, [isLive, isSelecting]);
 
   const handleMouseLeave = useCallback(() => {
@@ -105,7 +109,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
       {/* Live Photo video overlay */}
       {showLiveVideo && (
         <video
-          ref={videoRef}
+          ref={liveVideoRefCb}
           src={`/api/photos/${photo.id}/live-video`}
           className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           muted
