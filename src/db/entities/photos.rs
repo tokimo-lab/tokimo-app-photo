@@ -70,12 +70,12 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub color_dominant: Option<String>,
     pub ocr_scanned_at: Option<DateTimeWithTimeZone>,
-    #[sea_orm(column_type = "JsonBinary", nullable)]
-    pub ocr_debug_info: Option<Json>,
     pub deleted_at: Option<DateTimeWithTimeZone>,
     pub scanned_at: Option<DateTimeWithTimeZone>,
     pub created_at: Option<DateTimeWithTimeZone>,
     pub updated_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub ocr_debug_info: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
