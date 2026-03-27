@@ -192,6 +192,7 @@ impl PhotoRepo {
                 path: photo.path,
                 mime_type: photo.mime_type,
                 thumbnail_path: photo.thumbnail_path,
+                live_video_path: photo.live_video_path,
                 source_id: photo.source_id.map(|id| id.to_string()),
                 source_type,
                 source_config,

@@ -1,6 +1,7 @@
 import { Check, Heart, ImageIcon } from "lucide-react";
-import { memo, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
+import { LivePhotoIcon } from "./LivePhotoIcon";
 import { THUMB_WIDTH } from "./photo-utils";
 
 export const PhotoThumbnail = memo(function PhotoThumbnail({
@@ -25,8 +26,12 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [showLiveVideo, setShowLiveVideo] = useState(false);
+
+  const isLive = !!photo.liveVideoPath;
 
   const handleClick = () => {
     if (isSelecting && onSelect) {
@@ -41,7 +46,26 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     onSelect?.(photo);
   };
 
+  const handleMouseEnter = useCallback(() => {
+    if (!isLive || isSelecting) return;
+    setShowLiveVideo(true);
+    // Start playback after the video element mounts
+    requestAnimationFrame(() => {
+      videoRef.current?.play().catch(() => {});
+    });
+  }, [isLive, isSelecting]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!showLiveVideo) return;
+    setShowLiveVideo(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [showLiveVideo]);
+
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: Live Photo hover preview
     <div
       data-photo-id={photo.id}
       className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
@@ -51,6 +75,8 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
           ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900"
           : ""
       }`}
+      onMouseEnter={isLive ? handleMouseEnter : undefined}
+      onMouseLeave={isLive ? handleMouseLeave : undefined}
     >
       {/* Main click area */}
       <button
@@ -76,6 +102,18 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
         )}
       </button>
 
+      {/* Live Photo video overlay */}
+      {showLiveVideo && (
+        <video
+          ref={videoRef}
+          src={`/api/photos/${photo.id}/live-video`}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          muted
+          playsInline
+          loop
+        />
+      )}
+
       {/* Selection checkbox — top left */}
       {onSelect && (
         <button
@@ -95,11 +133,21 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
         </button>
       )}
 
-      {/* Favorite toggle — top right */}
+      {/* Live Photo badge — top right (before favorite) */}
+      {isLive && !isSelecting && (
+        <div className="absolute right-1 top-1 z-10 flex items-center gap-0.5 rounded-full bg-black/40 px-1.5 py-0.5 text-white opacity-80 transition-opacity group-hover:opacity-100">
+          <LivePhotoIcon size={14} />
+          <span className="text-[10px] font-medium leading-none">LIVE</span>
+        </div>
+      )}
+
+      {/* Favorite toggle — top right (shifted down when live badge is present) */}
       {onToggleFavorite && !isSelecting && (
         <button
           type="button"
-          className={`absolute right-1 top-1 z-10 cursor-pointer rounded-full p-1.5 transition-all ${
+          className={`absolute right-1 z-10 cursor-pointer rounded-full p-1.5 transition-all ${
+            isLive ? "top-7" : "top-1"
+          } ${
             photo.isFavorite
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100"

@@ -9,6 +9,7 @@ import type {
 } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 import { convertHeicToJpeg, isHeicFile } from "../../utils/heic-decoder";
+import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { THUMB_WIDTH } from "./photo-utils";
 
@@ -151,6 +152,11 @@ export function PhotoLightbox({
   const prevPhotoId = useRef(photo.id);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ── Live Photo state ──
+  const isLive = !!photo.liveVideoPath;
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
+  const [showLiveVideo, setShowLiveVideo] = useState(false);
+
   // Thumbnails are always WebP (server-side conversion)
   const thumbSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
@@ -173,6 +179,7 @@ export function PhotoLightbox({
       abortRef.current.abort();
       abortRef.current = null;
     }
+    setShowLiveVideo(false);
   }
 
   const detailQuery = api.app.getPhoto.useQuery(
@@ -694,6 +701,35 @@ export function PhotoLightbox({
         <div className="relative flex flex-1 flex-col">
           {/* Top toolbar */}
           <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+            {/* Live Photo indicator + toggle */}
+            {isLive && (
+              <button
+                type="button"
+                className={`flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1.5 text-white transition-colors ${
+                  showLiveVideo
+                    ? "bg-white/30 ring-1 ring-white/50"
+                    : "bg-black/50 hover:bg-black/70"
+                }`}
+                onClick={() => {
+                  setShowLiveVideo((v) => {
+                    const next = !v;
+                    if (next) {
+                      requestAnimationFrame(() =>
+                        liveVideoRef.current?.play().catch(() => {}),
+                      );
+                    } else if (liveVideoRef.current) {
+                      liveVideoRef.current.pause();
+                      liveVideoRef.current.currentTime = 0;
+                    }
+                    return next;
+                  });
+                }}
+                title="Live Photo"
+              >
+                <LivePhotoIcon size={16} />
+                <span className="text-xs font-medium">LIVE</span>
+              </button>
+            )}
             {onToggleFavorite && (
               <button
                 type="button"
@@ -845,6 +881,17 @@ export function PhotoLightbox({
                       onSelectionRanges={setOcrSelectionRanges}
                     />
                   )}
+                {/* Live Photo video overlay */}
+                {isLive && showLiveVideo && (
+                  <video
+                    ref={liveVideoRef}
+                    src={`/api/photos/${photo.id}/live-video`}
+                    className="absolute inset-0 h-full w-full object-contain"
+                    muted
+                    playsInline
+                    loop
+                  />
+                )}
               </div>
             ) : (
               <div className="text-neutral-400">无法加载图片</div>

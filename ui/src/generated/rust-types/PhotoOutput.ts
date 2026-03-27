@@ -3,4 +3,4 @@
 /**
  * Photo list item (timeline / grid view)
  */
-export type PhotoOutput = { id: string, appId: string, filename: string, path: string, title: string | null, width: number | null, height: number | null, fileSize: number | null, mimeType: string | null, takenAt: string | null, thumbnailPath: string | null, isFavorite: boolean, cameraMake: string | null, cameraModel: string | null, sourceId: string | null, };
+export type PhotoOutput = { id: string, appId: string, filename: string, path: string, title: string | null, width: number | null, height: number | null, fileSize: number | null, mimeType: string | null, takenAt: string | null, thumbnailPath: string | null, isFavorite: boolean, cameraMake: string | null, cameraModel: string | null, liveVideoPath: string | null, sourceId: string | null, };
