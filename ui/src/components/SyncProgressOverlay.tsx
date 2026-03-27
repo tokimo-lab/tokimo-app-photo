@@ -103,45 +103,50 @@ export function SyncProgressOverlay({
   const isDone = !active && !isSyncing && completedRecently;
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 right-4 z-50 flex min-w-[240px] items-center gap-3 rounded-xl border border-white/10 bg-black/70 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-neutral-900/80">
-      {isDone ? (
-        <CheckCircle size={16} className="shrink-0 text-green-400" />
-      ) : (
-        <Loader2 size={16} className="shrink-0 animate-spin text-orange-400" />
-      )}
-
-      <div className="flex flex-1 flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="font-medium">
-            {isDone
-              ? `已完成 ${processed} 项`
-              : isSyncing && total === 0
-                ? "正在扫描文件…"
-                : `处理中 ${processed}/${total}`}
-          </span>
-          <button
-            type="button"
-            onClick={handleDismiss}
-            className="ml-2 rounded p-0.5 text-white/40 hover:text-white/80"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Progress bar */}
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-          <div
-            className={`h-full rounded-full transition-all duration-300 ${isDone ? "bg-green-500" : "bg-orange-500"}`}
-            style={{ width: `${percent}%` }}
+    <div className="pointer-events-none sticky bottom-4 z-50 flex justify-end px-4">
+      <div className="pointer-events-auto flex min-w-[240px] items-center gap-3 rounded-xl border border-white/10 bg-black/70 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-neutral-900/80">
+        {isDone ? (
+          <CheckCircle size={16} className="shrink-0 text-green-400" />
+        ) : (
+          <Loader2
+            size={16}
+            className="shrink-0 animate-spin text-orange-400"
           />
-        </div>
-
-        {!isDone && running > 0 && (
-          <span className="text-[11px] text-white/40">
-            {running} 个任务运行中
-            {pending > 0 && `，${pending} 个排队中`}
-          </span>
         )}
+
+        <div className="flex flex-1 flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">
+              {isDone
+                ? `已完成 ${processed} 项`
+                : isSyncing && total === 0
+                  ? "正在扫描文件…"
+                  : `处理中 ${processed}/${total}`}
+            </span>
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="ml-2 rounded p-0.5 text-white/40 hover:text-white/80"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${isDone ? "bg-green-500" : "bg-orange-500"}`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+
+          {!isDone && running > 0 && (
+            <span className="text-[11px] text-white/40">
+              {running} 个任务运行中
+              {pending > 0 && `，${pending} 个排队中`}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
