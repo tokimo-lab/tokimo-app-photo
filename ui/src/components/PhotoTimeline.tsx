@@ -138,6 +138,21 @@ export function PhotoTimeline({
     }
   }, [virtualItems, flatItems.length, hasMore, onLoadMore, isLoadingMore]);
 
+  // ── Pending seek: scroll after backend data arrives ──────────
+  const pendingSeekRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingSeekRef.current) return;
+    const target = pendingSeekRef.current;
+    const idx = flatItems.findIndex(
+      (item) => item.type === "header" && item.group.date.startsWith(target),
+    );
+    if (idx >= 0) {
+      pendingSeekRef.current = null;
+      virtualizer.scrollToIndex(idx, { align: "start", behavior: "auto" });
+    }
+  }, [flatItems, virtualizer]);
+
   // ── Scroll to date (for timeline scrubber) ──────────────────
   const scrollToDate = useCallback(
     (datePrefix: string, smooth: boolean) => {
@@ -147,12 +162,14 @@ export function PhotoTimeline({
           item.type === "header" && item.group.date.startsWith(datePrefix),
       );
       if (idx >= 0) {
+        pendingSeekRef.current = null;
         virtualizer.scrollToIndex(idx, {
           align: "start",
           behavior: smooth ? "smooth" : "auto",
         });
       } else if (onSeekToDate) {
-        // Target date not loaded yet — seek via backend
+        // Target date not loaded yet — remember target and seek via backend
+        pendingSeekRef.current = datePrefix;
         onSeekToDate(datePrefix);
       }
     },

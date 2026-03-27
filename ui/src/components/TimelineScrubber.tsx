@@ -292,9 +292,19 @@ export function TimelineScrubber({
     }
   }, [currentVisibleDate, datePositions, dragging]);
 
-  // ── Position → nearest year-month ───────────────────────────
+  // ── Position → year-month from interpolated label ────────────
   const nearestDate = useCallback(
     (pos: number) => {
+      // Use the same interpolation as posToDateLabel to derive year-month,
+      // ensuring the selected month matches the tooltip shown to the user.
+      const label = posToDateLabel(pos);
+      const match = label.match(/^(\d{4})年(\d{1,2})月/);
+      if (match) {
+        const year = match[1];
+        const month = match[2].padStart(2, "0");
+        return `${year}-${month}`;
+      }
+      // Fallback: nearest datePosition key
       let best: string | null = null;
       let bestDist = Number.POSITIVE_INFINITY;
       for (const [ym, dp] of datePositions) {
@@ -306,7 +316,7 @@ export function TimelineScrubber({
       }
       return best;
     },
-    [datePositions],
+    [datePositions, posToDateLabel],
   );
 
   // ── Scroll to track Y coordinate ────────────────────────────
