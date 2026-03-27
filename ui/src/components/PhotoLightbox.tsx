@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import heic2any from "heic2any";
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -507,13 +506,7 @@ export function PhotoLightbox({
     }
   }, [isZoomed]);
 
-  const isHeic =
-    photo.mimeType === "image/heif" ||
-    photo.mimeType === "image/heic" ||
-    /\.heic$/i.test(photo.filename) ||
-    /\.heif$/i.test(photo.filename);
-
-  // Always fetch original — HEIC is decoded client-side via WASM
+  // Server serves raw image; browser decode test determines if fallback JPEG conversion is needed
   const fullSrc = photo.sourceId ? `/api/photos/${photo.id}/image` : undefined;
 
   // Don't start loading full-res until enter animation finishes
@@ -532,71 +525,60 @@ export function PhotoLightbox({
         const contentLength = res.headers.get("Content-Length");
         const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
 
+        let blob: Blob;
+
         if (!res.body) {
-          let blob = await res.blob();
+          blob = await res.blob();
           if (abort.signal.aborted) return;
-          if (isHeic) {
-            setLoadProgress(0.95);
-            const converted = await heic2any({
-              blob,
-              toType: "image/jpeg",
-              quality: 0.92,
-            });
-            blob = Array.isArray(converted) ? converted[0] : converted;
+        } else {
+          const reader = res.body.getReader();
+          const chunks: BlobPart[] = [];
+          let received = 0;
+
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (total > 0) {
+              setLoadProgress(Math.min(received / total, 1));
+            } else {
+              setLoadProgress(Math.min(received / (received + 200_000), 0.95));
+            }
           }
-          const url = URL.createObjectURL(blob);
-          setFullBlobUrl(url);
-          setLoadProgress(1);
-          setFullLoaded(true);
-          return;
-        }
 
-        const reader = res.body.getReader();
-        const chunks: BlobPart[] = [];
-        let received = 0;
+          if (abort.signal.aborted) return;
 
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          if (total > 0) {
-            // Reserve last 5% for HEIC WASM decode
-            const dlProgress = received / total;
-            setLoadProgress(
-              isHeic
-                ? Math.min(dlProgress * 0.95, 0.95)
-                : Math.min(dlProgress, 1),
-            );
-          } else {
-            setLoadProgress(Math.min(received / (received + 200_000), 0.95));
-          }
-        }
-
-        if (abort.signal.aborted) return;
-
-        let blob = new Blob(chunks, {
-          type: res.headers.get("Content-Type") || "image/jpeg",
-        });
-
-        // Decode HEIC → JPEG via WASM
-        if (isHeic) {
-          setLoadProgress(0.96);
-          const converted = await heic2any({
-            blob,
-            toType: "image/jpeg",
-            quality: 0.92,
+          blob = new Blob(chunks, {
+            type: res.headers.get("Content-Type") || "image/jpeg",
           });
-          if (abort.signal.aborted) return;
-          blob = Array.isArray(converted) ? converted[0] : converted;
         }
 
         const url = URL.createObjectURL(blob);
-        setFullBlobUrl(url);
-        setLoadProgress(1);
-        setFullLoaded(true);
-      } catch {
+
+        // Try native browser decode; fall back to server JPEG conversion if unsupported
+        const testImg = new Image();
+        testImg.src = url;
+        try {
+          await testImg.decode();
+          setFullBlobUrl(url);
+          setLoadProgress(1);
+          setFullLoaded(true);
+        } catch {
+          URL.revokeObjectURL(url);
+          const jpegRes = await fetch(`${fullSrc}?format=jpeg`, {
+            signal: abort.signal,
+          });
+          const jpegBlob = await jpegRes.blob();
+          if (abort.signal.aborted) return;
+          const jpegUrl = URL.createObjectURL(jpegBlob);
+          setFullBlobUrl(jpegUrl);
+          setLoadProgress(1);
+          setFullLoaded(true);
+        }
+      } catch (err) {
         if (!abort.signal.aborted) {
+          console.error("[PhotoLightbox] Failed to load image:", err);
           setLoadProgress(0);
         }
       }
@@ -606,7 +588,7 @@ export function PhotoLightbox({
       abort.abort();
       abortRef.current = null;
     };
-  }, [shouldLoadFull, fullLoaded, fullSrc, isHeic]);
+  }, [shouldLoadFull, fullLoaded, fullSrc]);
 
   // Clean up blob URL on unmount
   useEffect(() => {
