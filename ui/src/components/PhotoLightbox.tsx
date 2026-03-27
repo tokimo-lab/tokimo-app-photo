@@ -8,7 +8,7 @@ import type {
   PhotoOutput,
 } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { convertHeicToJpeg, isHeicFile } from "../../utils/heic-decoder";
+import { convertHeicToJpeg } from "../../utils/heic-decoder";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { THUMB_WIDTH } from "./photo-utils";
@@ -43,7 +43,26 @@ function queryThumbnailRect(photoId: string): FlyRect | null {
   };
 }
 
-/** Compute where the lightbox image will be rendered (center of available area). */
+/** For images smaller than the available area, compute a default zoom (up to 2×)
+ *  that fills the viewport without requiring drag/pan. */
+function computeInitialScale(
+  photoWidth: number,
+  photoHeight: number,
+  infoPanelVisible: boolean,
+): number {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const infoW = infoPanelVisible ? 320 : 0;
+  const pad = 48;
+  const availW = Math.max(1, vw - infoW - pad * 2);
+  const availH = Math.max(1, vh - pad * 2);
+  const fitScale = Math.min(availW / photoWidth, availH / photoHeight);
+  if (fitScale <= 1) return 1;
+  return Math.min(2, fitScale);
+}
+
+/** Compute where the lightbox image will be rendered (center of available area).
+ *  Accounts for initialScale so the fly animation target matches the actual display. */
 function computeCenterRect(
   photoWidth: number,
   photoHeight: number,
@@ -55,16 +74,27 @@ function computeCenterRect(
   const pad = 48; // p-12
   const availW = Math.max(1, vw - infoW - pad * 2);
   const availH = Math.max(1, vh - pad * 2);
-  const imgAspect = photoWidth / photoHeight;
-  const areaAspect = availW / availH;
+
+  const fitScale = Math.min(availW / photoWidth, availH / photoHeight);
   let w: number;
   let h: number;
-  if (imgAspect > areaAspect) {
-    w = availW;
-    h = w / imgAspect;
+
+  if (fitScale >= 1) {
+    // Image is smaller than available area — visual size = natural × initialScale
+    const s = Math.min(2, fitScale);
+    w = photoWidth * s;
+    h = photoHeight * s;
   } else {
-    h = availH;
-    w = h * imgAspect;
+    // Image is larger — constrain to available area (object-contain)
+    const imgAspect = photoWidth / photoHeight;
+    const areaAspect = availW / availH;
+    if (imgAspect > areaAspect) {
+      w = availW;
+      h = w / imgAspect;
+    } else {
+      h = availH;
+      w = h * imgAspect;
+    }
   }
   return {
     top: pad + (availH - h) / 2,
@@ -118,14 +148,23 @@ export function PhotoLightbox({
   const imgRef = useRef<HTMLImageElement>(null);
 
   // ── Zoom & Pan state ──────────────────────────────────────────────────────
-  const [scale, setScale] = useState(1);
+  // Compute the ideal initial scale for this photo (auto-zoom small images)
+  const initialScaleValue = useMemo(() => {
+    if (!photo.width || !photo.height) return 1;
+    return computeInitialScale(photo.width, photo.height, showInfo);
+  }, [photo.width, photo.height, showInfo]);
+
+  const [scale, setScale] = useState(() => {
+    if (!photo.width || !photo.height) return 1;
+    return computeInitialScale(photo.width, photo.height, showInfo);
+  });
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const isDragging = useRef(false);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
-  const isZoomed = scale > 1.01;
+  const isZoomed = scale > initialScaleValue + 0.01;
   // Refs mirror state so the native wheel listener (empty deps) reads fresh values
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
@@ -133,6 +172,8 @@ export function PhotoLightbox({
   panXRef.current = panX;
   const panYRef = useRef(panY);
   panYRef.current = panY;
+  const initialScaleRef = useRef(initialScaleValue);
+  initialScaleRef.current = initialScaleValue;
 
   // ── Fly animation state ────────────────────────────────────────────────────
   const [animState, setAnimState] = useState<AnimState>(() => {
@@ -168,7 +209,7 @@ export function PhotoLightbox({
     setFullLoaded(false);
     setFullDecoded(false);
     setLoadProgress(0);
-    setScale(1);
+    setScale(initialScaleValue);
     setPanX(0);
     setPanY(0);
     if (fullBlobUrl) {
@@ -319,7 +360,6 @@ export function PhotoLightbox({
   ]);
 
   // ── Zoom & Pan handlers ─────────────────────────────────────────────────────
-  const MIN_SCALE = 1;
   const MAX_SCALE = 20;
 
   // Clamp pan: if image overflows in ANY direction, allow panning both axes (black border ≤ 1/3)
@@ -409,7 +449,10 @@ export function PhotoLightbox({
 
       const oldS = scaleRef.current;
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const newS = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldS * factor));
+      const newS = Math.min(
+        MAX_SCALE,
+        Math.max(initialScaleRef.current, oldS * factor),
+      );
       if (newS === oldS) return;
 
       const ratio = 1 - newS / oldS;
@@ -507,13 +550,13 @@ export function PhotoLightbox({
 
   const handleDoubleClick = useCallback(() => {
     if (isZoomed) {
-      setScale(1);
+      setScale(initialScaleValue);
       setPanX(0);
       setPanY(0);
     } else {
-      setScale(3);
+      setScale(Math.min(MAX_SCALE, initialScaleValue * 2));
     }
-  }, [isZoomed]);
+  }, [isZoomed, initialScaleValue]);
 
   // Server serves raw image; browser decode test determines if fallback JPEG conversion is needed
   const fullSrc = photo.sourceId ? `/api/photos/${photo.id}/image` : undefined;
@@ -625,12 +668,28 @@ export function PhotoLightbox({
   const contentVisible = animState === "open";
   const isExitFade = animState === "exiting" && flyRect == null;
 
-  // Compute the display size the image should occupy so the thumbnail
-  // scales UP to match the full-res layout (prevents tiny-thumbnail flash).
+  // Compute the CSS rendered size of the img element (before transform scale).
+  // For small images, this is their natural size (scale handles zoom).
+  // For large images, this is the object-contain fit size.
   const thumbDisplaySize = useMemo(() => {
     if (!photo.width || !photo.height) return undefined;
-    const rect = computeCenterRect(photo.width, photo.height, showInfo);
-    return { width: rect.width, height: rect.height };
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const infoW = showInfo ? 320 : 0;
+    const pad = 48;
+    const availW = Math.max(1, vw - infoW - pad * 2);
+    const availH = Math.max(1, vh - pad * 2);
+    const fitScale = Math.min(availW / photo.width, availH / photo.height);
+    if (fitScale >= 1) {
+      // Small image: render at natural size; transform scale handles zoom
+      return { width: photo.width, height: photo.height };
+    }
+    // Large image: constrain to available area
+    const imgAspect = photo.width / photo.height;
+    if (imgAspect > availW / availH) {
+      return { width: availW, height: availW / imgAspect };
+    }
+    return { width: availH * imgAspect, height: availH };
   }, [photo.width, photo.height, showInfo]);
 
   let backdropOpacity: number;
