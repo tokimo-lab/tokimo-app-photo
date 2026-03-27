@@ -1,4 +1,4 @@
-import { Button, Empty, Spin, Tag } from "@tokiomo/components";
+import { Button, Checkbox, Empty, Modal, Spin, Tag } from "@tokiomo/components";
 import {
   Calendar,
   FolderOpen,
@@ -530,10 +530,8 @@ export default function PhotoAppPage() {
     void trashedQuery.refetch();
   }, [photosQuery.refetch, favoritesQuery.refetch, trashedQuery.refetch]);
 
-  const doSync = useCallback(() => {
-    if (!id) return;
-    syncMutation.mutate({ id, clearData: false });
-  }, [id, syncMutation.mutate]);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncClearData, setSyncClearData] = useState(false);
 
   const isRefetching = photosQuery.isRefetching;
   const isSyncing = syncMutation.isPending;
@@ -578,10 +576,13 @@ export default function PhotoAppPage() {
             },
             {
               key: "sync",
-              label: "同步",
+              label: "同步资料库",
               icon: <FolderSync size={14} />,
               disabled: isSyncing,
-              onClick: doSync,
+              onClick: () => {
+                setSyncClearData(false);
+                setSyncModalOpen(true);
+              },
             },
           ],
         },
@@ -598,7 +599,6 @@ export default function PhotoAppPage() {
     id,
     handleRefresh,
     isRefetching,
-    doSync,
     isSyncing,
     toggleSelectMode,
     isSelecting,
@@ -611,6 +611,35 @@ export default function PhotoAppPage() {
 
   return (
     <div ref={rootRef} className="space-y-3">
+      <Modal
+        open={syncModalOpen}
+        title="同步资料库"
+        okText="开始同步"
+        cancelText="取消"
+        confirmLoading={syncMutation.isPending}
+        onCancel={() => setSyncModalOpen(false)}
+        onOk={async () => {
+          if (!id) return;
+          try {
+            await syncMutation.mutateAsync({
+              id,
+              clearData: syncClearData,
+            });
+          } finally {
+            setSyncModalOpen(false);
+          }
+        }}
+      >
+        <Checkbox
+          checked={syncClearData}
+          onChange={(e) => setSyncClearData(e.target.checked)}
+        >
+          清空数据重新同步
+        </Checkbox>
+        <p className="mt-2 text-xs text-[var(--text-muted)]">
+          勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。
+        </p>
+      </Modal>
       {/* Tab bar — iOS 26 style pill, centered */}
       <div className="relative flex items-center justify-center">
         <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
