@@ -31,6 +31,7 @@ import {
 } from "../../components/photo/PhotoSizeSlider";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
+import { SyncProgressOverlay } from "../../components/photo/SyncProgressOverlay";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
 
@@ -913,6 +914,9 @@ export default function PhotoAppPage() {
           isPending={addToAlbumMutation.isPending}
         />
       )}
+
+      {/* Sync progress floating overlay */}
+      <SyncProgressOverlay appId={id} />
     </div>
   );
 }
