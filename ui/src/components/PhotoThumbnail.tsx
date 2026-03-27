@@ -1,6 +1,7 @@
 import { Check, Heart, ImageIcon } from "lucide-react";
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
+import { fetchHeicSafe, isHeicFile } from "../../utils/heic-decoder";
 import { THUMB_WIDTH } from "./photo-utils";
 
 export const PhotoThumbnail = memo(function PhotoThumbnail({
@@ -21,11 +22,28 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   /** When true, fills parent dimensions instead of forcing aspect-square */
   fillContainer?: boolean;
 }) {
-  const src = photo.sourceId
+  const rawSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
+  const needsHeicDecode = isHeicFile(photo.mimeType, photo.filename);
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [heicBlobUrl, setHeicBlobUrl] = useState<string | null>(null);
+
+  // For HEIC files, fetch and decode via WASM
+  useEffect(() => {
+    if (!rawSrc || !needsHeicDecode) return;
+    const abort = new AbortController();
+    fetchHeicSafe(rawSrc, abort.signal)
+      .then((url) => {
+        if (!abort.signal.aborted) setHeicBlobUrl(url);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [rawSrc, needsHeicDecode]);
+
+  // For HEIC: use decoded blob URL; for others: use direct URL
+  const src = needsHeicDecode ? (heicBlobUrl ?? undefined) : rawSrc;
 
   const handleClick = () => {
     if (isSelecting && onSelect) {

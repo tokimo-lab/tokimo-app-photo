@@ -8,6 +8,11 @@ import type {
   PhotoOutput,
 } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
+import {
+  convertHeicToJpeg,
+  fetchHeicSafe,
+  isHeicFile,
+} from "../../utils/heic-decoder";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { THUMB_WIDTH } from "./photo-utils";
 
@@ -150,9 +155,24 @@ export function PhotoLightbox({
   const prevPhotoId = useRef(photo.id);
   const abortRef = useRef<AbortController | null>(null);
 
-  const thumbSrc = photo.sourceId
+  const rawThumbSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
+  const needsHeicDecode = isHeicFile(photo.mimeType, photo.filename);
+  const [heicThumbUrl, setHeicThumbUrl] = useState<string | null>(null);
+  const thumbSrc = needsHeicDecode ? (heicThumbUrl ?? undefined) : rawThumbSrc;
+
+  // Decode HEIC thumbnail via WASM
+  useEffect(() => {
+    if (!rawThumbSrc || !needsHeicDecode) return;
+    const abort = new AbortController();
+    fetchHeicSafe(rawThumbSrc, abort.signal)
+      .then((url) => {
+        if (!abort.signal.aborted) setHeicThumbUrl(url);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [rawThumbSrc, needsHeicDecode]);
 
   // Reset state when navigating to a different photo
   if (prevPhotoId.current !== photo.id) {
@@ -163,6 +183,7 @@ export function PhotoLightbox({
     setScale(1);
     setPanX(0);
     setPanY(0);
+    setHeicThumbUrl(null);
     if (fullBlobUrl) {
       URL.revokeObjectURL(fullBlobUrl);
       setFullBlobUrl(null);
@@ -556,7 +577,7 @@ export function PhotoLightbox({
 
         const url = URL.createObjectURL(blob);
 
-        // Try native browser decode; fall back to server JPEG conversion if unsupported
+        // Try native browser decode; fall back to WASM HEIC decoder if unsupported
         const testImg = new Image();
         testImg.src = url;
         try {
@@ -566,15 +587,26 @@ export function PhotoLightbox({
           setFullLoaded(true);
         } catch {
           URL.revokeObjectURL(url);
-          const jpegRes = await fetch(`${fullSrc}?format=jpeg`, {
-            signal: abort.signal,
-          });
-          const jpegBlob = await jpegRes.blob();
-          if (abort.signal.aborted) return;
-          const jpegUrl = URL.createObjectURL(jpegBlob);
-          setFullBlobUrl(jpegUrl);
-          setLoadProgress(1);
-          setFullLoaded(true);
+          // Decode HEIC via WASM (libheif)
+          try {
+            const jpegBlob = await convertHeicToJpeg(blob);
+            if (abort.signal.aborted) return;
+            const jpegUrl = URL.createObjectURL(jpegBlob);
+            setFullBlobUrl(jpegUrl);
+            setLoadProgress(1);
+            setFullLoaded(true);
+          } catch {
+            // Last resort: server-side JPEG conversion
+            const jpegRes = await fetch(`${fullSrc}?format=jpeg`, {
+              signal: abort.signal,
+            });
+            const jpegBlob = await jpegRes.blob();
+            if (abort.signal.aborted) return;
+            const jpegUrl = URL.createObjectURL(jpegBlob);
+            setFullBlobUrl(jpegUrl);
+            setLoadProgress(1);
+            setFullLoaded(true);
+          }
         }
       } catch (err) {
         if (!abort.signal.aborted) {
