@@ -611,7 +611,7 @@ export default function PhotoAppPage() {
   if (!id) return null;
 
   return (
-    <div ref={rootRef} className="space-y-3">
+    <div ref={rootRef} className="relative space-y-3">
       <Modal
         open={syncModalOpen}
         title="同步资料库"
@@ -916,7 +916,10 @@ export default function PhotoAppPage() {
       )}
 
       {/* Sync progress floating overlay */}
-      <SyncProgressOverlay appId={id} />
+      <SyncProgressOverlay
+        appId={id}
+        onJobCompleted={() => void photosQuery.refetch()}
+      />
     </div>
   );
 }
