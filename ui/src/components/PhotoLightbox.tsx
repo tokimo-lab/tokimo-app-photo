@@ -8,11 +8,7 @@ import type {
   PhotoOutput,
 } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import {
-  convertHeicToJpeg,
-  fetchHeicSafe,
-  isHeicFile,
-} from "../../utils/heic-decoder";
+import { convertHeicToJpeg, isHeicFile } from "../../utils/heic-decoder";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { THUMB_WIDTH } from "./photo-utils";
 
@@ -155,24 +151,10 @@ export function PhotoLightbox({
   const prevPhotoId = useRef(photo.id);
   const abortRef = useRef<AbortController | null>(null);
 
-  const rawThumbSrc = photo.sourceId
+  // Thumbnails are always WebP (server-side conversion)
+  const thumbSrc = photo.sourceId
     ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
-  const needsHeicDecode = isHeicFile(photo.mimeType, photo.filename);
-  const [heicThumbUrl, setHeicThumbUrl] = useState<string | null>(null);
-  const thumbSrc = needsHeicDecode ? (heicThumbUrl ?? undefined) : rawThumbSrc;
-
-  // Decode HEIC thumbnail via WASM
-  useEffect(() => {
-    if (!rawThumbSrc || !needsHeicDecode) return;
-    const abort = new AbortController();
-    fetchHeicSafe(rawThumbSrc, abort.signal)
-      .then((url) => {
-        if (!abort.signal.aborted) setHeicThumbUrl(url);
-      })
-      .catch(() => {});
-    return () => abort.abort();
-  }, [rawThumbSrc, needsHeicDecode]);
 
   // Reset state when navigating to a different photo
   if (prevPhotoId.current !== photo.id) {
@@ -183,7 +165,6 @@ export function PhotoLightbox({
     setScale(1);
     setPanX(0);
     setPanY(0);
-    setHeicThumbUrl(null);
     if (fullBlobUrl) {
       URL.revokeObjectURL(fullBlobUrl);
       setFullBlobUrl(null);
