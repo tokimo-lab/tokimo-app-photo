@@ -26,6 +26,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   const handleClick = () => {
     if (isSelecting && onSelect) {
@@ -44,7 +45,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     <div
       data-photo-id={photo.id}
       className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
-        !loaded && src ? "skeleton-shimmer" : ""
+        !loaded && !errored && src ? "skeleton-shimmer" : ""
       } ${fillContainer ? "h-full w-full" : "aspect-square"} ${
         isSelected
           ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900"
@@ -57,7 +58,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
         className="h-full w-full cursor-pointer"
         onClick={handleClick}
       >
-        {src ? (
+        {src && !errored ? (
           <img
             ref={imgRef}
             src={src}
@@ -66,6 +67,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
             loading="lazy"
             decoding="async"
             onLoad={() => setLoaded(true)}
+            onError={() => setErrored(true)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
