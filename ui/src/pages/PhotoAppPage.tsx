@@ -31,6 +31,10 @@ import {
 } from "../../components/photo/PhotoSizeSlider";
 import { PhotoTimeline } from "../../components/photo/PhotoTimeline";
 import { PAGE_SIZE } from "../../components/photo/photo-utils";
+import {
+  clearViewerPhotos,
+  setViewerPhotos,
+} from "../../components/photo/photo-viewer-store";
 import { SyncProgressOverlay } from "../../components/photo/SyncProgressOverlay";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
@@ -272,6 +276,14 @@ export default function PhotoAppPage() {
     : allTimelinePhotosRaw;
   const timelineHasMore =
     !ocrFilterActive && allTimelinePhotos.length < timelineTotal;
+
+  // Sync photo list to viewer store for windowed photo viewer navigation
+  useEffect(() => {
+    if (id) setViewerPhotos(id, allTimelinePhotos);
+    return () => {
+      if (id) clearViewerPhotos(id);
+    };
+  }, [id, allTimelinePhotos]);
 
   // Accumulate favorites across pages
   const favTotal = favoritesQuery.data?.total ?? 0;
@@ -782,7 +794,6 @@ export default function PhotoAppPage() {
             onSelect={handleSelect}
             onSeekToDate={seekToDate}
             targetRowHeight={targetRowHeight}
-            onNavigateToPerson={handleNavigateToPerson}
           />
         ) : ocrFilterActive ? (
           <Empty description="当前加载的照片中没有 OCR 匹配结果" />
@@ -812,7 +823,6 @@ export default function PhotoAppPage() {
             selectedIds={selectedIds}
             onSelect={handleSelect}
             targetRowHeight={targetRowHeight}
-            onNavigateToPerson={handleNavigateToPerson}
           />
         ) : (
           <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
@@ -825,7 +835,6 @@ export default function PhotoAppPage() {
           selectedIds={selectedIds}
           onSelect={handleSelect}
           targetRowHeight={targetRowHeight}
-          onNavigateToPerson={handleNavigateToPerson}
         />
       ) : tab === "people" ? (
         <PhotoPeopleView
@@ -837,7 +846,6 @@ export default function PhotoAppPage() {
           targetRowHeight={targetRowHeight}
           navigateToPersonId={navigateToPersonId}
           onNavigateToPersonHandled={handleNavigateToPersonHandled}
-          onNavigateToPerson={handleNavigateToPerson}
         />
       ) : tab === "trash" ? (
         allTrashPhotos.length > 0 ? (
@@ -876,7 +884,6 @@ export default function PhotoAppPage() {
               selectedIds={selectedIds}
               onSelect={handleSelect}
               targetRowHeight={targetRowHeight}
-              onNavigateToPerson={handleNavigateToPerson}
             />
           </div>
         ) : (

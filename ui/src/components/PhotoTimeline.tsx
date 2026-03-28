@@ -2,7 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
-import { PhotoLightbox } from "./PhotoLightbox";
+import { useWindowActions } from "../../system";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import type { DateGroup } from "./photo-utils";
 import { groupPhotosByDate } from "./photo-utils";
@@ -31,7 +31,6 @@ export function PhotoTimeline({
   onSelect,
   onSeekToDate,
   targetRowHeight = 220,
-  onNavigateToPerson,
 }: {
   photos: PhotoOutput[];
   appId: string;
@@ -45,10 +44,22 @@ export function PhotoTimeline({
   onSelect?: (photo: PhotoOutput) => void;
   onSeekToDate?: (datePrefix: string) => void;
   targetRowHeight?: number;
-  onNavigateToPerson?: (personId: string) => void;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
-  const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
+  const { openWindow } = useWindowActions();
+
+  const handlePhotoClick = useCallback(
+    (photo: PhotoOutput) => {
+      openWindow({
+        type: "image",
+        title: photo.filename,
+        appId,
+        sourceType: "photo",
+        sourceId: photo.id,
+      });
+    },
+    [openWindow, appId],
+  );
 
   // ── Measure available content width for justified layout ─────
   const measureRef = useRef<HTMLDivElement>(null);
@@ -254,7 +265,7 @@ export function PhotoTimeline({
                       >
                         <PhotoThumbnail
                           photo={photo.photo}
-                          onClick={setSelectedPhoto}
+                          onClick={handlePhotoClick}
                           onToggleFavorite={onToggleFavorite}
                           isSelecting={isSelecting}
                           isSelected={selectedIds?.has(photo.photo.id)}
@@ -292,17 +303,6 @@ export function PhotoTimeline({
         currentVisibleDate={currentVisibleDate}
         scrollToDate={scrollToDate}
       />
-
-      {selectedPhoto && !isSelecting && (
-        <PhotoLightbox
-          photo={selectedPhoto}
-          allPhotos={photos}
-          onClose={() => setSelectedPhoto(null)}
-          onNavigate={setSelectedPhoto}
-          onToggleFavorite={onToggleFavorite}
-          onNavigateToPerson={onNavigateToPerson}
-        />
-      )}
     </>
   );
 }

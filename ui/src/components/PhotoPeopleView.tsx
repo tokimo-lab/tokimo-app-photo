@@ -16,7 +16,6 @@ interface PhotoPeopleViewProps {
   targetRowHeight: number;
   navigateToPersonId?: string | null;
   onNavigateToPersonHandled?: () => void;
-  onNavigateToPerson?: (personId: string) => void;
 }
 
 type ViewLevel = "grid" | "detail";
@@ -35,7 +34,6 @@ export function PhotoPeopleView({
   targetRowHeight,
   navigateToPersonId,
   onNavigateToPersonHandled,
-  onNavigateToPerson,
 }: PhotoPeopleViewProps) {
   const [view, setView] = useState<ViewState>({ level: "grid" });
   const [photosPage, setPhotosPage] = useState(1);
@@ -312,7 +310,6 @@ export function PhotoPeopleView({
               selectedIds={selectedIds}
               onSelect={onSelect}
               targetRowHeight={targetRowHeight}
-              onNavigateToPerson={onNavigateToPerson}
             />
           ) : photosQuery.isLoading ? (
             <div className="flex h-32 items-center justify-center">
