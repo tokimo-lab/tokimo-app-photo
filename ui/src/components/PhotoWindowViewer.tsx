@@ -222,6 +222,37 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const isZoomed = scale > 1.05;
 
+  // Track container size for thumbnail display sizing
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setContainerSize({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Compute display size so thumbnail renders at the same size as the full-res image
+  const displaySize = useMemo(() => {
+    if (!photo?.width || !photo?.height || !containerSize.w || !containerSize.h)
+      return undefined;
+    const fitScale = Math.min(
+      containerSize.w / photo.width,
+      containerSize.h / photo.height,
+    );
+    if (fitScale >= 1) {
+      return { width: photo.width, height: photo.height };
+    }
+    const aspect = photo.width / photo.height;
+    if (aspect > containerSize.w / containerSize.h) {
+      return { width: containerSize.w, height: containerSize.w / aspect };
+    }
+    return { width: containerSize.h * aspect, height: containerSize.h };
+  }, [photo?.width, photo?.height, containerSize.w, containerSize.h]);
+
   // Native wheel handler (passive: false for preventDefault)
   useEffect(() => {
     const el = containerRef.current;
@@ -440,7 +471,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             src={thumbUrl}
             alt={photo?.filename ?? ""}
             draggable={false}
-            className={`max-h-full max-w-full object-contain select-none ${
+            className={`object-contain select-none ${
               !mounted
                 ? "opacity-0"
                 : fullDecoded
@@ -448,6 +479,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   : "opacity-100"
             }`}
             style={{
+              ...(displaySize && {
+                width: displaySize.width,
+                height: displaySize.height,
+              }),
               imageRendering: scale > 2 ? "pixelated" : "auto",
             }}
           />
@@ -459,10 +494,14 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               src={fullBlobUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
-              className={`absolute inset-0 m-auto max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
+              className={`absolute inset-0 m-auto object-contain select-none transition-opacity duration-200 ${
                 fullDecoded ? "opacity-100" : "opacity-0"
               }`}
               style={{
+                ...(displaySize && {
+                  width: displaySize.width,
+                  height: displaySize.height,
+                }),
                 imageRendering: scale > 2 ? "pixelated" : "auto",
               }}
               onLoad={() => setFullDecoded(true)}
