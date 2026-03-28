@@ -23,9 +23,20 @@ export function SyncProgressOverlay({
   const onJobCompletedRef = useRef(onJobCompleted);
   onJobCompletedRef.current = onJobCompleted;
 
+  // Only poll while there's active work; otherwise rely on SSE job events
   const progressQuery = api.app.getSyncProgress.useQuery(
     { id: appId },
-    { refetchInterval: 3000 },
+    {
+      refetchInterval: (query) => {
+        const d = query.state.data;
+        if (!d) return 3000; // Initial fetch
+        const active =
+          d.status === "syncing" ||
+          (d.running ?? 0) > 0 ||
+          (d.pending ?? 0) > 0;
+        return active ? 3000 : false;
+      },
+    },
   );
 
   const data = progressQuery.data;
