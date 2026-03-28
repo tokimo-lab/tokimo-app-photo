@@ -99,7 +99,7 @@ export function PhotoTimeline({
             flyEl.style.width = `${childSize.width}px`;
             flyEl.style.height = `${childSize.height}px`;
             flyEl.style.borderRadius = "8px";
-            flyEl.style.opacity = "0.6";
+            img.style.objectFit = "contain";
           });
           setTimeout(() => flyEl.remove(), 350);
         }

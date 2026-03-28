@@ -34,6 +34,7 @@ import { getViewerPhotos } from "./photo-viewer-store";
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 20;
 const THUMB_W = 640;
+const INFO_PANEL_STORAGE_KEY = "photo-viewer-info-panel-open";
 
 interface Props {
   win: WindowState;
@@ -59,20 +60,25 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < photos.length - 1;
 
-  // ── Info panel state (persisted in window metadata) ──────────────
-  const [showInfo, setShowInfo] = useState(
-    () => (win.metadata as Record<string, unknown>)?.showInfoPanel === true,
-  );
+  // ── Info panel state (persisted in localStorage across sessions) ──
+  const [showInfo, setShowInfo] = useState(() => {
+    try {
+      return localStorage.getItem(INFO_PANEL_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const toggleInfo = useCallback(() => {
     setShowInfo((v) => {
       const next = !v;
-      updateMetadata(win.id, { showInfoPanel: next } as Record<
-        string,
-        unknown
-      >);
+      try {
+        localStorage.setItem(INFO_PANEL_STORAGE_KEY, String(next));
+      } catch {
+        // ignore
+      }
       return next;
     });
-  }, [win.id, updateMetadata]);
+  }, []);
 
   // ── Detail query (always fetch for overlays) ───────────────────
   const queryClient = useQueryClient();
@@ -108,6 +114,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const fullUrl = `/api/photos/${currentPhotoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [fullDecoded, setFullDecoded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -270,6 +277,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       if (fullBlobUrl) URL.revokeObjectURL(fullBlobUrl);
       setFullBlobUrl(null);
       setFullLoaded(false);
+      setFullDecoded(false);
       setLoadProgress(0);
       setScale(1);
       setPanX(0);
@@ -347,10 +355,37 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const [showLightbox, setShowLightbox] = useState(false);
 
   const openFullscreen = useCallback(() => {
-    // Animate from current image position to fullscreen
     const img = imgRef.current;
-    if (img) {
+    if (img && photo?.width && photo?.height) {
       const rect = img.getBoundingClientRect();
+      // Calculate target position accounting for info panel (same as PhotoLightbox.computeCenterRect)
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const infoW = showInfo ? 320 : 0;
+      const pad = 48;
+      const availW = Math.max(1, vw - infoW - pad * 2);
+      const availH = Math.max(1, vh - pad * 2);
+      const fitScale = Math.min(availW / photo.width, availH / photo.height);
+      let tw: number;
+      let th: number;
+      if (fitScale >= 1) {
+        const s = Math.min(2, fitScale);
+        tw = photo.width * s;
+        th = photo.height * s;
+      } else {
+        const imgAspect = photo.width / photo.height;
+        const areaAspect = availW / availH;
+        if (imgAspect > areaAspect) {
+          tw = availW;
+          th = tw / imgAspect;
+        } else {
+          th = availH;
+          tw = th * imgAspect;
+        }
+      }
+      const targetLeft = pad + (availW - tw) / 2;
+      const targetTop = pad + (availH - th) / 2;
+
       const flyEl = document.createElement("div");
       flyEl.style.cssText = `
         position: fixed; z-index: 99999; pointer-events: none;
@@ -366,10 +401,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       document.body.appendChild(flyEl);
       flyEl.getBoundingClientRect();
       requestAnimationFrame(() => {
-        flyEl.style.left = "0px";
-        flyEl.style.top = "0px";
-        flyEl.style.width = `${window.innerWidth}px`;
-        flyEl.style.height = `${window.innerHeight}px`;
+        flyEl.style.left = `${targetLeft}px`;
+        flyEl.style.top = `${targetTop}px`;
+        flyEl.style.width = `${tw}px`;
+        flyEl.style.height = `${th}px`;
       });
       setTimeout(() => {
         flyEl.remove();
@@ -378,7 +413,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     } else {
       setShowLightbox(true);
     }
-  }, []);
+  }, [photo, showInfo]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────
   useEffect(() => {
@@ -422,7 +457,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     });
   }, [queryClient]);
 
-  const displaySrc = fullBlobUrl ?? thumbUrl;
   const scalePercent = Math.round(scale * 100);
 
   return (
@@ -444,18 +478,44 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         onMouseLeave={handleMouseUp}
         onDoubleClick={handleDoubleClick}
       >
-        <img
-          ref={imgRef}
-          src={displaySrc}
-          alt={photo?.filename ?? ""}
-          draggable={false}
-          className="absolute inset-0 m-auto max-h-full max-w-full object-contain select-none"
+        {/* Two-layer rendering: thumbnail stays visible until full-res decoded */}
+        <div
+          className="absolute inset-0 m-auto flex max-h-full max-w-full items-center justify-center"
           style={{
             transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
             transition: dragging ? "none" : "transform 0.15s ease-out",
-            imageRendering: scale > 2 ? "pixelated" : "auto",
           }}
-        />
+        >
+          {/* Thumbnail layer */}
+          {!fullDecoded && (
+            <img
+              ref={fullDecoded ? undefined : imgRef}
+              src={thumbUrl}
+              alt={photo?.filename ?? ""}
+              draggable={false}
+              className="max-h-full max-w-full object-contain select-none"
+              style={{
+                imageRendering: scale > 2 ? "pixelated" : "auto",
+              }}
+            />
+          )}
+          {/* Full-res layer (hidden until decoded) */}
+          {fullBlobUrl && (
+            <img
+              ref={fullDecoded ? imgRef : undefined}
+              src={fullBlobUrl}
+              alt={photo?.filename ?? ""}
+              draggable={false}
+              className={`max-h-full max-w-full object-contain select-none ${
+                !fullDecoded ? "absolute inset-0 opacity-0" : ""
+              }`}
+              style={{
+                imageRendering: scale > 2 ? "pixelated" : "auto",
+              }}
+              onLoad={() => setFullDecoded(true)}
+            />
+          )}
+        </div>
 
         {/* Download progress bar */}
         {!fullLoaded && loadProgress > 0 && loadProgress < 1 && (
