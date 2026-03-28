@@ -1,6 +1,7 @@
 /**
- * PhotoWindowViewer — In-window photo viewer with zoom/pan, navigation,
- * and a fullscreen button that opens the existing PhotoLightbox.
+ * PhotoWindowViewer — In-window photo viewer with full feature parity
+ * with PhotoLightbox: zoom/pan, HEIC support, face/OCR overlays,
+ * edit mode, live photos, download progress, info panel, and fullscreen.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,7 +20,15 @@ import { api } from "../../generated/rust-api";
 import type { PhotoOutput } from "../../generated/rust-types";
 import { useWindowActions } from "../../system";
 import type { WindowState } from "../../system/window/window-types";
+import { convertHeicToJpeg } from "../../utils/heic-decoder";
+import { LivePhotoIcon } from "./LivePhotoIcon";
+import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { PhotoLightbox } from "./PhotoLightbox";
+import {
+  FaceHighlightOverlay,
+  OcrBlockSelectLayer,
+  OcrHighlightOverlay,
+} from "./photo-overlays";
 import { getViewerPhotos } from "./photo-viewer-store";
 
 const MIN_SCALE = 0.1;
@@ -50,14 +59,59 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < photos.length - 1;
 
-  // ── Image loading ──────────────────────────────────────────────
+  // ── Info panel state (persisted in window metadata) ──────────────
+  const [showInfo, setShowInfo] = useState(
+    () => (win.metadata as Record<string, unknown>)?.showInfoPanel === true,
+  );
+  const toggleInfo = useCallback(() => {
+    setShowInfo((v) => {
+      const next = !v;
+      updateMetadata(win.id, { showInfoPanel: next } as Record<
+        string,
+        unknown
+      >);
+      return next;
+    });
+  }, [win.id, updateMetadata]);
+
+  // ── Detail query (always fetch for overlays) ───────────────────
+  const queryClient = useQueryClient();
+  const detailQuery = api.app.getPhoto.useQuery(
+    { photoId: currentPhotoId },
+    { enabled: !!currentPhotoId },
+  );
+  const detail = detailQuery.data ?? undefined;
+
+  // ── Face detection query ───────────────────────────────────────
+  const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
+    { photoId: currentPhotoId },
+    { enabled: !!currentPhotoId },
+  );
+  const faces = facesQuery.data ?? [];
+
+  // ── OCR results query ──────────────────────────────────────────
+  const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
+    { photoId: currentPhotoId },
+    { enabled: !!currentPhotoId },
+  );
+  const ocrResults = ocrQuery.data ?? [];
+
+  // ── Hover states for overlays ──────────────────────────────────
+  const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
+  const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
+  const [ocrSelectionRanges, setOcrSelectionRanges] = useState<
+    Map<string, { start: number; end: number }>
+  >(new Map());
+
+  // ── Image loading with progress + HEIC fallback ────────────────
   const thumbUrl = `/api/photos/${currentPhotoId}/thumbnail?w=${THUMB_W}`;
   const fullUrl = `/api/photos/${currentPhotoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
-  // Load full-res image in background
   useEffect(() => {
     if (fullLoaded) return;
     const abort = new AbortController();
@@ -66,48 +120,86 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     (async () => {
       try {
         const res = await fetch(fullUrl, { signal: abort.signal });
-        if (!res.ok || abort.signal.aborted) return;
-        const blob = await res.blob();
-        if (abort.signal.aborted) return;
+        const contentLength = res.headers.get("Content-Length");
+        const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
+
+        let blob: Blob;
+        if (!res.body) {
+          blob = await res.blob();
+          if (abort.signal.aborted) return;
+        } else {
+          const reader = res.body.getReader();
+          const chunks: BlobPart[] = [];
+          let received = 0;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (total > 0) {
+              setLoadProgress(Math.min(received / total, 1));
+            } else {
+              setLoadProgress(Math.min(received / (received + 200_000), 0.95));
+            }
+          }
+          if (abort.signal.aborted) return;
+          blob = new Blob(chunks, {
+            type: res.headers.get("Content-Type") || "image/jpeg",
+          });
+        }
+
         const url = URL.createObjectURL(blob);
-        setFullBlobUrl(url);
-        setFullLoaded(true);
-      } catch {
-        // Aborted or network error — ignore
+
+        // Try native decode; fall back to WASM HEIC, then server JPEG
+        const testImg = new Image();
+        testImg.src = url;
+        try {
+          await testImg.decode();
+          setFullBlobUrl(url);
+          setLoadProgress(1);
+          setFullLoaded(true);
+        } catch {
+          URL.revokeObjectURL(url);
+          try {
+            const jpegBlob = await convertHeicToJpeg(blob);
+            if (abort.signal.aborted) return;
+            const jpegUrl = URL.createObjectURL(jpegBlob);
+            setFullBlobUrl(jpegUrl);
+            setLoadProgress(1);
+            setFullLoaded(true);
+          } catch {
+            const jpegRes = await fetch(`${fullUrl}?format=jpeg`, {
+              signal: abort.signal,
+            });
+            const jpegBlob = await jpegRes.blob();
+            if (abort.signal.aborted) return;
+            const jpegUrl = URL.createObjectURL(jpegBlob);
+            setFullBlobUrl(jpegUrl);
+            setLoadProgress(1);
+            setFullLoaded(true);
+          }
+        }
+      } catch (err) {
+        if (!abort.signal.aborted) {
+          console.error("[PhotoWindowViewer] Failed to load image:", err);
+          setLoadProgress(0);
+        }
       }
     })();
 
     return () => {
       abort.abort();
+      abortRef.current = null;
     };
   }, [fullUrl, fullLoaded]);
 
-  // Clean up blob URL on unmount or photo change
+  // Clean up blob URL on unmount
   useEffect(() => {
+    const url = fullBlobUrl;
     return () => {
-      if (fullBlobUrl) URL.revokeObjectURL(fullBlobUrl);
+      if (url) URL.revokeObjectURL(url);
     };
   }, [fullBlobUrl]);
-
-  // Reset state when navigating to different photo
-  const navigate = useCallback(
-    (dir: -1 | 1) => {
-      const newIdx = currentIndex + dir;
-      if (newIdx < 0 || newIdx >= photos.length) return;
-      const p = photos[newIdx];
-      // Clean up old blob
-      if (fullBlobUrl) URL.revokeObjectURL(fullBlobUrl);
-      setFullBlobUrl(null);
-      setFullLoaded(false);
-      setScale(1);
-      setPanX(0);
-      setPanY(0);
-      setCurrentPhotoId(p.id);
-      updateTitle(win.id, p.filename);
-      updateMetadata(win.id, { photoId: p.id } as Record<string, unknown>);
-    },
-    [currentIndex, photos, fullBlobUrl, win.id, updateTitle, updateMetadata],
-  );
 
   // ── Zoom & Pan ─────────────────────────────────────────────────
   const [scale, setScale] = useState(1);
@@ -117,6 +209,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const isZoomed = scale > 1.05;
 
   // Native wheel handler (passive: false for preventDefault)
   useEffect(() => {
@@ -158,16 +251,40 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     setPanY(0);
   }, []);
 
-  // ── Info panel ─────────────────────────────────────────────────
-  const [showInfo, setShowInfo] = useState(false);
-  const detailQuery = api.app.getPhoto.useQuery(
-    { photoId: currentPhotoId },
-    { enabled: showInfo },
+  const handleDoubleClick = useCallback(() => {
+    if (isZoomed) {
+      setScale(1);
+      setPanX(0);
+      setPanY(0);
+    } else {
+      setScale(Math.min(MAX_SCALE, 2));
+    }
+  }, [isZoomed]);
+
+  // ── Navigation ─────────────────────────────────────────────────
+  const navigate = useCallback(
+    (dir: -1 | 1) => {
+      const newIdx = currentIndex + dir;
+      if (newIdx < 0 || newIdx >= photos.length) return;
+      const p = photos[newIdx];
+      if (fullBlobUrl) URL.revokeObjectURL(fullBlobUrl);
+      setFullBlobUrl(null);
+      setFullLoaded(false);
+      setLoadProgress(0);
+      setScale(1);
+      setPanX(0);
+      setPanY(0);
+      setHoveredFaceId(null);
+      setHoveredOcrId(null);
+      setOcrSelectionRanges(new Map());
+      setCurrentPhotoId(p.id);
+      updateTitle(win.id, p.filename);
+      updateMetadata(win.id, { photoId: p.id } as Record<string, unknown>);
+    },
+    [currentIndex, photos, fullBlobUrl, win.id, updateTitle, updateMetadata],
   );
-  const detail = detailQuery.data;
 
   // ── Favorite ───────────────────────────────────────────────────
-  const queryClient = useQueryClient();
   const favMutation = api.app.togglePhotoFavorite.useMutation();
   const handleFavorite = useCallback(() => {
     if (!photo) return;
@@ -175,21 +292,98 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       { photoId: photo.id },
       {
         onSuccess: () => {
-          api.app.getPhoto.invalidate(queryClient, {
-            photoId: photo.id,
-          });
+          api.app.getPhoto.invalidate(queryClient, { photoId: photo.id });
         },
       },
     );
   }, [photo, favMutation, queryClient]);
 
+  // ── Edit mode ──────────────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editDate, setEditDate] = useState("");
+
+  const startEdit = useCallback(() => {
+    if (!detail) return;
+    setEditTitle(detail.title || "");
+    setEditDesc(detail.description || "");
+    setEditDate(detail.takenAt ? detail.takenAt.slice(0, 16) : "");
+    setEditing(true);
+  }, [detail]);
+
+  const updatePhotoMutation = api.app.updatePhoto.useMutation();
+  const saveEdit = useCallback(() => {
+    if (!detail) return;
+    updatePhotoMutation.mutate(
+      {
+        photoId: detail.id,
+        title: editTitle || undefined,
+        description: editDesc || undefined,
+        takenAt: editDate || undefined,
+      },
+      {
+        onSuccess: () => {
+          setEditing(false);
+          api.app.getPhoto.invalidate(queryClient, { photoId: detail.id });
+        },
+      },
+    );
+  }, [detail, editTitle, editDesc, editDate, updatePhotoMutation, queryClient]);
+
+  // ── Live Photo ─────────────────────────────────────────────────
+  const isLive = !!photo?.liveVideoPath;
+  const [showLiveVideo, setShowLiveVideo] = useState(false);
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (showLiveVideo && liveVideoRef.current) {
+      liveVideoRef.current.currentTime = 0;
+      liveVideoRef.current.play().catch(() => {});
+    }
+  }, [showLiveVideo]);
+
   // ── Fullscreen lightbox ────────────────────────────────────────
   const [showLightbox, setShowLightbox] = useState(false);
+
+  const openFullscreen = useCallback(() => {
+    // Animate from current image position to fullscreen
+    const img = imgRef.current;
+    if (img) {
+      const rect = img.getBoundingClientRect();
+      const flyEl = document.createElement("div");
+      flyEl.style.cssText = `
+        position: fixed; z-index: 99999; pointer-events: none;
+        left: ${rect.left}px; top: ${rect.top}px;
+        width: ${rect.width}px; height: ${rect.height}px;
+        overflow: hidden;
+        transition: all 280ms cubic-bezier(0.4, 0, 0.2, 1);
+      `;
+      const clone = document.createElement("img");
+      clone.src = img.src;
+      clone.style.cssText = "width: 100%; height: 100%; object-fit: contain;";
+      flyEl.appendChild(clone);
+      document.body.appendChild(flyEl);
+      flyEl.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        flyEl.style.left = "0px";
+        flyEl.style.top = "0px";
+        flyEl.style.width = `${window.innerWidth}px`;
+        flyEl.style.height = `${window.innerHeight}px`;
+      });
+      setTimeout(() => {
+        flyEl.remove();
+        setShowLightbox(true);
+      }, 280);
+    } else {
+      setShowLightbox(true);
+    }
+  }, []);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (showLightbox) return; // Let lightbox handle its own keys
+      if (showLightbox) return;
       switch (e.key) {
         case "ArrowLeft":
           if (hasPrev) navigate(-1);
@@ -198,7 +392,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           if (hasNext) navigate(1);
           break;
         case "i":
-          setShowInfo((v) => !v);
+          toggleInfo();
           break;
         case "f":
           handleFavorite();
@@ -210,14 +404,30 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [hasPrev, hasNext, navigate, handleFavorite, resetZoom, showLightbox]);
+  }, [
+    hasPrev,
+    hasNext,
+    navigate,
+    handleFavorite,
+    resetZoom,
+    showLightbox,
+    toggleInfo,
+  ]);
+
+  const invalidateAllQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/photos/{id}"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/photos/{id}/faces"] });
+    queryClient.invalidateQueries({
+      queryKey: ["/api/photos/{id}/ocr-results"],
+    });
+  }, [queryClient]);
 
   const displaySrc = fullBlobUrl ?? thumbUrl;
   const scalePercent = Math.round(scale * 100);
 
   return (
     <div className="flex h-full bg-neutral-950">
-      {/* Image area */}
+      {/* ── Image area ─────────────────────────────────────────────── */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: zoom/pan canvas needs mouse events */}
       <div
         ref={containerRef}
@@ -232,8 +442,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
       >
         <img
+          ref={imgRef}
           src={displaySrc}
           alt={photo?.filename ?? ""}
           draggable={false}
@@ -245,81 +457,209 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           }}
         />
 
-        {/* Loading indicator for full-res */}
-        {!fullLoaded && (
+        {/* Download progress bar */}
+        {!fullLoaded && loadProgress > 0 && loadProgress < 1 && (
+          <div className="absolute right-4 bottom-12 left-4 flex flex-col items-center gap-1">
+            <div className="h-0.5 w-40 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-white/30"
+                style={{
+                  width: `${loadProgress * 100}%`,
+                  transition: "width 150ms ease-out",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Loading indicator */}
+        {!fullLoaded && loadProgress === 0 && (
           <div className="absolute bottom-3 left-3 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white/50">
             加载原图...
           </div>
         )}
+
+        {/* ── Overlays ─────────────────────────────────────────── */}
+        {hoveredFaceId != null &&
+          faces.length > 0 &&
+          detail?.width &&
+          detail?.height && (
+            <FaceHighlightOverlay
+              faces={faces}
+              hoveredFaceId={hoveredFaceId}
+              photoWidth={detail.width}
+              photoHeight={detail.height}
+              imgRef={imgRef}
+            />
+          )}
+        {hoveredOcrId != null &&
+          ocrResults.length > 0 &&
+          detail?.width &&
+          detail?.height && (
+            <OcrHighlightOverlay
+              ocrResults={ocrResults}
+              hoveredOcrId={hoveredOcrId}
+              photoWidth={detail.width}
+              photoHeight={detail.height}
+              imgRef={imgRef}
+            />
+          )}
+        {ocrResults.length > 0 && detail?.width && detail?.height && (
+          <OcrBlockSelectLayer
+            ocrResults={ocrResults}
+            photoWidth={detail.width}
+            photoHeight={detail.height}
+            imgRef={imgRef}
+            isZoomed={isZoomed}
+            onSelectionRanges={setOcrSelectionRanges}
+          />
+        )}
+
+        {/* Live Photo video overlay */}
+        {isLive && showLiveVideo && (
+          <video
+            ref={liveVideoRef}
+            src={`/api/photos/${currentPhotoId}/live-video`}
+            className="absolute inset-0 h-full w-full object-contain"
+            muted
+            playsInline
+            loop
+          />
+        )}
+
+        {/* Live Photo icon */}
+        {isLive && (
+          <button
+            type="button"
+            className="absolute top-3 left-3 rounded-full bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white transition-colors"
+            onPointerDown={() => setShowLiveVideo(true)}
+            onPointerUp={() => setShowLiveVideo(false)}
+            onPointerLeave={() => setShowLiveVideo(false)}
+            title="按住查看 Live Photo"
+          >
+            <LivePhotoIcon size={18} />
+          </button>
+        )}
+
+        {/* Bottom info bar */}
+        <div className="pointer-events-none absolute bottom-10 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1 text-[11px] text-white/50">
+          {photos.length > 0 && (
+            <span>
+              {currentIndex + 1} / {photos.length} — {photo?.filename}
+            </span>
+          )}
+          {isZoomed && (
+            <span className="ml-2 text-white/40">{scalePercent}%</span>
+          )}
+        </div>
       </div>
 
-      {/* Info panel */}
-      {showInfo && detail && (
-        <div className="w-64 shrink-0 overflow-y-auto border-l border-white/[0.06] bg-neutral-900/80 px-3 py-3 text-xs text-white/70">
-          <h3 className="mb-2 text-sm font-semibold text-white/90">
-            {detail.title || detail.filename}
-          </h3>
-          {detail.description && (
-            <p className="mb-3 text-white/50">{detail.description}</p>
+      {/* ── Info panel (full-featured, reusing PhotoInfoPanel) ───── */}
+      {showInfo && (
+        <div className="flex w-80 shrink-0 flex-col border-l border-[var(--border-base)] bg-[var(--sidebar-bg)] text-sm text-white backdrop-blur">
+          {detail ? (
+            <>
+              <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+                <span className="text-sm font-semibold text-neutral-300">
+                  照片信息
+                </span>
+                {!editing ? (
+                  <button
+                    type="button"
+                    onClick={startEdit}
+                    className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-400 hover:bg-white/10"
+                  >
+                    编辑
+                  </button>
+                ) : (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={saveEdit}
+                      className="cursor-pointer rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-500"
+                    >
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(false)}
+                      className="cursor-pointer rounded px-2 py-0.5 text-xs text-neutral-400 hover:bg-white/10"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <PhotoInfoPanel
+                  detail={detail}
+                  fallbackTitle={photo?.title || photo?.filename || ""}
+                  hoveredFaceId={hoveredFaceId}
+                  onHoverFace={setHoveredFaceId}
+                  hoveredOcrId={hoveredOcrId}
+                  onHoverOcr={setHoveredOcrId}
+                  ocrSelectionRanges={ocrSelectionRanges}
+                  onRefreshComplete={invalidateAllQueries}
+                  editForm={
+                    editing ? (
+                      <div className="mb-4 space-y-2">
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-neutral-500">
+                            标题
+                          </span>
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                            placeholder="照片标题"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-neutral-500">
+                            描述
+                          </span>
+                          <textarea
+                            value={editDesc}
+                            onChange={(e) => setEditDesc(e.target.value)}
+                            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                            rows={2}
+                            placeholder="照片描述"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs text-neutral-500">
+                            拍摄时间
+                          </span>
+                          <input
+                            type="datetime-local"
+                            value={editDate}
+                            onChange={(e) => setEditDate(e.target.value)}
+                            className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-white outline-none focus:border-blue-500"
+                          />
+                        </label>
+                      </div>
+                    ) : null
+                  }
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+                <span className="text-sm font-semibold text-neutral-300">
+                  照片信息
+                </span>
+              </div>
+              <div className="flex flex-1 items-center justify-center">
+                <div className="text-xs text-neutral-500">加载中…</div>
+              </div>
+            </>
           )}
-          <dl className="space-y-1.5">
-            {detail.takenAt && (
-              <>
-                <dt className="text-white/40">拍摄时间</dt>
-                <dd>{new Date(detail.takenAt).toLocaleString()}</dd>
-              </>
-            )}
-            {detail.cameraMake && (
-              <>
-                <dt className="text-white/40">相机</dt>
-                <dd>
-                  {detail.cameraMake} {detail.cameraModel}
-                </dd>
-              </>
-            )}
-            {detail.width && detail.height && (
-              <>
-                <dt className="text-white/40">分辨率</dt>
-                <dd>
-                  {detail.width} × {detail.height}
-                </dd>
-              </>
-            )}
-            {detail.fileSize != null && (
-              <>
-                <dt className="text-white/40">大小</dt>
-                <dd>{formatSize(detail.fileSize)}</dd>
-              </>
-            )}
-            {detail.focalLength != null && (
-              <>
-                <dt className="text-white/40">焦距</dt>
-                <dd>{detail.focalLength}mm</dd>
-              </>
-            )}
-            {detail.aperture != null && (
-              <>
-                <dt className="text-white/40">光圈</dt>
-                <dd>f/{detail.aperture}</dd>
-              </>
-            )}
-            {detail.iso != null && (
-              <>
-                <dt className="text-white/40">ISO</dt>
-                <dd>{detail.iso}</dd>
-              </>
-            )}
-            {detail.shutterSpeed && (
-              <>
-                <dt className="text-white/40">快门</dt>
-                <dd>{detail.shutterSpeed}</dd>
-              </>
-            )}
-          </dl>
         </div>
       )}
 
-      {/* Bottom toolbar */}
+      {/* ── Bottom toolbar ───────────────────────────────────────── */}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
         {/* Left: navigation */}
         <div className="flex items-center gap-1">
@@ -330,11 +670,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           >
             <ChevronLeft size={16} />
           </ToolBtn>
-          {photos.length > 0 && (
-            <span className="min-w-[60px] text-center text-[11px] text-white/40">
-              {currentIndex + 1} / {photos.length}
-            </span>
-          )}
           <ToolBtn
             onClick={() => navigate(1)}
             disabled={!hasNext}
@@ -376,17 +711,17 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           <ToolBtn onClick={handleFavorite} title="收藏 (F)">
             <Heart
               size={14}
-              className={photo?.isFavorite ? "fill-red-400 text-red-400" : ""}
+              className={
+                (detail?.isFavorite ?? photo?.isFavorite)
+                  ? "fill-red-400 text-red-400"
+                  : ""
+              }
             />
           </ToolBtn>
-          <ToolBtn
-            onClick={() => setShowInfo((v) => !v)}
-            active={showInfo}
-            title="信息 (I)"
-          >
+          <ToolBtn onClick={toggleInfo} active={showInfo} title="信息 (I)">
             <Info size={14} />
           </ToolBtn>
-          <ToolBtn onClick={() => setShowLightbox(true)} title="全屏查看">
+          <ToolBtn onClick={openFullscreen} title="全屏查看">
             <Maximize size={14} />
           </ToolBtn>
         </div>
@@ -432,15 +767,9 @@ function ToolBtn({
         active
           ? "bg-white/20 text-white"
           : "text-white/60 hover:bg-white/10 hover:text-white/90"
-      } disabled:opacity-25 disabled:pointer-events-none`}
+      } disabled:pointer-events-none disabled:opacity-25`}
     >
       {children}
     </button>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

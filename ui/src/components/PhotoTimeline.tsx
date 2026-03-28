@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { useWindowActions } from "../../system";
+import { getDefaultSize } from "../../system/window/window-sync";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import type { DateGroup } from "./photo-utils";
 import { groupPhotosByDate } from "./photo-utils";
@@ -50,12 +51,68 @@ export function PhotoTimeline({
 
   const handlePhotoClick = useCallback(
     (photo: PhotoOutput) => {
+      // Calculate center position relative to parent window
+      const parentEl = measureRef.current?.closest(
+        "[data-window-id]",
+      ) as HTMLElement | null;
+      const parentRect = parentEl?.getBoundingClientRect();
+      const childSize = getDefaultSize("image");
+      let initialX: number | undefined;
+      let initialY: number | undefined;
+      if (parentRect) {
+        initialX = Math.max(
+          0,
+          parentRect.left + (parentRect.width - childSize.width) / 2,
+        );
+        initialY = Math.max(
+          0,
+          parentRect.top + (parentRect.height - childSize.height) / 2,
+        );
+      }
+
+      // Fly animation: thumbnail → window target
+      const thumbEl = document.querySelector(
+        `[data-photo-id="${photo.id}"]`,
+      ) as HTMLElement | null;
+      if (thumbEl && initialX != null && initialY != null) {
+        const thumbRect = thumbEl.getBoundingClientRect();
+        const thumbImg = thumbEl.querySelector("img");
+        if (thumbImg) {
+          const flyEl = document.createElement("div");
+          flyEl.style.cssText = `
+            position: fixed; z-index: 99999; pointer-events: none;
+            left: ${thumbRect.left}px; top: ${thumbRect.top}px;
+            width: ${thumbRect.width}px; height: ${thumbRect.height}px;
+            border-radius: 4px; overflow: hidden;
+            transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+          `;
+          const img = document.createElement("img");
+          img.src = thumbImg.src;
+          img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
+          flyEl.appendChild(img);
+          document.body.appendChild(flyEl);
+          // Trigger reflow, then animate
+          flyEl.getBoundingClientRect();
+          requestAnimationFrame(() => {
+            flyEl.style.left = `${initialX}px`;
+            flyEl.style.top = `${initialY}px`;
+            flyEl.style.width = `${childSize.width}px`;
+            flyEl.style.height = `${childSize.height}px`;
+            flyEl.style.borderRadius = "8px";
+            flyEl.style.opacity = "0.6";
+          });
+          setTimeout(() => flyEl.remove(), 350);
+        }
+      }
+
       openWindow({
         type: "image",
         title: photo.filename,
         appId,
         sourceType: "photo",
         sourceId: photo.id,
+        initialX,
+        initialY,
       });
     },
     [openWindow, appId],
