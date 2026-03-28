@@ -57,6 +57,12 @@ export function PhotoTimeline({
       ) as HTMLElement | null;
       const parentRect = parentEl?.getBoundingClientRect();
       const childSize = getDefaultSize("image");
+      // Read info panel state to adjust fly animation target
+      let infoW = 0;
+      try {
+        if (localStorage.getItem("photo-viewer-info-panel-open") === "true")
+          infoW = 320;
+      } catch {}
       let initialX: number | undefined;
       let initialY: number | undefined;
       if (parentRect) {
@@ -78,6 +84,8 @@ export function PhotoTimeline({
         const thumbRect = thumbEl.getBoundingClientRect();
         const thumbImg = thumbEl.querySelector("img");
         if (thumbImg) {
+          // Target is the image area within the window (excludes info panel)
+          const targetW = childSize.width - infoW;
           const flyEl = document.createElement("div");
           flyEl.style.cssText = `
             position: fixed; z-index: 99999; pointer-events: none;
@@ -96,7 +104,7 @@ export function PhotoTimeline({
           requestAnimationFrame(() => {
             flyEl.style.left = `${initialX}px`;
             flyEl.style.top = `${initialY}px`;
-            flyEl.style.width = `${childSize.width}px`;
+            flyEl.style.width = `${targetW}px`;
             flyEl.style.height = `${childSize.height}px`;
             flyEl.style.borderRadius = "8px";
             img.style.objectFit = "contain";

@@ -88,17 +88,16 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   );
   const detail = detailQuery.data ?? undefined;
 
-  // ── Face detection query ───────────────────────────────────────
+  // ── Face/OCR queries (deferred until info panel is open) ───────
   const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
     { photoId: currentPhotoId },
-    { enabled: !!currentPhotoId },
+    { enabled: !!currentPhotoId && showInfo },
   );
   const faces = facesQuery.data ?? [];
 
-  // ── OCR results query ──────────────────────────────────────────
   const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
     { photoId: currentPhotoId },
-    { enabled: !!currentPhotoId },
+    { enabled: !!currentPhotoId && showInfo },
   );
   const ocrResults = ocrQuery.data ?? [];
 
@@ -119,8 +118,15 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
+  // Defer full-res loading by one frame so window renders with thumbnail first
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    if (fullLoaded) return;
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || fullLoaded) return;
     const abort = new AbortController();
     abortRef.current = abort;
 
@@ -198,7 +204,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       abort.abort();
       abortRef.current = null;
     };
-  }, [fullUrl, fullLoaded]);
+  }, [fullUrl, fullLoaded, mounted]);
 
   // Clean up blob URL on unmount
   useEffect(() => {
@@ -355,65 +361,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const [showLightbox, setShowLightbox] = useState(false);
 
   const openFullscreen = useCallback(() => {
-    const img = imgRef.current;
-    if (img && photo?.width && photo?.height) {
-      const rect = img.getBoundingClientRect();
-      // Calculate target position accounting for info panel (same as PhotoLightbox.computeCenterRect)
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const infoW = showInfo ? 320 : 0;
-      const pad = 48;
-      const availW = Math.max(1, vw - infoW - pad * 2);
-      const availH = Math.max(1, vh - pad * 2);
-      const fitScale = Math.min(availW / photo.width, availH / photo.height);
-      let tw: number;
-      let th: number;
-      if (fitScale >= 1) {
-        const s = Math.min(2, fitScale);
-        tw = photo.width * s;
-        th = photo.height * s;
-      } else {
-        const imgAspect = photo.width / photo.height;
-        const areaAspect = availW / availH;
-        if (imgAspect > areaAspect) {
-          tw = availW;
-          th = tw / imgAspect;
-        } else {
-          th = availH;
-          tw = th * imgAspect;
-        }
-      }
-      const targetLeft = pad + (availW - tw) / 2;
-      const targetTop = pad + (availH - th) / 2;
-
-      const flyEl = document.createElement("div");
-      flyEl.style.cssText = `
-        position: fixed; z-index: 99999; pointer-events: none;
-        left: ${rect.left}px; top: ${rect.top}px;
-        width: ${rect.width}px; height: ${rect.height}px;
-        overflow: hidden;
-        transition: all 280ms cubic-bezier(0.4, 0, 0.2, 1);
-      `;
-      const clone = document.createElement("img");
-      clone.src = img.src;
-      clone.style.cssText = "width: 100%; height: 100%; object-fit: contain;";
-      flyEl.appendChild(clone);
-      document.body.appendChild(flyEl);
-      flyEl.getBoundingClientRect();
-      requestAnimationFrame(() => {
-        flyEl.style.left = `${targetLeft}px`;
-        flyEl.style.top = `${targetTop}px`;
-        flyEl.style.width = `${tw}px`;
-        flyEl.style.height = `${th}px`;
-      });
-      setTimeout(() => {
-        flyEl.remove();
-        setShowLightbox(true);
-      }, 280);
-    } else {
-      setShowLightbox(true);
-    }
-  }, [photo, showInfo]);
+    setShowLightbox(true);
+  }, []);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────
   useEffect(() => {
@@ -490,6 +439,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           {!fullDecoded && (
             <img
               ref={fullDecoded ? undefined : imgRef}
+              data-photo-viewer-img=""
               src={thumbUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
@@ -503,6 +453,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           {fullBlobUrl && (
             <img
               ref={fullDecoded ? imgRef : undefined}
+              data-photo-viewer-img=""
               src={fullBlobUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
@@ -792,6 +743,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         <PhotoLightbox
           photo={photo}
           allPhotos={photos}
+          animSourceSelector="[data-photo-viewer-img]"
           onClose={() => setShowLightbox(false)}
           onNavigate={(p) => {
             setCurrentPhotoId(p.id);

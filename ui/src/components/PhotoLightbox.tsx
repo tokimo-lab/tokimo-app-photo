@@ -24,8 +24,8 @@ interface FlyRect {
   height: number;
 }
 
-function queryThumbnailRect(photoId: string): FlyRect | null {
-  const el = document.querySelector(`[data-photo-id="${photoId}"]`);
+function queryElementRect(selector: string): FlyRect | null {
+  const el = document.querySelector(selector);
   if (!el) return null;
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return null;
@@ -114,6 +114,7 @@ export function PhotoLightbox({
   onNavigate,
   onToggleFavorite,
   onNavigateToPerson,
+  animSourceSelector,
 }: {
   photo: PhotoOutput;
   allPhotos: PhotoOutput[];
@@ -121,6 +122,9 @@ export function PhotoLightbox({
   onNavigate: (p: PhotoOutput) => void;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   onNavigateToPerson?: (personId: string) => void;
+  /** CSS selector for the animation source/target element.
+   *  Defaults to `[data-photo-id="${photo.id}"]` (grid thumbnail). */
+  animSourceSelector?: string;
 }) {
   const idx = allPhotos.findIndex((p) => p.id === photo.id);
   const hasPrev = idx > 0;
@@ -180,7 +184,10 @@ export function PhotoLightbox({
   const [animState, setAnimState] = useState<AnimState>(() => {
     if (!photo.sourceId || photo.width == null || photo.height == null)
       return "open";
-    if (!queryThumbnailRect(photo.id)) return "open";
+    if (
+      !queryElementRect(animSourceSelector ?? `[data-photo-id="${photo.id}"]`)
+    )
+      return "open";
     return "entering";
   });
   const [flyRect, setFlyRect] = useState<FlyRect | null>(null);
@@ -282,9 +289,10 @@ export function PhotoLightbox({
   useEffect(() => {
     if (animState !== "entering") return;
 
-    const thumbRect = queryThumbnailRect(photo.id);
+    const thumbRect = queryElementRect(
+      animSourceSelector ?? `[data-photo-id="${photo.id}"]`,
+    );
     if (!thumbRect || photo.width == null || photo.height == null) {
-      setAnimState("open");
       return;
     }
 
@@ -314,7 +322,9 @@ export function PhotoLightbox({
   const handleAnimatedClose = useCallback(() => {
     if (animState === "exiting") return;
 
-    const thumbRect = queryThumbnailRect(photo.id);
+    const thumbRect = queryElementRect(
+      animSourceSelector ?? `[data-photo-id="${photo.id}"]`,
+    );
     const infoVisible = showInfo && detail != null;
 
     if (thumbRect && photo.width != null && photo.height != null && thumbSrc) {
@@ -336,7 +346,15 @@ export function PhotoLightbox({
       setAnimState("exiting");
       setTimeout(() => onClose(), ANIM_DURATION + 50);
     }
-  }, [animState, photo, showInfo, detail, thumbSrc, onClose]);
+  }, [
+    animState,
+    photo,
+    showInfo,
+    detail,
+    thumbSrc,
+    onClose,
+    animSourceSelector,
+  ]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
