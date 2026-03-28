@@ -29,11 +29,11 @@ import {
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
+import { THUMB_WIDTH } from "./photo-utils";
 import { getViewerPhotos } from "./photo-viewer-store";
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 20;
-const THUMB_W = 640;
 const INFO_PANEL_STORAGE_KEY = "photo-viewer-info-panel-open";
 
 interface Props {
@@ -109,7 +109,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   >(new Map());
 
   // ── Image loading with progress + HEIC fallback ────────────────
-  const thumbUrl = `/api/photos/${currentPhotoId}/thumbnail?w=${THUMB_W}`;
+  const thumbUrl = `/api/photos/${currentPhotoId}/thumbnail?w=${THUMB_WIDTH}`;
   const fullUrl = `/api/photos/${currentPhotoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
