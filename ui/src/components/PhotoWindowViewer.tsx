@@ -20,7 +20,7 @@ import { api } from "../../generated/rust-api";
 import type { PhotoOutput } from "../../generated/rust-types";
 import { useWindowActions } from "../../system";
 import type { WindowState } from "../../system/window/window-types";
-import { convertHeicToJpeg } from "../../utils/heic-decoder";
+import { convertHeicToJpegOffThread } from "../../utils/heic-decoder";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { PhotoLightbox } from "./PhotoLightbox";
@@ -118,12 +118,14 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Defer full-res loading by one frame so window renders with thumbnail first
+  // Defer full-res loading until after window open + fly animation (300ms)
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
+    const timer = setTimeout(() => setMounted(true), 350);
+    return () => clearTimeout(timer);
   }, []);
+
+  const isHeic = /\.heic$/i.test(photo?.filename ?? "");
 
   useEffect(() => {
     if (!mounted || fullLoaded) return;
@@ -162,25 +164,21 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         }
 
         const url = URL.createObjectURL(blob);
-
-        // Try native decode; fall back to WASM HEIC, then server JPEG
         const testImg = new Image();
         testImg.src = url;
         try {
           await testImg.decode();
           setFullBlobUrl(url);
-          setLoadProgress(1);
-          setFullLoaded(true);
         } catch {
+          // Native decode failed — HEIC: convert in Web Worker (off main thread)
           URL.revokeObjectURL(url);
-          try {
-            const jpegBlob = await convertHeicToJpeg(blob);
+          if (isHeic) {
+            const jpegBlob = await convertHeicToJpegOffThread(blob);
             if (abort.signal.aborted) return;
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
-            setLoadProgress(1);
-            setFullLoaded(true);
-          } catch {
+          } else {
+            // Non-HEIC decode failure: server fallback
             const jpegRes = await fetch(`${fullUrl}?format=jpeg`, {
               signal: abort.signal,
             });
@@ -188,10 +186,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             if (abort.signal.aborted) return;
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
-            setLoadProgress(1);
-            setFullLoaded(true);
           }
         }
+        setLoadProgress(1);
+        setFullLoaded(true);
       } catch (err) {
         if (!abort.signal.aborted) {
           console.error("[PhotoWindowViewer] Failed to load image:", err);
@@ -204,7 +202,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       abort.abort();
       abortRef.current = null;
     };
-  }, [fullUrl, fullLoaded, mounted]);
+  }, [fullUrl, fullLoaded, mounted, isHeic]);
 
   // Clean up blob URL on unmount
   useEffect(() => {
@@ -435,21 +433,25 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             transition: dragging ? "none" : "transform 0.15s ease-out",
           }}
         >
-          {/* Thumbnail layer */}
-          {!fullDecoded && (
-            <img
-              ref={fullDecoded ? undefined : imgRef}
-              data-photo-viewer-img=""
-              src={thumbUrl}
-              alt={photo?.filename ?? ""}
-              draggable={false}
-              className="max-h-full max-w-full object-contain select-none"
-              style={{
-                imageRendering: scale > 2 ? "pixelated" : "auto",
-              }}
-            />
-          )}
-          {/* Full-res layer (hidden until decoded) */}
+          {/* Thumbnail layer — hidden during fly animation, instantly visible after */}
+          <img
+            ref={!fullDecoded ? imgRef : undefined}
+            data-photo-viewer-img=""
+            src={thumbUrl}
+            alt={photo?.filename ?? ""}
+            draggable={false}
+            className={`max-h-full max-w-full object-contain select-none ${
+              !mounted
+                ? "opacity-0"
+                : fullDecoded
+                  ? "opacity-0 transition-opacity duration-200"
+                  : "opacity-100"
+            }`}
+            style={{
+              imageRendering: scale > 2 ? "pixelated" : "auto",
+            }}
+          />
+          {/* Full-res layer — fades in on top of thumbnail */}
           {fullBlobUrl && (
             <img
               ref={fullDecoded ? imgRef : undefined}
@@ -457,8 +459,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               src={fullBlobUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
-              className={`max-h-full max-w-full object-contain select-none ${
-                !fullDecoded ? "absolute inset-0 opacity-0" : ""
+              className={`absolute inset-0 m-auto max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
+                fullDecoded ? "opacity-100" : "opacity-0"
               }`}
               style={{
                 imageRendering: scale > 2 ? "pixelated" : "auto",

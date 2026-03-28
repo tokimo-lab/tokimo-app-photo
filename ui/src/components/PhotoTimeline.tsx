@@ -102,10 +102,11 @@ export function PhotoTimeline({
           // Trigger reflow, then animate
           flyEl.getBoundingClientRect();
           requestAnimationFrame(() => {
+            // Offset by title bar height (36px) so image aligns with content area
             flyEl.style.left = `${initialX}px`;
-            flyEl.style.top = `${initialY}px`;
+            flyEl.style.top = `${(initialY ?? 0) + 36}px`;
             flyEl.style.width = `${targetW}px`;
-            flyEl.style.height = `${childSize.height}px`;
+            flyEl.style.height = `${childSize.height - 36}px`;
             flyEl.style.borderRadius = "8px";
             img.style.objectFit = "contain";
           });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PhotoOutput } from "../../generated/rust-api";
 import { api } from "../../generated/rust-api";
-import { convertHeicToJpeg } from "../../utils/heic-decoder";
+import { convertHeicToJpegOffThread } from "../../utils/heic-decoder";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import {
@@ -637,9 +637,9 @@ export function PhotoLightbox({
           setFullLoaded(true);
         } catch {
           URL.revokeObjectURL(url);
-          // Decode HEIC via WASM (libheif)
+          // Decode HEIC via WASM in Web Worker (off main thread)
           try {
-            const jpegBlob = await convertHeicToJpeg(blob);
+            const jpegBlob = await convertHeicToJpegOffThread(blob);
             if (abort.signal.aborted) return;
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
