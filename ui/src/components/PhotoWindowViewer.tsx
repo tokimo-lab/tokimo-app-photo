@@ -134,7 +134,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       setThumbFadeOut(false);
       return;
     }
-    const timer = setTimeout(() => setThumbFadeOut(true), 50);
+    const timer = setTimeout(() => setThumbFadeOut(true), 200);
     return () => clearTimeout(timer);
   }, [fullDecoded]);
 
