@@ -174,7 +174,8 @@ export default function PhotoAppPage() {
   const accTrashRef = useRef<PhotoOutput[]>([]);
 
   // ── Queries ────────────────────────────────────────────────────────────
-  const libraryQuery = api.app.getById.useQuery({ id: id! }, { enabled: !!id });
+  // NOTE: libraryQuery was removed — it was defined but never consumed,
+  // causing unnecessary re-renders from query state transitions.
 
   const photosQuery = api.app.listPhotos.useQuery(
     {
@@ -266,14 +267,21 @@ export default function PhotoAppPage() {
     }
   }, [photosQuery.data, timelinePage]);
 
-  const allTimelinePhotosRaw =
-    accTimelineRef.current.length > 0
-      ? accTimelineRef.current
-      : (photosQuery.data?.items ?? []);
+  const allTimelinePhotosRaw = useMemo(
+    () =>
+      accTimelineRef.current.length > 0
+        ? accTimelineRef.current
+        : (photosQuery.data?.items ?? []),
+    [photosQuery.data?.items],
+  );
 
-  const allTimelinePhotos = ocrFilterActive
-    ? allTimelinePhotosRaw.filter((p) => ocrPhotoIds.has(p.id))
-    : allTimelinePhotosRaw;
+  const allTimelinePhotos = useMemo(
+    () =>
+      ocrFilterActive
+        ? allTimelinePhotosRaw.filter((p) => ocrPhotoIds.has(p.id))
+        : allTimelinePhotosRaw,
+    [ocrFilterActive, allTimelinePhotosRaw, ocrPhotoIds],
+  );
   const timelineHasMore =
     !ocrFilterActive && allTimelinePhotos.length < timelineTotal;
 
@@ -298,10 +306,13 @@ export default function PhotoAppPage() {
     }
   }, [favoritesQuery.data, favPage]);
 
-  const allFavPhotos =
-    accFavRef.current.length > 0
-      ? accFavRef.current
-      : (favoritesQuery.data?.items ?? []);
+  const allFavPhotos = useMemo(
+    () =>
+      accFavRef.current.length > 0
+        ? accFavRef.current
+        : (favoritesQuery.data?.items ?? []),
+    [favoritesQuery.data?.items],
+  );
   const favHasMore = allFavPhotos.length < favTotal;
 
   // Accumulate trash photos across pages
@@ -317,10 +328,13 @@ export default function PhotoAppPage() {
     }
   }, [trashedQuery.data, trashPage]);
 
-  const allTrashPhotos =
-    accTrashRef.current.length > 0
-      ? accTrashRef.current
-      : (trashedQuery.data?.items ?? []);
+  const allTrashPhotos = useMemo(
+    () =>
+      accTrashRef.current.length > 0
+        ? accTrashRef.current
+        : (trashedQuery.data?.items ?? []),
+    [trashedQuery.data?.items],
+  );
   const trashHasMore = allTrashPhotos.length < trashTotal;
 
   const albums = albumsQuery.data ?? [];
@@ -545,8 +559,10 @@ export default function PhotoAppPage() {
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncClearData, setSyncClearData] = useState(false);
 
-  const isRefetching = photosQuery.isRefetching;
-  const isSyncing = syncMutation.isPending;
+  const isRefetchingRef = useRef(false);
+  isRefetchingRef.current = photosQuery.isRefetching;
+  const isSyncingRef = useRef(false);
+  isSyncingRef.current = syncMutation.isPending;
 
   const menuBarConfig: MenuBarConfig | null = useMemo(() => {
     if (!id) return null;
@@ -583,14 +599,14 @@ export default function PhotoAppPage() {
               key: "refresh",
               label: "刷新",
               icon: <RefreshCw size={14} />,
-              disabled: isRefetching,
+              disabled: isRefetchingRef.current,
               onClick: handleRefresh,
             },
             {
               key: "sync",
               label: "同步资料库",
               icon: <FolderSync size={14} />,
-              disabled: isSyncing,
+              disabled: isSyncingRef.current,
               onClick: () => {
                 setSyncClearData(false);
                 setSyncModalOpen(true);
@@ -607,15 +623,7 @@ export default function PhotoAppPage() {
         recentItems: [],
       },
     };
-  }, [
-    id,
-    handleRefresh,
-    isRefetching,
-    isSyncing,
-    toggleSelectMode,
-    isSelecting,
-    sizeIndex,
-  ]);
+  }, [id, handleRefresh, toggleSelectMode, isSelecting, sizeIndex]);
 
   useMenuBar(menuBarConfig);
 
