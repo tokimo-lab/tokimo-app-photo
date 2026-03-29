@@ -360,8 +360,12 @@ export function PhotoInfoPanel({
                     )}
                     {r.charPositions && r.charPositions.length > 0 && (
                       <span
-                        className="ml-1.5 inline-flex items-center gap-0.5 text-xs text-emerald-400/50"
-                        title="已有字符级定位数据（CTC 对齐）"
+                        className={`ml-1.5 inline-flex items-center gap-0.5 text-xs ${
+                          r.positioningType === "attention"
+                            ? "text-amber-400/50"
+                            : "text-emerald-400/50"
+                        }`}
+                        title={`字符级定位: ${r.positioningType === "attention" ? "Attention 对齐" : "CTC 对齐"}`}
                       >
                         <Crosshair className="h-2.5 w-2.5" />
                       </span>
@@ -381,13 +385,25 @@ export function PhotoInfoPanel({
                     return modelName ? ` · 识别模型: ${modelName}` : null;
                   })()}
                   {(() => {
-                    const withPos = ocrResults.filter(
-                      (r) => r.charPositions && r.charPositions.length > 0,
-                    ).length;
-                    if (withPos === 0) return " · 定位: 比例估算";
-                    if (withPos === ocrResults.length)
-                      return " · 定位: CTC 对齐";
-                    return ` · 定位: CTC 对齐 (${withPos}/${ocrResults.length})`;
+                    const TIER_LABELS: Record<string, string> = {
+                      attention: "Attention 对齐",
+                      ctc: "CTC 对齐",
+                      canvas: "比例估算",
+                    };
+                    const types = [
+                      ...new Set(
+                        ocrResults.map((r) => r.positioningType ?? "canvas"),
+                      ),
+                    ];
+                    if (types.length === 1) {
+                      return ` · 定位: ${TIER_LABELS[types[0]] ?? types[0]}`;
+                    }
+                    const best = types.includes("attention")
+                      ? "attention"
+                      : types.includes("ctc")
+                        ? "ctc"
+                        : "canvas";
+                    return ` · 定位: ${TIER_LABELS[best]} (混合)`;
                   })()}
                 </span>
                 {detail.ocrDebugInfo && (
