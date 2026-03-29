@@ -169,6 +169,13 @@ export default function PhotoAppPage() {
   >();
   const [favPage, setFavPage] = useState(1);
   const [trashPage, setTrashPage] = useState(1);
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
+  const [favLoadingMore, setFavLoadingMore] = useState(false);
+  const [trashLoadingMore, setTrashLoadingMore] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
   const accTimelineRef = useRef<PhotoOutput[]>([]);
   const accFavRef = useRef<PhotoOutput[]>([]);
   const accTrashRef = useRef<PhotoOutput[]>([]);
@@ -258,6 +265,7 @@ export default function PhotoAppPage() {
   const timelineTotal = photosQuery.data?.total ?? 0;
   useEffect(() => {
     if (!photosQuery.data?.items) return;
+    setTimelineLoadingMore(false);
     if (timelinePage === 1) {
       accTimelineRef.current = photosQuery.data.items;
     } else {
@@ -297,6 +305,7 @@ export default function PhotoAppPage() {
   const favTotal = favoritesQuery.data?.total ?? 0;
   useEffect(() => {
     if (!favoritesQuery.data?.items) return;
+    setFavLoadingMore(false);
     if (favPage === 1) {
       accFavRef.current = favoritesQuery.data.items;
     } else {
@@ -319,6 +328,7 @@ export default function PhotoAppPage() {
   const trashTotal = trashedQuery.data?.total ?? 0;
   useEffect(() => {
     if (!trashedQuery.data?.items) return;
+    setTrashLoadingMore(false);
     if (trashPage === 1) {
       accTrashRef.current = trashedQuery.data.items;
     } else {
@@ -341,20 +351,32 @@ export default function PhotoAppPage() {
 
   const isLoading =
     tab === "timeline"
-      ? photosQuery.isLoading && timelinePage === 1
+      ? !photosQuery.data && timelinePage === 1
       : tab === "favorites"
-        ? favoritesQuery.isLoading && favPage === 1
+        ? !favoritesQuery.data && favPage === 1
         : tab === "albums"
-          ? albumsQuery.isLoading
+          ? !albumsQuery.data
           : tab === "trash"
-            ? trashedQuery.isLoading && trashPage === 1
+            ? !trashedQuery.data && trashPage === 1
             : false;
 
   // CLIP mode is active when we have a valid search in clip mode on timeline tab
   const isClipActive =
     searchMode === "clip" && debouncedSearch.length >= 2 && tab === "timeline";
 
+  // Stable refs to avoid re-render cascades from useCallback deps
+  const photosRefetchRef = useRef(photosQuery.refetch);
+  photosRefetchRef.current = photosQuery.refetch;
+  const favRefetchRef = useRef(favoritesQuery.refetch);
+  favRefetchRef.current = favoritesQuery.refetch;
+  const trashedRefetchRef = useRef(trashedQuery.refetch);
+  trashedRefetchRef.current = trashedQuery.refetch;
+  const messageRef = useRef(message);
+  messageRef.current = message;
+
   const syncMutation = api.app.sync.useMutation({
+    onMutate: () => setIsSyncing(true),
+    onSettled: () => setIsSyncing(false),
     onSuccess: () => {
       message.success("同步已开始");
       setTimelinePage(1);
@@ -390,6 +412,8 @@ export default function PhotoAppPage() {
   });
 
   const addToAlbumMutation = api.app.addPhotosToAlbum.useMutation({
+    onMutate: () => setIsAddingToAlbum(true),
+    onSettled: () => setIsAddingToAlbum(false),
     onSuccess: () => {
       message.success("已添加到相册");
       clearSelection();
@@ -429,51 +453,54 @@ export default function PhotoAppPage() {
 
   // ── Batch hide mutation ────────────────────────────────────────
   const batchHideMutation = api.app.batchHide.useMutation();
+  const batchHideMutateRef = useRef(batchHideMutation.mutate);
+  batchHideMutateRef.current = batchHideMutation.mutate;
+
   const handleBatchHide = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    batchHideMutation.mutate(
+    batchHideMutateRef.current(
       { appId: id, photoIds: [...selectedIds], hidden: true },
       {
         onSuccess: () => {
-          message.success(`已隐藏 ${selectedIds.size} 张照片`);
+          messageRef.current.success(`已隐藏 ${selectedIds.size} 张照片`);
           setSelectedIds(new Set());
           setIsSelecting(false);
-          photosQuery.refetch();
-          favoritesQuery.refetch();
+          photosRefetchRef.current();
+          favRefetchRef.current();
         },
       },
     );
-  }, [
-    id,
-    selectedIds,
-    batchHideMutation,
-    message,
-    photosQuery,
-    favoritesQuery,
-  ]);
+  }, [id, selectedIds]);
 
   // ── Trash mutation ────────────────────────────────────────────
   const trashMutation = api.app.trashPhotos.useMutation();
+  const trashMutateRef = useRef(trashMutation.mutate);
+  trashMutateRef.current = trashMutation.mutate;
+
   const handleTrash = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
       return;
-    trashMutation.mutate(
+    trashMutateRef.current(
       { appId: id, photoIds: [...selectedIds] },
       {
         onSuccess: () => {
-          message.success(`已将 ${selectedIds.size} 张照片移到回收站`);
+          messageRef.current.success(
+            `已将 ${selectedIds.size} 张照片移到回收站`,
+          );
           setSelectedIds(new Set());
           setIsSelecting(false);
-          photosQuery.refetch();
-          favoritesQuery.refetch();
+          photosRefetchRef.current();
+          favRefetchRef.current();
         },
       },
     );
-  }, [id, selectedIds, trashMutation, message, photosQuery, favoritesQuery]);
+  }, [id, selectedIds]);
 
   // ── Trash operations ──────────────────────────────────────────────────
   const restoreMutation = api.app.restorePhotos.useMutation({
+    onMutate: () => setIsRestoring(true),
+    onSettled: () => setIsRestoring(false),
     onSuccess: (data) => {
       message.success(`已恢复 ${data.restored} 张照片`);
       clearSelection();
@@ -486,6 +513,8 @@ export default function PhotoAppPage() {
   });
 
   const permanentDeleteMutation = api.app.permanentDelete.useMutation({
+    onMutate: () => setIsDeleting(true),
+    onSettled: () => setIsDeleting(false),
     onSuccess: (data) => {
       message.success(`已永久删除 ${data.deleted} 张照片`);
       clearSelection();
@@ -512,6 +541,7 @@ export default function PhotoAppPage() {
 
   // ── Infinite scroll callbacks ─────────────────────────────────────────
   const loadMoreTimeline = useCallback(() => {
+    setTimelineLoadingMore(true);
     setTimelinePage((p) => p + 1);
   }, []);
 
@@ -536,10 +566,12 @@ export default function PhotoAppPage() {
   }, []);
 
   const loadMoreFav = useCallback(() => {
+    setFavLoadingMore(true);
     setFavPage((p) => p + 1);
   }, []);
 
   const loadMoreTrash = useCallback(() => {
+    setTrashLoadingMore(true);
     setTrashPage((p) => p + 1);
   }, []);
 
@@ -548,21 +580,19 @@ export default function PhotoAppPage() {
     setTimelinePage(1);
     setFavPage(1);
     setTrashPage(1);
+    setTimelineLoadingMore(false);
+    setFavLoadingMore(false);
+    setTrashLoadingMore(false);
     accTimelineRef.current = [];
     accFavRef.current = [];
     accTrashRef.current = [];
-    void photosQuery.refetch();
-    void favoritesQuery.refetch();
-    void trashedQuery.refetch();
-  }, [photosQuery.refetch, favoritesQuery.refetch, trashedQuery.refetch]);
+    void photosRefetchRef.current();
+    void favRefetchRef.current();
+    void trashedRefetchRef.current();
+  }, []);
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncClearData, setSyncClearData] = useState(false);
-
-  const isRefetchingRef = useRef(false);
-  isRefetchingRef.current = photosQuery.isRefetching;
-  const isSyncingRef = useRef(false);
-  isSyncingRef.current = syncMutation.isPending;
 
   const menuBarConfig: MenuBarConfig | null = useMemo(() => {
     if (!id) return null;
@@ -599,14 +629,14 @@ export default function PhotoAppPage() {
               key: "refresh",
               label: "刷新",
               icon: <RefreshCw size={14} />,
-              disabled: isRefetchingRef.current,
+              disabled: false,
               onClick: handleRefresh,
             },
             {
               key: "sync",
               label: "同步资料库",
               icon: <FolderSync size={14} />,
-              disabled: isSyncingRef.current,
+              disabled: false,
               onClick: () => {
                 setSyncClearData(false);
                 setSyncModalOpen(true);
@@ -636,7 +666,7 @@ export default function PhotoAppPage() {
         title="同步资料库"
         okText="开始同步"
         cancelText="取消"
-        confirmLoading={syncMutation.isPending}
+        confirmLoading={isSyncing}
         onCancel={() => setSyncModalOpen(false)}
         onOk={async () => {
           if (!id) return;
@@ -745,7 +775,7 @@ export default function PhotoAppPage() {
           <Spin />
         </div>
       ) : isClipActive ? (
-        clipQuery.isLoading ? (
+        !clipQuery.data ? (
           <div className="flex h-64 items-center justify-center">
             <Spin />
           </div>
@@ -794,7 +824,7 @@ export default function PhotoAppPage() {
             total={timelineTotal}
             hasMore={timelineHasMore}
             onLoadMore={loadMoreTimeline}
-            isLoadingMore={photosQuery.isFetching && timelinePage > 1}
+            isLoadingMore={timelineLoadingMore}
             onToggleFavorite={handleToggleFavorite}
             isSelecting={isSelecting}
             selectedIds={selectedIds}
@@ -824,7 +854,7 @@ export default function PhotoAppPage() {
             total={favTotal}
             hasMore={favHasMore}
             onLoadMore={loadMoreFav}
-            isLoadingMore={favoritesQuery.isFetching && favPage > 1}
+            isLoadingMore={favLoadingMore}
             onToggleFavorite={handleToggleFavorite}
             isSelecting={isSelecting}
             selectedIds={selectedIds}
@@ -863,15 +893,12 @@ export default function PhotoAppPage() {
               </span>
               {selectedIds.size > 0 && (
                 <div className="flex gap-2">
-                  <Button
-                    onClick={handleRestore}
-                    loading={restoreMutation.isPending}
-                  >
+                  <Button onClick={handleRestore} loading={isRestoring}>
                     恢复选中
                   </Button>
                   <Button
                     onClick={handlePermanentDelete}
-                    loading={permanentDeleteMutation.isPending}
+                    loading={isDeleting}
                     className="text-red-500"
                   >
                     永久删除
@@ -885,7 +912,7 @@ export default function PhotoAppPage() {
               total={trashTotal}
               hasMore={trashHasMore}
               onLoadMore={loadMoreTrash}
-              isLoadingMore={trashedQuery.isFetching && trashPage > 1}
+              isLoadingMore={trashLoadingMore}
               onToggleFavorite={handleToggleFavorite}
               isSelecting={isSelecting}
               selectedIds={selectedIds}
@@ -900,7 +927,7 @@ export default function PhotoAppPage() {
         <PhotoAlbumsView
           appId={id}
           albums={albums}
-          isLoading={albumsQuery.isLoading}
+          isLoading={!albumsQuery.data}
           onToggleFavorite={handleToggleFavorite}
           onRefresh={() => void albumsQuery.refetch()}
           onNavigateToPerson={handleNavigateToPerson}
@@ -925,7 +952,7 @@ export default function PhotoAppPage() {
           selectedCount={selectedIds.size}
           onPick={handleAddToAlbum}
           onClose={() => setShowAlbumPicker(false)}
-          isPending={addToAlbumMutation.isPending}
+          isPending={isAddingToAlbum}
         />
       )}
 
