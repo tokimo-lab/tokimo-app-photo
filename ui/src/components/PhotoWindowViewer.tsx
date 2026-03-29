@@ -32,7 +32,6 @@ import {
 import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 import { getViewerPhotos } from "./photo-viewer-store";
 
-const MIN_SCALE = 0.1;
 const MAX_SCALE = 20;
 const INFO_PANEL_STORAGE_KEY = "photo-viewer-info-panel-open";
 
@@ -238,7 +237,15 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-  const isZoomed = scale > 1.05;
+  const isZoomed = scale > 1.01;
+
+  // Refs mirror state so the native wheel listener (empty deps) reads fresh values
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const panXRef = useRef(panX);
+  panXRef.current = panX;
+  const panYRef = useRef(panY);
+  panYRef.current = panY;
 
   // Track container size for thumbnail display sizing
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
@@ -266,36 +273,165 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     return { width: containerSize.h * aspect, height: containerSize.h };
   }, [photo, containerSize.w, containerSize.h]);
 
-  // Native wheel handler (passive: false for preventDefault)
+  // Pan boundary clamping — snaps back after drag ends or zoom changes
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (dragging) return;
+    const img = imgRef.current;
+    const container = containerRef.current;
+    if (!img || !container) return;
+
+    const styles = getComputedStyle(container);
+    const cw =
+      container.clientWidth -
+      parseFloat(styles.paddingLeft) -
+      parseFloat(styles.paddingRight);
+    const ch =
+      container.clientHeight -
+      parseFloat(styles.paddingTop) -
+      parseFloat(styles.paddingBottom);
+    const iw = img.clientWidth * scale;
+    const ih = img.clientHeight * scale;
+
+    const overflows = iw > cw || ih > ch;
+    if (!overflows) {
+      if (panX !== 0 || panY !== 0) {
+        setPanX(0);
+        setPanY(0);
+      }
+      return;
+    }
+
+    const clamp = (p: number, imgSize: number, vp: number) => {
+      if (imgSize <= vp) {
+        const maxP = vp / 3;
+        return Math.min(maxP, Math.max(-maxP, p));
+      }
+      const maxP = imgSize / 2 - vp / 6;
+      return Math.min(maxP, Math.max(-maxP, p));
+    };
+
+    const cx = clamp(panX, iw, cw);
+    const cy = clamp(panY, ih, ch);
+    if (cx !== panX || cy !== panY) {
+      setPanX(cx);
+      setPanY(cy);
+    }
+  }, [scale, panX, panY, dragging]);
+
+  // Native wheel handler with cursor-relative zoom (passive: false for preventDefault)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const getContentSize = () => {
+      const s = getComputedStyle(container);
+      return {
+        w:
+          container.clientWidth -
+          parseFloat(s.paddingLeft) -
+          parseFloat(s.paddingRight),
+        h:
+          container.clientHeight -
+          parseFloat(s.paddingTop) -
+          parseFloat(s.paddingBottom),
+      };
+    };
+
+    const gaps = (pan: number, imgHalf: number, vpHalf: number) => ({
+      lo: pan - imgHalf + vpHalf,
+      hi: vpHalf - pan - imgHalf,
+    });
+
     const handler = (e: WheelEvent) => {
       e.preventDefault();
-      const delta = -e.deltaY * 0.002;
-      setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s + delta * s)));
+      const img = imgRef.current;
+      if (!img) return;
+
+      const rect = container.getBoundingClientRect();
+      const cursorX = e.clientX - (rect.left + rect.width / 2);
+      const cursorY = e.clientY - (rect.top + rect.height / 2);
+
+      const oldS = scaleRef.current;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const newS = Math.min(MAX_SCALE, Math.max(1, oldS * factor));
+      if (newS === oldS) return;
+
+      const ratio = 1 - newS / oldS;
+      const oldPX = panXRef.current;
+      const oldPY = panYRef.current;
+      let nx = oldPX + (cursorX - oldPX) * ratio;
+      let ny = oldPY + (cursorY - oldPY) * ratio;
+
+      const vp = getContentSize();
+      const imgW = img.clientWidth;
+      const imgH = img.clientHeight;
+      const oldIW = imgW * oldS;
+      const oldIH = imgH * oldS;
+      const newIW = imgW * newS;
+      const newIH = imgH * newS;
+
+      const zoomingIn = newS > oldS;
+
+      if (zoomingIn) {
+        // Black borders must not grow during zoom-in
+        const oldGX = gaps(oldPX, oldIW / 2, vp.w / 2);
+        const oldGY = gaps(oldPY, oldIH / 2, vp.h / 2);
+
+        const newGXlo = nx - newIW / 2 + vp.w / 2;
+        if (oldGX.lo > 0 && newGXlo > oldGX.lo) nx -= newGXlo - oldGX.lo;
+        const newGXhi = vp.w / 2 - nx - newIW / 2;
+        if (oldGX.hi > 0 && newGXhi > oldGX.hi) nx += newGXhi - oldGX.hi;
+
+        const newGYlo = ny - newIH / 2 + vp.h / 2;
+        if (oldGY.lo > 0 && newGYlo > oldGY.lo) ny -= newGYlo - oldGY.lo;
+        const newGYhi = vp.h / 2 - ny - newIH / 2;
+        if (oldGY.hi > 0 && newGYhi > oldGY.hi) ny += newGYhi - oldGY.hi;
+      } else {
+        // Zoom out: apply 1/3 boundary clamp immediately
+        const overflows = newIW > vp.w || newIH > vp.h;
+        if (!overflows) {
+          nx = 0;
+          ny = 0;
+        } else {
+          const clampAxis = (p: number, imgSize: number, vpSize: number) => {
+            if (imgSize <= vpSize) {
+              const maxP = vpSize / 3;
+              return Math.min(maxP, Math.max(-maxP, p));
+            }
+            const maxP = imgSize / 2 - vpSize / 6;
+            return Math.min(maxP, Math.max(-maxP, p));
+          };
+          nx = clampAxis(nx, newIW, vp.w);
+          ny = clampAxis(ny, newIH, vp.h);
+        }
+      }
+
+      setScale(newS);
+      setPanX(nx);
+      setPanY(ny);
     };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
+    container.addEventListener("wheel", handler, { passive: false });
+    return () => container.removeEventListener("wheel", handler);
   }, []);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (scale <= 1) return;
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0 || !isZoomed) return;
       isDragging.current = true;
       setDragging(true);
       dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [scale, panX, panY],
+    [isZoomed, panX, panY],
   );
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging.current) return;
     setPanX(dragStart.current.panX + e.clientX - dragStart.current.x);
     setPanY(dragStart.current.panY + e.clientY - dragStart.current.y);
   }, []);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     isDragging.current = false;
     setDragging(false);
   }, []);
@@ -457,16 +593,15 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       <div
         ref={containerRef}
         className={`relative flex-1 overflow-hidden ${
-          scale > 1
+          isZoomed
             ? dragging
               ? "cursor-grabbing"
               : "cursor-grab"
             : "cursor-default"
         }`}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         onDoubleClick={handleDoubleClick}
       >
         {/* Two-layer rendering: thumbnail stays visible until full-res decoded */}
@@ -474,7 +609,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           className="absolute inset-0 m-auto flex max-h-full max-w-full items-center justify-center"
           style={{
             transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-            transition: dragging ? "none" : "transform 0.15s ease-out",
+            transformOrigin: "center center",
+            transition: dragging
+              ? "none"
+              : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
           }}
         >
           {/* Thumbnail layer — hidden during fly animation, instantly visible after */}
@@ -747,7 +885,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         {/* Center: zoom */}
         <div className="flex items-center gap-1">
           <ToolBtn
-            onClick={() => setScale((s) => Math.max(MIN_SCALE, s / 1.3))}
+            onClick={() => setScale((s) => Math.max(1, s / 1.3))}
             title="缩小"
           >
             <ZoomOut size={14} />
