@@ -181,12 +181,11 @@ export function PhotoLightbox({
   initialScaleRef.current = initialScaleValue;
 
   // ── Fly animation state ────────────────────────────────────────────────────
+  // Always start as "entering" — the mount useEffect validates and falls back
+  // to "open" if the source element can't be found. This avoids querying
+  // the DOM in useState (unreliable in React 19 concurrent rendering).
   const [animState, setAnimState] = useState<AnimState>(() => {
     if (!photo.sourceId || photo.width == null || photo.height == null)
-      return "open";
-    if (
-      !queryElementRect(animSourceSelector ?? `[data-photo-id="${photo.id}"]`)
-    )
       return "open";
     return "entering";
   });
@@ -293,6 +292,7 @@ export function PhotoLightbox({
       animSourceSelector ?? `[data-photo-id="${photo.id}"]`,
     );
     if (!thumbRect || photo.width == null || photo.height == null) {
+      setAnimState("open");
       return;
     }
 

@@ -114,6 +114,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullDecoded, setFullDecoded] = useState(false);
+  // Delay thumbnail fade-out so full-res has time to paint first
+  const [thumbFadeOut, setThumbFadeOut] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -124,6 +126,17 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     const timer = setTimeout(() => setMounted(true), 350);
     return () => clearTimeout(timer);
   }, []);
+
+  // Delay thumbnail fade-out by 50ms after full-res decoded,
+  // so the full-res image has time to paint before the thumbnail disappears
+  useEffect(() => {
+    if (!fullDecoded) {
+      setThumbFadeOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setThumbFadeOut(true), 50);
+    return () => clearTimeout(timer);
+  }, [fullDecoded]);
 
   const isHeic = /\.heic$/i.test(photo?.filename ?? "");
 
@@ -474,7 +487,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             className={`object-contain select-none ${
               !mounted
                 ? "opacity-0"
-                : fullDecoded
+                : thumbFadeOut
                   ? "opacity-0 transition-opacity duration-200"
                   : "opacity-100"
             }`}
