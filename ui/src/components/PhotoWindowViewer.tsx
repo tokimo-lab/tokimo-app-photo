@@ -451,7 +451,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const scalePercent = Math.round(scale * 100);
 
   return (
-    <div className="flex h-full bg-neutral-950">
+    <div className="relative flex h-full bg-neutral-950">
       {/* ── Image area ─────────────────────────────────────────────── */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: zoom/pan canvas needs mouse events */}
       <div
@@ -723,7 +723,9 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       )}
 
       {/* ── Bottom toolbar ───────────────────────────────────────── */}
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+      <div
+        className={`absolute bottom-0 left-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 py-2 transition-[right] duration-200 ${showInfo ? "right-80" : "right-0"}`}
+      >
         {/* Left: navigation */}
         <div className="flex items-center gap-1">
           <ToolBtn
