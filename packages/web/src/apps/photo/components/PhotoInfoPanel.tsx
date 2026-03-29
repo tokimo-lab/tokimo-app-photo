@@ -1,5 +1,6 @@
 import {
   Camera,
+  Crosshair,
   ExternalLink,
   FileText,
   MapPin,
@@ -357,6 +358,14 @@ export function PhotoInfoPanel({
                         {Math.round(r.score * 100)}%
                       </span>
                     )}
+                    {r.charPositions && r.charPositions.length > 0 && (
+                      <span
+                        className="ml-1.5 inline-flex items-center gap-0.5 text-xs text-emerald-400/50"
+                        title="已有字符级定位数据（CTC 对齐）"
+                      >
+                        <Crosshair className="h-2.5 w-2.5" />
+                      </span>
+                    )}
                   </p>
                 );
               })}
@@ -370,6 +379,15 @@ export function PhotoInfoPanel({
                       ocrResults[0]?.modelName ?? null,
                     );
                     return modelName ? ` · 识别模型: ${modelName}` : null;
+                  })()}
+                  {(() => {
+                    const withPos = ocrResults.filter(
+                      (r) => r.charPositions && r.charPositions.length > 0,
+                    ).length;
+                    if (withPos === 0) return " · 定位: 比例估算";
+                    if (withPos === ocrResults.length)
+                      return " · 定位: CTC 对齐";
+                    return ` · 定位: CTC 对齐 (${withPos}/${ocrResults.length})`;
                   })()}
                 </span>
                 {detail.ocrDebugInfo && (
