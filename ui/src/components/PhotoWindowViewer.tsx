@@ -724,7 +724,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
 
       {/* ── Bottom toolbar ───────────────────────────────────────── */}
       <div
-        className={`absolute bottom-0 left-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 py-2 transition-[right] duration-200 ${showInfo ? "right-80" : "right-0"}`}
+        className={`absolute bottom-0 left-0 flex items-center justify-between bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 py-2.5 transition-[right] duration-200 ${showInfo ? "right-80" : "right-0"}`}
       >
         {/* Left: navigation */}
         <div className="flex items-center gap-1">
@@ -755,7 +755,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           <button
             type="button"
             onClick={resetZoom}
-            className="min-w-[48px] rounded px-1.5 py-1 text-center text-[11px] text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+            className="min-w-[48px] cursor-pointer rounded px-1.5 py-1 text-center text-[11px] text-white/60 hover:bg-white/15 hover:text-white/90 active:bg-white/25 transition-colors"
             title="重置缩放 (0)"
           >
             {scalePercent}%
@@ -829,10 +829,10 @@ function ToolBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+      className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded transition-colors ${
         active
-          ? "bg-white/20 text-white"
-          : "text-white/60 hover:bg-white/10 hover:text-white/90"
+          ? "bg-white/25 text-white"
+          : "text-white/70 hover:bg-white/15 hover:text-white active:bg-white/25"
       } disabled:pointer-events-none disabled:opacity-25`}
     >
       {children}
