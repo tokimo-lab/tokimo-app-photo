@@ -30,26 +30,30 @@ function useImgRect(
     if (!img) return;
 
     const measure = () => {
-      const rect = img.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
+      // Use offsetWidth/offsetHeight — these return CSS layout dimensions
+      // (pre-transform), unlike getBoundingClientRect() which includes
+      // CSS transform scaling and would double-count zoom.
+      const w = img.offsetWidth;
+      const h = img.offsetHeight;
+      if (w === 0 || h === 0) return;
       const imgAspect = photoWidth / photoHeight;
-      const elemAspect = rect.width / rect.height;
+      const elemAspect = w / h;
 
       let renderedW: number;
       let renderedH: number;
       if (imgAspect > elemAspect) {
-        renderedW = rect.width;
-        renderedH = rect.width / imgAspect;
+        renderedW = w;
+        renderedH = w / imgAspect;
       } else {
-        renderedH = rect.height;
-        renderedW = rect.height * imgAspect;
+        renderedH = h;
+        renderedW = h * imgAspect;
       }
 
       setImgRect({
         w: renderedW,
         h: renderedH,
-        offsetX: (rect.width - renderedW) / 2,
-        offsetY: (rect.height - renderedH) / 2,
+        offsetX: (w - renderedW) / 2,
+        offsetY: (h - renderedH) / 2,
       });
     };
 
