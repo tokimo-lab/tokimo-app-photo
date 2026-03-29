@@ -76,12 +76,14 @@ export function formatBytes(bytes: number): string {
  * Orientations 5-8 rotate the image 90°/270°, swapping width and height.
  * The database stores raw sensor dimensions (before rotation).
  */
-export function getDisplayDimensions(photo: {
-  width?: number | null;
-  height?: number | null;
-  orientation?: number | null;
-}): { width: number; height: number } | null {
-  if (!photo.width || !photo.height) return null;
+export function getDisplayDimensions(
+  photo: {
+    width?: number | null;
+    height?: number | null;
+    orientation?: number | null;
+  } | null,
+): { width: number; height: number } | null {
+  if (!photo || !photo.width || !photo.height) return null;
   const swapped =
     photo.orientation != null &&
     photo.orientation >= 5 &&

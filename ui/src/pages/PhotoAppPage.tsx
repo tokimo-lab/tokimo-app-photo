@@ -357,13 +357,12 @@ export default function PhotoAppPage() {
       void favoritesQuery.refetch();
     },
   });
+  const toggleFavRef = useRef(toggleFavMutation.mutate);
+  toggleFavRef.current = toggleFavMutation.mutate;
 
-  const handleToggleFavorite = useCallback(
-    (photo: PhotoOutput) => {
-      toggleFavMutation.mutate({ photoId: photo.id });
-    },
-    [toggleFavMutation.mutate],
-  );
+  const handleToggleFavorite = useCallback((photo: PhotoOutput) => {
+    toggleFavRef.current({ photoId: photo.id });
+  }, []);
 
   // ── Batch operations ──────────────────────────────────────────────────
   const batchFavMutation = api.app.batchFavorite.useMutation({
