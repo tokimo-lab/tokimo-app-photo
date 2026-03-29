@@ -1,6 +1,6 @@
+import { LoadingOutlined } from "@tokiomo/components";
 import {
   Image,
-  Loader2,
   RefreshCw,
   ScanFace,
   ScanText,
@@ -134,7 +134,7 @@ export function PhotoToolsPanel({
             title={`刷新${tool.label}`}
           >
             {loading[tool.key] ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <LoadingOutlined className="h-3.5 w-3.5" />
             ) : (
               tool.icon
             )}

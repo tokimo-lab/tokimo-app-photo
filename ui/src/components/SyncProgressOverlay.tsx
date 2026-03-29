@@ -1,4 +1,5 @@
-import { CheckCircle, Loader2, X } from "lucide-react";
+import { LoadingOutlined } from "@tokiomo/components";
+import { CheckCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../generated/rust-api";
 import { useJobEvents } from "../../system/events/useJobEvents";
@@ -119,10 +120,7 @@ export function SyncProgressOverlay({
         {isDone ? (
           <CheckCircle size={16} className="shrink-0 text-green-400" />
         ) : (
-          <Loader2
-            size={16}
-            className="shrink-0 animate-spin text-orange-400"
-          />
+          <LoadingOutlined size={16} className="shrink-0 text-orange-400" />
         )}
 
         <div className="flex flex-1 flex-col gap-1.5">

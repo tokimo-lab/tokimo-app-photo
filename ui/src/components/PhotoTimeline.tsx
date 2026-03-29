@@ -1,4 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Spin } from "@tokiomo/components";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
@@ -353,7 +354,7 @@ export function PhotoTimeline({
         {/* Loading indicator */}
         {hasMore && isLoadingMore && (
           <div className="flex justify-center py-4">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+            <Spin size="small" />
           </div>
         )}
 

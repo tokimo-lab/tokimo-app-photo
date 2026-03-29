@@ -1,3 +1,4 @@
+import { Spin } from "@tokiomo/components";
 import { ChevronLeft, MapPin } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../../generated/rust-api";
@@ -130,7 +131,7 @@ export function PhotoLocationTab({
         />
       ) : photosQuery.isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          <Spin />
         </div>
       ) : (
         <div className="flex h-64 items-center justify-center text-neutral-400">
