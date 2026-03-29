@@ -110,7 +110,10 @@ export function PhotoTimeline({
             flyEl.style.borderRadius = "8px";
             img.style.objectFit = "contain";
           });
-          setTimeout(() => flyEl.remove(), 350);
+          setTimeout(() => {
+            flyEl.remove();
+            window.dispatchEvent(new CustomEvent("photo-fly-end"));
+          }, 350);
         }
       }
 

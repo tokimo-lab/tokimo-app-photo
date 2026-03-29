@@ -120,15 +120,20 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Defer full-res loading until after window open + fly animation (300ms)
+  // Show thumbnail when fly animation ends (event from PhotoTimeline),
+  // with a fallback timer for cases without fly animation
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 350);
-    return () => clearTimeout(timer);
+    const show = () => setMounted(true);
+    window.addEventListener("photo-fly-end", show);
+    const fallback = setTimeout(show, 400);
+    return () => {
+      window.removeEventListener("photo-fly-end", show);
+      clearTimeout(fallback);
+    };
   }, []);
 
-  // Delay thumbnail fade-out by 50ms after full-res decoded,
-  // so the full-res image has time to paint before the thumbnail disappears
+  // Delay thumbnail fade-out so full-res has time to paint first
   useEffect(() => {
     if (!fullDecoded) {
       setThumbFadeOut(false);
