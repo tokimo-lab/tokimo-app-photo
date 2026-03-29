@@ -83,7 +83,7 @@ export function getDisplayDimensions(
     orientation?: number | null;
   } | null,
 ): { width: number; height: number } | null {
-  if (!photo || !photo.width || !photo.height) return null;
+  if (!photo?.width || !photo.height) return null;
   const swapped =
     photo.orientation != null &&
     photo.orientation >= 5 &&
