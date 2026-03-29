@@ -139,7 +139,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       setThumbFadeOut(false);
       return;
     }
-    const timer = setTimeout(() => setThumbFadeOut(true), 200);
+    const timer = setTimeout(() => setThumbFadeOut(true), 50);
     return () => clearTimeout(timer);
   }, [fullDecoded]);
 
@@ -253,17 +253,11 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     return () => ro.disconnect();
   }, []);
 
-  // Compute display size so thumbnail renders at the same size as the full-res image
+  // Compute display size to fit image within container (matching fly clone behavior).
+  // Always constrains to container — never shows image smaller than available space.
   const displaySize = useMemo(() => {
     if (!photo?.width || !photo?.height || !containerSize.w || !containerSize.h)
       return undefined;
-    const fitScale = Math.min(
-      containerSize.w / photo.width,
-      containerSize.h / photo.height,
-    );
-    if (fitScale >= 1) {
-      return { width: photo.width, height: photo.height };
-    }
     const aspect = photo.width / photo.height;
     if (aspect > containerSize.w / containerSize.h) {
       return { width: containerSize.w, height: containerSize.w / aspect };
@@ -497,10 +491,9 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   : "opacity-100"
             }`}
             style={{
-              ...(displaySize && {
-                width: displaySize.width,
-                height: displaySize.height,
-              }),
+              ...(displaySize
+                ? { width: displaySize.width, height: displaySize.height }
+                : { width: "100%", height: "100%" }),
               imageRendering: scale > 2 ? "pixelated" : "auto",
             }}
           />
@@ -516,10 +509,9 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                 fullDecoded ? "opacity-100" : "opacity-0"
               }`}
               style={{
-                ...(displaySize && {
-                  width: displaySize.width,
-                  height: displaySize.height,
-                }),
+                ...(displaySize
+                  ? { width: displaySize.width, height: displaySize.height }
+                  : { width: "100%", height: "100%" }),
                 imageRendering: scale > 2 ? "pixelated" : "auto",
               }}
               onLoad={() => setFullDecoded(true)}
