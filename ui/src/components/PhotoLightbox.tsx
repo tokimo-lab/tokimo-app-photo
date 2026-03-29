@@ -12,7 +12,7 @@ import {
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
-import { THUMB_WIDTH } from "./photo-utils";
+import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
@@ -153,15 +153,18 @@ export function PhotoLightbox({
   const imgRef = useRef<HTMLImageElement>(null);
 
   // ── Zoom & Pan state ──────────────────────────────────────────────────────
+  // Orientation-aware display dimensions (EXIF 5-8 swap width/height)
+  const photoDims = getDisplayDimensions(photo);
+
   // Compute the ideal initial scale for this photo (auto-zoom small images)
   const initialScaleValue = useMemo(() => {
-    if (!photo.width || !photo.height) return 1;
-    return computeInitialScale(photo.width, photo.height, showInfo);
-  }, [photo.width, photo.height, showInfo]);
+    if (!photoDims) return 1;
+    return computeInitialScale(photoDims.width, photoDims.height, showInfo);
+  }, [photoDims, showInfo]);
 
   const [scale, setScale] = useState(() => {
-    if (!photo.width || !photo.height) return 1;
-    return computeInitialScale(photo.width, photo.height, showInfo);
+    if (!photoDims) return 1;
+    return computeInitialScale(photoDims.width, photoDims.height, showInfo);
   });
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
@@ -185,8 +188,7 @@ export function PhotoLightbox({
   // to "open" if the source element can't be found. This avoids querying
   // the DOM in useState (unreliable in React 19 concurrent rendering).
   const [animState, setAnimState] = useState<AnimState>(() => {
-    if (!photo.sourceId || photo.width == null || photo.height == null)
-      return "open";
+    if (!photo.sourceId || !photoDims) return "open";
     return "entering";
   });
   const [flyRect, setFlyRect] = useState<FlyRect | null>(null);
@@ -291,13 +293,17 @@ export function PhotoLightbox({
     const thumbRect = queryElementRect(
       animSourceSelector ?? `[data-photo-id="${photo.id}"]`,
     );
-    if (!thumbRect || photo.width == null || photo.height == null) {
+    if (!thumbRect || !photoDims) {
       setAnimState("open");
       return;
     }
 
     // Use showInfo (from localStorage) to compute correct target position
-    const target = computeCenterRect(photo.width, photo.height, showInfo);
+    const target = computeCenterRect(
+      photoDims.width,
+      photoDims.height,
+      showInfo,
+    );
     setFlyRect(thumbRect);
     setFlyTransition(false);
 
@@ -327,8 +333,12 @@ export function PhotoLightbox({
     );
     const infoVisible = showInfo && detail != null;
 
-    if (thumbRect && photo.width != null && photo.height != null && thumbSrc) {
-      const current = computeCenterRect(photo.width, photo.height, infoVisible);
+    if (thumbRect && photoDims && thumbSrc) {
+      const current = computeCenterRect(
+        photoDims.width,
+        photoDims.height,
+        infoVisible,
+      );
       setAnimState("exiting");
       setFlyRect(current);
       setFlyTransition(false);
@@ -349,6 +359,7 @@ export function PhotoLightbox({
   }, [
     animState,
     photo,
+    photoDims,
     showInfo,
     detail,
     thumbSrc,
@@ -691,25 +702,28 @@ export function PhotoLightbox({
   // For small images, this is their natural size (scale handles zoom).
   // For large images, this is the object-contain fit size.
   const thumbDisplaySize = useMemo(() => {
-    if (!photo.width || !photo.height) return undefined;
+    if (!photoDims) return undefined;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const infoW = showInfo ? 320 : 0;
     const pad = 48;
     const availW = Math.max(1, vw - infoW - pad * 2);
     const availH = Math.max(1, vh - pad * 2);
-    const fitScale = Math.min(availW / photo.width, availH / photo.height);
+    const fitScale = Math.min(
+      availW / photoDims.width,
+      availH / photoDims.height,
+    );
     if (fitScale >= 1) {
       // Small image: render at natural size; transform scale handles zoom
-      return { width: photo.width, height: photo.height };
+      return { width: photoDims.width, height: photoDims.height };
     }
     // Large image: constrain to available area
-    const imgAspect = photo.width / photo.height;
+    const imgAspect = photoDims.width / photoDims.height;
     if (imgAspect > availW / availH) {
       return { width: availW, height: availW / imgAspect };
     }
     return { width: availH * imgAspect, height: availH };
-  }, [photo.width, photo.height, showInfo]);
+  }, [photoDims, showInfo]);
 
   let backdropOpacity: number;
   if (animState === "open") {

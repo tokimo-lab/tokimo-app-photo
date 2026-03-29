@@ -29,7 +29,7 @@ import {
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
-import { THUMB_WIDTH } from "./photo-utils";
+import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 import { getViewerPhotos } from "./photo-viewer-store";
 
 const MIN_SCALE = 0.1;
@@ -255,15 +255,16 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
 
   // Compute display size to fit image within container (matching fly clone behavior).
   // Always constrains to container — never shows image smaller than available space.
+  // Uses orientation-aware dimensions (EXIF orientations 5-8 swap width/height).
   const displaySize = useMemo(() => {
-    if (!photo?.width || !photo?.height || !containerSize.w || !containerSize.h)
-      return undefined;
-    const aspect = photo.width / photo.height;
+    const dims = getDisplayDimensions(photo);
+    if (!dims || !containerSize.w || !containerSize.h) return undefined;
+    const aspect = dims.width / dims.height;
     if (aspect > containerSize.w / containerSize.h) {
       return { width: containerSize.w, height: containerSize.w / aspect };
     }
     return { width: containerSize.h * aspect, height: containerSize.h };
-  }, [photo?.width, photo?.height, containerSize.w, containerSize.h]);
+  }, [photo, containerSize.w, containerSize.h]);
 
   // Native wheel handler (passive: false for preventDefault)
   useEffect(() => {

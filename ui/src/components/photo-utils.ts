@@ -70,3 +70,23 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Get display dimensions accounting for EXIF orientation.
+ * Orientations 5-8 rotate the image 90°/270°, swapping width and height.
+ * The database stores raw sensor dimensions (before rotation).
+ */
+export function getDisplayDimensions(photo: {
+  width?: number | null;
+  height?: number | null;
+  orientation?: number | null;
+}): { width: number; height: number } | null {
+  if (!photo.width || !photo.height) return null;
+  const swapped =
+    photo.orientation != null &&
+    photo.orientation >= 5 &&
+    photo.orientation <= 8;
+  return swapped
+    ? { width: photo.height, height: photo.width }
+    : { width: photo.width, height: photo.height };
+}
