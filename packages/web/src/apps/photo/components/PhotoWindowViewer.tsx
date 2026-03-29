@@ -604,128 +604,127 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         onPointerUp={handlePointerUp}
         onDoubleClick={handleDoubleClick}
       >
-        {/* Two-layer rendering: thumbnail stays visible until full-res decoded */}
-        <div
-          className="absolute inset-0 m-auto flex max-h-full max-w-full items-center justify-center"
-          style={{
-            transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-            transformOrigin: "center center",
-            transition: dragging
-              ? "none"
-              : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
-          }}
-        >
-          {/* Thumbnail layer — hidden during fly animation, instantly visible after */}
-          <img
-            ref={!fullDecoded ? imgRef : undefined}
-            data-photo-viewer-img=""
-            src={thumbUrl}
-            alt={photo?.filename ?? ""}
-            draggable={false}
-            className={`object-contain select-none ${
-              !mounted
-                ? "opacity-0"
-                : thumbFadeOut
-                  ? "opacity-0 transition-opacity duration-200"
-                  : "opacity-100"
-            }`}
+        {/* Two-layer rendering: shrink-wrap transform div like Lightbox */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="relative inline-block max-h-full max-w-full"
             style={{
-              ...(displaySize
-                ? { width: displaySize.width, height: displaySize.height }
-                : { width: "100%", height: "100%" }),
-              imageRendering: scale > 2 ? "pixelated" : "auto",
+              transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+              transformOrigin: "center center",
+              transition: dragging
+                ? "none"
+                : "transform 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
             }}
-          />
-          {/* Full-res layer — fades in on top of thumbnail */}
-          {fullBlobUrl && (
+          >
+            {/* Thumbnail layer — hidden during fly animation, instantly visible after */}
             <img
-              ref={fullDecoded ? imgRef : undefined}
+              ref={!fullDecoded ? imgRef : undefined}
               data-photo-viewer-img=""
-              src={fullBlobUrl}
+              src={thumbUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
-              className={`absolute inset-0 m-auto object-contain select-none transition-opacity duration-200 ${
-                fullDecoded ? "opacity-100" : "opacity-0"
+              className={`max-h-full max-w-full object-contain select-none ${
+                !mounted
+                  ? "opacity-0"
+                  : thumbFadeOut
+                    ? "opacity-0 transition-opacity duration-200"
+                    : "opacity-100"
               }`}
               style={{
                 ...(displaySize
                   ? { width: displaySize.width, height: displaySize.height }
-                  : { width: "100%", height: "100%" }),
+                  : {}),
                 imageRendering: scale > 2 ? "pixelated" : "auto",
               }}
-              onLoad={() => setFullDecoded(true)}
             />
-          )}
+            {/* Full-res layer — fades in on top of thumbnail */}
+            {fullBlobUrl && (
+              <img
+                ref={fullDecoded ? imgRef : undefined}
+                data-photo-viewer-img=""
+                src={fullBlobUrl}
+                alt={photo?.filename ?? ""}
+                draggable={false}
+                className={`absolute inset-0 max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
+                  fullDecoded ? "opacity-100" : "opacity-0"
+                }`}
+                style={{
+                  ...(displaySize
+                    ? { width: displaySize.width, height: displaySize.height }
+                    : {}),
+                  imageRendering: scale > 2 ? "pixelated" : "auto",
+                }}
+                onLoad={() => setFullDecoded(true)}
+              />
+            )}
+            {/* Download progress bar */}
+            {!fullLoaded && loadProgress > 0 && loadProgress < 1 && (
+              <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
+                <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-white/30"
+                    style={{
+                      width: `${loadProgress * 100}%`,
+                      transition: "width 150ms ease-out",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {/* ── Overlays (inside transform div, same as Lightbox) ── */}
+            {hoveredFaceId != null &&
+              faces.length > 0 &&
+              detail?.width &&
+              detail?.height && (
+                <FaceHighlightOverlay
+                  faces={faces}
+                  hoveredFaceId={hoveredFaceId}
+                  photoWidth={detail.width}
+                  photoHeight={detail.height}
+                  imgRef={imgRef}
+                />
+              )}
+            {hoveredOcrId != null &&
+              ocrResults.length > 0 &&
+              detail?.width &&
+              detail?.height && (
+                <OcrHighlightOverlay
+                  ocrResults={ocrResults}
+                  hoveredOcrId={hoveredOcrId}
+                  photoWidth={detail.width}
+                  photoHeight={detail.height}
+                  imgRef={imgRef}
+                />
+              )}
+            {ocrResults.length > 0 && detail?.width && detail?.height && (
+              <OcrBlockSelectLayer
+                ocrResults={ocrResults}
+                photoWidth={detail.width}
+                photoHeight={detail.height}
+                imgRef={imgRef}
+                isZoomed={isZoomed}
+                onSelectionRanges={setOcrSelectionRanges}
+              />
+            )}
+            {/* Live Photo video overlay */}
+            {isLive && showLiveVideo && (
+              <video
+                ref={liveVideoRef}
+                src={`/api/photos/${currentPhotoId}/live-video`}
+                className="absolute inset-0 h-full w-full object-contain"
+                muted
+                playsInline
+                loop
+              />
+            )}
+          </div>
         </div>
 
-        {/* Download progress bar */}
-        {!fullLoaded && loadProgress > 0 && loadProgress < 1 && (
-          <div className="absolute right-4 bottom-12 left-4 flex flex-col items-center gap-1">
-            <div className="h-0.5 w-40 overflow-hidden rounded-full bg-white/20">
-              <div
-                className="h-full rounded-full bg-white/30"
-                style={{
-                  width: `${loadProgress * 100}%`,
-                  transition: "width 150ms ease-out",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Loading indicator */}
+        {/* Loading indicator (outside transform, fixed position) */}
         {!fullLoaded && loadProgress === 0 && (
           <div className="absolute bottom-3 left-3 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white/50">
             加载原图...
           </div>
-        )}
-
-        {/* ── Overlays ─────────────────────────────────────────── */}
-        {hoveredFaceId != null &&
-          faces.length > 0 &&
-          detail?.width &&
-          detail?.height && (
-            <FaceHighlightOverlay
-              faces={faces}
-              hoveredFaceId={hoveredFaceId}
-              photoWidth={detail.width}
-              photoHeight={detail.height}
-              imgRef={imgRef}
-            />
-          )}
-        {hoveredOcrId != null &&
-          ocrResults.length > 0 &&
-          detail?.width &&
-          detail?.height && (
-            <OcrHighlightOverlay
-              ocrResults={ocrResults}
-              hoveredOcrId={hoveredOcrId}
-              photoWidth={detail.width}
-              photoHeight={detail.height}
-              imgRef={imgRef}
-            />
-          )}
-        {ocrResults.length > 0 && detail?.width && detail?.height && (
-          <OcrBlockSelectLayer
-            ocrResults={ocrResults}
-            photoWidth={detail.width}
-            photoHeight={detail.height}
-            imgRef={imgRef}
-            isZoomed={isZoomed}
-            onSelectionRanges={setOcrSelectionRanges}
-          />
-        )}
-
-        {/* Live Photo video overlay */}
-        {isLive && showLiveVideo && (
-          <video
-            ref={liveVideoRef}
-            src={`/api/photos/${currentPhotoId}/live-video`}
-            className="absolute inset-0 h-full w-full object-contain"
-            muted
-            playsInline
-            loop
-          />
         )}
 
         {/* Live Photo icon */}
