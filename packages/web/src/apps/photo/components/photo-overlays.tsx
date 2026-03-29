@@ -291,6 +291,8 @@ function useOcrEngine(
     const dataChunks: number[] = [];
     const rects: OcrBlockRect[] = [];
 
+    let hasBackendPositions = false;
+
     for (const r of sorted) {
       const bw = (r.w as number) * scX;
       const bh = (r.h as number) * scY;
@@ -298,24 +300,36 @@ function useOcrEngine(
       const by = (r.y as number) * scY;
       const chars = Array.from(r.text);
 
-      // Measure character widths via Canvas
-      let charWidths: number[];
-      if (ctx) {
-        charWidths = chars.map((c) => ctx.measureText(c).width || 1);
-      } else {
-        charWidths = chars.map(() => 1);
-      }
-
       texts.push(r.text);
-      dataChunks.push(
-        bx,
-        by,
-        bw,
-        bh,
-        r.paragraphId ?? 0,
-        chars.length,
-        ...charWidths,
-      );
+
+      if (r.charPositions && r.charPositions.length === chars.length) {
+        // Backend provides char_positions (CTC alignment or Attention model)
+        // Scale from original image coords to rendered coords and make relative to block
+        hasBackendPositions = true;
+        const blockOrigX = r.x as number;
+        dataChunks.push(bx, by, bw, bh, r.paragraphId ?? 0, chars.length);
+        for (const cp of r.charPositions) {
+          dataChunks.push((cp.x - blockOrigX) * scX); // x relative to block, scaled
+          dataChunks.push(cp.w * scX); // width, scaled
+        }
+      } else {
+        // Fallback: Canvas measureText proportional estimation
+        let charWidths: number[];
+        if (ctx) {
+          charWidths = chars.map((c) => ctx.measureText(c).width || 1);
+        } else {
+          charWidths = chars.map(() => 1);
+        }
+        dataChunks.push(
+          bx,
+          by,
+          bw,
+          bh,
+          r.paragraphId ?? 0,
+          chars.length,
+          ...charWidths,
+        );
+      }
 
       rects.push({
         id: r.id,
@@ -327,11 +341,7 @@ function useOcrEngine(
       });
     }
 
-    engine.setBlocks(
-      new Float32Array(dataChunks),
-      texts,
-      false, // Canvas widths, need proportional scaling
-    );
+    engine.setBlocks(new Float32Array(dataChunks), texts, hasBackendPositions);
 
     return rects;
   }, [sorted, imgRect, photoWidth, photoHeight, ready]); // ready triggers re-sync after WASM loads
