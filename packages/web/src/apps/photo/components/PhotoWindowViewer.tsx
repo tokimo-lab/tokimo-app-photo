@@ -665,20 +665,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                 onLoad={() => setFullDecoded(true)}
               />
             )}
-            {/* Download progress bar */}
-            {!fullLoaded && loadProgress > 0 && (
-              <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
-                <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-white/30"
-                    style={{
-                      width: `${loadProgress * 100}%`,
-                      transition: "width 150ms ease-out",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
             {/* ── Overlays (inside transform div, same as Lightbox) ── */}
             {hoveredFaceId != null &&
               faces.length > 0 &&
@@ -760,6 +746,21 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             <span className="ml-2 text-white/40">{scalePercent}%</span>
           )}
         </div>
+
+        {/* Download progress bar — container-level, always visible during load */}
+        {mounted && !fullLoaded && (
+          <div className="absolute inset-x-0 bottom-0 z-10">
+            <div className="h-0.5 w-full bg-white/10">
+              <div
+                className="h-full bg-white/30"
+                style={{
+                  width: `${Math.max(loadProgress, 0.02) * 100}%`,
+                  transition: "width 150ms ease-out",
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Info panel (full-featured, reusing PhotoInfoPanel) ───── */}
