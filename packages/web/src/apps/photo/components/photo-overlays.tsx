@@ -162,7 +162,7 @@ export function OcrHighlightOverlay({
         if (r.x == null || r.y == null || r.w == null || r.h == null)
           return null;
 
-        const pad = 4;
+        const pad = 0;
         const angle = r.angle ?? 0;
         return (
           <div
