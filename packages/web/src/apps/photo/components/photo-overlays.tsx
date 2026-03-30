@@ -227,18 +227,27 @@ interface OcrBlockRect {
 }
 
 function normalizeOcrAnchors(
+  engine: OcrEngine,
   a: OcrTextAnchor,
   b: OcrTextAnchor,
-): { sBlock: number; sChar: number; eBlock: number; eChar: number } {
-  if (
-    a.blockIdx < b.blockIdx ||
-    (a.blockIdx === b.blockIdx && a.charIdx <= b.charIdx)
-  ) {
+): {
+  sBlock: number;
+  sChar: number;
+  eBlock: number;
+  eChar: number;
+  sRank: number;
+  eRank: number;
+} {
+  const aRank = engine.visualRank(a.blockIdx);
+  const bRank = engine.visualRank(b.blockIdx);
+  if (aRank < bRank || (aRank === bRank && a.charIdx <= b.charIdx)) {
     return {
       sBlock: a.blockIdx,
       sChar: a.charIdx,
       eBlock: b.blockIdx,
       eChar: b.charIdx,
+      sRank: aRank,
+      eRank: bRank,
     };
   }
   return {
@@ -246,6 +255,8 @@ function normalizeOcrAnchors(
     sChar: b.charIdx,
     eBlock: a.blockIdx,
     eChar: a.charIdx,
+    sRank: bRank,
+    eRank: aRank,
   };
 }
 
@@ -438,11 +449,13 @@ export function OcrBlockSelectLayer({
 
   useEffect(() => {
     if (!onSelectionRanges) return;
-    if (!selection) {
+    const engine = engineRef.current;
+    if (!selection || !engine) {
       onSelectionRanges(new Map());
       return;
     }
-    const { sBlock, sChar, eBlock, eChar } = normalizeOcrAnchors(
+    const { sBlock, sChar, eBlock, eChar, sRank, eRank } = normalizeOcrAnchors(
+      engine,
       selection.anchor,
       selection.focus,
     );
@@ -450,8 +463,10 @@ export function OcrBlockSelectLayer({
       onSelectionRanges(new Map());
       return;
     }
+    const visualOrder = engine.getVisualOrder();
     const ranges = new Map<string, { start: number; end: number }>();
-    for (let i = sBlock; i <= eBlock; i++) {
+    for (let r = sRank; r <= eRank; r++) {
+      const i = visualOrder[r];
       const b = blockRects[i];
       if (!b) continue;
       const from = i === sBlock ? sChar : 0;
@@ -459,7 +474,7 @@ export function OcrBlockSelectLayer({
       if (from < to) ranges.set(b.id, { start: from, end: to });
     }
     onSelectionRanges(ranges);
-  }, [selection, blockRects, onSelectionRanges]);
+  }, [selection, blockRects, onSelectionRanges, engineRef]);
 
   useEffect(() => {
     if (!menuPos) return;
@@ -684,11 +699,13 @@ export function OcrBlockSelectLayer({
       );
     if (hasNonEmptySelection) {
       const idx = hitBlockIdx(x, y);
-      const { sBlock, eBlock } = normalizeOcrAnchors(
+      const { sRank, eRank } = normalizeOcrAnchors(
+        engine,
         selection.anchor,
         selection.focus,
       );
-      if (idx >= sBlock && idx <= eBlock) {
+      const idxRank = idx >= 0 ? engine.visualRank(idx) : -1;
+      if (idxRank >= sRank && idxRank <= eRank) {
         e.preventDefault();
         e.stopPropagation();
         setMenuPos({ x: e.clientX, y: e.clientY });
