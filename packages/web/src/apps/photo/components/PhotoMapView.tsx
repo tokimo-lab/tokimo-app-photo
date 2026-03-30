@@ -515,7 +515,7 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
                   className="text-[var(--accent-text)] hover:underline"
                   onClick={() =>
                     openWindow({
-                      type: "page",
+                      type: "viewer",
                       title: "Settings",
                       metadata: { pageId: "external-database" },
                     })

@@ -690,249 +690,254 @@ export default function PhotoAppPage() {
           勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。
         </p>
       </Modal>
-      {/* Tab bar — iOS 26 style pill, centered */}
-      <div className="relative flex items-center justify-center">
-        <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
-                  active
-                    ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
-                    : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
-                }`}
-                onClick={() => setTab(t.key)}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* Photo count — right-aligned, clear of timeline scrubber */}
-        <div className="absolute right-16 text-right">
-          {tab === "timeline" && timelineTotal > 0 && (
-            <Tag>{timelineTotal} 张</Tag>
-          )}
-          {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
-          {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
+      {/* Tab bar — sticky at top */}
+      <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-0 bg-[var(--bg-primary)] px-3 pt-3 pb-3 lg:-mx-4 lg:-mt-4 lg:px-4 lg:pt-4 lg:pb-3">
+        <div className="relative flex items-center justify-center">
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
+            {tabs.map((t) => {
+              const Icon = t.icon;
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
+                    active
+                      ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
+                      : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
+                  }`}
+                  onClick={() => setTab(t.key)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Photo count — right-aligned, clear of timeline scrubber */}
+          <div className="absolute right-16 text-right">
+            {tab === "timeline" && timelineTotal > 0 && (
+              <Tag>{timelineTotal} 张</Tag>
+            )}
+            {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
+            {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
+          </div>
         </div>
       </div>
 
-      {/* OCR search results banner */}
-      {tab === "timeline" &&
-        debouncedSearch.length >= 2 &&
-        !ocrDismissed &&
-        ocrResults.length > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/50">
-            <ScanText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-            {ocrFilterActive ? (
-              <span className="text-sm text-blue-700 dark:text-blue-300">
-                正在显示 {ocrResults.length} 张 OCR 匹配照片（包含「
-                {debouncedSearch}」的文字）
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="cursor-pointer text-sm text-blue-700 hover:underline dark:text-blue-300"
-                onClick={() => setOcrFilterActive(true)}
-              >
-                还找到 {ocrResults.length} 张包含「{debouncedSearch}
-                」文字的照片，点击查看
-              </button>
-            )}
-            <div className="ml-auto flex items-center gap-1">
-              {ocrFilterActive && (
+      {/* Scrollable content */}
+      <div className="space-y-3">
+        {/* OCR search results banner */}
+        {tab === "timeline" &&
+          debouncedSearch.length >= 2 &&
+          !ocrDismissed &&
+          ocrResults.length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/50">
+              <ScanText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+              {ocrFilterActive ? (
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  正在显示 {ocrResults.length} 张 OCR 匹配照片（包含「
+                  {debouncedSearch}」的文字）
+                </span>
+              ) : (
                 <button
                   type="button"
-                  className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
-                  onClick={() => setOcrFilterActive(false)}
+                  className="cursor-pointer text-sm text-blue-700 hover:underline dark:text-blue-300"
+                  onClick={() => setOcrFilterActive(true)}
                 >
-                  显示全部
+                  还找到 {ocrResults.length} 张包含「{debouncedSearch}
+                  」文字的照片，点击查看
                 </button>
               )}
-              <button
-                type="button"
-                className="cursor-pointer rounded p-0.5 text-blue-400 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
-                onClick={() => {
-                  setOcrDismissed(true);
-                  setOcrFilterActive(false);
-                }}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <div className="ml-auto flex items-center gap-1">
+                {ocrFilterActive && (
+                  <button
+                    type="button"
+                    className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
+                    onClick={() => setOcrFilterActive(false)}
+                  >
+                    显示全部
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="cursor-pointer rounded p-0.5 text-blue-400 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+                  onClick={() => {
+                    setOcrDismissed(true);
+                    setOcrFilterActive(false);
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Spin />
-        </div>
-      ) : isClipActive ? (
-        !clipQuery.data ? (
+        {/* Content */}
+        {isLoading ? (
           <div className="flex h-64 items-center justify-center">
             <Spin />
           </div>
-        ) : clipResults.length > 0 ? (
-          <div>
-            <div className="mb-3 flex items-center gap-2 px-1">
-              <Sparkles className="h-4 w-4 text-purple-500" />
-              <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                找到 {clipResults.length} 张相似照片
-              </span>
+        ) : isClipActive ? (
+          !clipQuery.data ? (
+            <div className="flex h-64 items-center justify-center">
+              <Spin />
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-              {clipResults.map((result) => (
-                <div
-                  key={result.photoId}
-                  className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
-                >
-                  <img
-                    src={`/api/photos/${result.photoId}/thumbnail`}
-                    alt={result.filename}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                  />
-                  {/* Similarity badge */}
-                  <div className="absolute top-1.5 right-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
-                    {Math.round(result.similarity * 100)}%
-                  </div>
-                  {/* Filename on hover */}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <span className="truncate text-xs text-white">
-                      {result.filename}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <Empty description="未找到匹配的照片，试试换个描述" />
-        )
-      ) : tab === "timeline" ? (
-        allTimelinePhotos.length > 0 ? (
-          <PhotoTimeline
-            photos={allTimelinePhotos}
-            appId={id!}
-            total={timelineTotal}
-            hasMore={timelineHasMore}
-            onLoadMore={loadMoreTimeline}
-            isLoadingMore={timelineLoadingMore}
-            onToggleFavorite={handleToggleFavorite}
-            isSelecting={isSelecting}
-            selectedIds={selectedIds}
-            onSelect={handleSelect}
-            onSeekToDate={seekToDate}
-            targetRowHeight={targetRowHeight}
-          />
-        ) : ocrFilterActive ? (
-          <Empty description="当前加载的照片中没有 OCR 匹配结果" />
-        ) : (
-          <Empty description="暂无照片，请先同步应用" />
-        )
-      ) : tab === "folders" ? (
-        <PhotoFoldersView
-          appId={id}
-          onToggleFavorite={handleToggleFavorite}
-          isSelecting={isSelecting}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          onNavigateToPerson={handleNavigateToPerson}
-        />
-      ) : tab === "favorites" ? (
-        allFavPhotos.length > 0 ? (
-          <PhotoTimeline
-            photos={allFavPhotos}
-            appId={id!}
-            total={favTotal}
-            hasMore={favHasMore}
-            onLoadMore={loadMoreFav}
-            isLoadingMore={favLoadingMore}
-            onToggleFavorite={handleToggleFavorite}
-            isSelecting={isSelecting}
-            selectedIds={selectedIds}
-            onSelect={handleSelect}
-            targetRowHeight={targetRowHeight}
-          />
-        ) : (
-          <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
-        )
-      ) : tab === "locations" ? (
-        <PhotoLocationTab
-          appId={id}
-          onToggleFavorite={handleToggleFavorite}
-          isSelecting={isSelecting}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          targetRowHeight={targetRowHeight}
-        />
-      ) : tab === "people" ? (
-        <PhotoPeopleView
-          appId={id}
-          onToggleFavorite={handleToggleFavorite}
-          isSelecting={isSelecting}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          targetRowHeight={targetRowHeight}
-          navigateToPersonId={navigateToPersonId}
-          onNavigateToPersonHandled={handleNavigateToPersonHandled}
-        />
-      ) : tab === "trash" ? (
-        allTrashPhotos.length > 0 ? (
-          <div>
-            <div className="mb-4 flex items-center justify-between px-4">
-              <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                {trashTotal} 张照片在回收站中
-              </span>
-              {selectedIds.size > 0 && (
-                <div className="flex gap-2">
-                  <Button onClick={handleRestore} loading={isRestoring}>
-                    恢复选中
-                  </Button>
-                  <Button
-                    onClick={handlePermanentDelete}
-                    loading={isDeleting}
-                    className="text-red-500"
+          ) : clipResults.length > 0 ? (
+            <div>
+              <div className="mb-3 flex items-center gap-2 px-1">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                  找到 {clipResults.length} 张相似照片
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {clipResults.map((result) => (
+                  <div
+                    key={result.photoId}
+                    className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
                   >
-                    永久删除
-                  </Button>
-                </div>
-              )}
+                    <img
+                      src={`/api/photos/${result.photoId}/thumbnail`}
+                      alt={result.filename}
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    {/* Similarity badge */}
+                    <div className="absolute top-1.5 right-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
+                      {Math.round(result.similarity * 100)}%
+                    </div>
+                    {/* Filename on hover */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <span className="truncate text-xs text-white">
+                        {result.filename}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+          ) : (
+            <Empty description="未找到匹配的照片，试试换个描述" />
+          )
+        ) : tab === "timeline" ? (
+          allTimelinePhotos.length > 0 ? (
             <PhotoTimeline
-              photos={allTrashPhotos}
+              photos={allTimelinePhotos}
               appId={id!}
-              total={trashTotal}
-              hasMore={trashHasMore}
-              onLoadMore={loadMoreTrash}
-              isLoadingMore={trashLoadingMore}
+              total={timelineTotal}
+              hasMore={timelineHasMore}
+              onLoadMore={loadMoreTimeline}
+              isLoadingMore={timelineLoadingMore}
+              onToggleFavorite={handleToggleFavorite}
+              isSelecting={isSelecting}
+              selectedIds={selectedIds}
+              onSelect={handleSelect}
+              onSeekToDate={seekToDate}
+              targetRowHeight={targetRowHeight}
+            />
+          ) : ocrFilterActive ? (
+            <Empty description="当前加载的照片中没有 OCR 匹配结果" />
+          ) : (
+            <Empty description="暂无照片，请先同步应用" />
+          )
+        ) : tab === "folders" ? (
+          <PhotoFoldersView
+            appId={id}
+            onToggleFavorite={handleToggleFavorite}
+            isSelecting={isSelecting}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            onNavigateToPerson={handleNavigateToPerson}
+          />
+        ) : tab === "favorites" ? (
+          allFavPhotos.length > 0 ? (
+            <PhotoTimeline
+              photos={allFavPhotos}
+              appId={id!}
+              total={favTotal}
+              hasMore={favHasMore}
+              onLoadMore={loadMoreFav}
+              isLoadingMore={favLoadingMore}
               onToggleFavorite={handleToggleFavorite}
               isSelecting={isSelecting}
               selectedIds={selectedIds}
               onSelect={handleSelect}
               targetRowHeight={targetRowHeight}
             />
-          </div>
+          ) : (
+            <Empty description="暂无收藏照片，点击照片上的 ♥ 收藏" />
+          )
+        ) : tab === "locations" ? (
+          <PhotoLocationTab
+            appId={id}
+            onToggleFavorite={handleToggleFavorite}
+            isSelecting={isSelecting}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            targetRowHeight={targetRowHeight}
+          />
+        ) : tab === "people" ? (
+          <PhotoPeopleView
+            appId={id}
+            onToggleFavorite={handleToggleFavorite}
+            isSelecting={isSelecting}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            targetRowHeight={targetRowHeight}
+            navigateToPersonId={navigateToPersonId}
+            onNavigateToPersonHandled={handleNavigateToPersonHandled}
+          />
+        ) : tab === "trash" ? (
+          allTrashPhotos.length > 0 ? (
+            <div>
+              <div className="mb-4 flex items-center justify-between px-4">
+                <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                  {trashTotal} 张照片在回收站中
+                </span>
+                {selectedIds.size > 0 && (
+                  <div className="flex gap-2">
+                    <Button onClick={handleRestore} loading={isRestoring}>
+                      恢复选中
+                    </Button>
+                    <Button
+                      onClick={handlePermanentDelete}
+                      loading={isDeleting}
+                      className="text-red-500"
+                    >
+                      永久删除
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <PhotoTimeline
+                photos={allTrashPhotos}
+                appId={id!}
+                total={trashTotal}
+                hasMore={trashHasMore}
+                onLoadMore={loadMoreTrash}
+                isLoadingMore={trashLoadingMore}
+                onToggleFavorite={handleToggleFavorite}
+                isSelecting={isSelecting}
+                selectedIds={selectedIds}
+                onSelect={handleSelect}
+                targetRowHeight={targetRowHeight}
+              />
+            </div>
+          ) : (
+            <Empty description="回收站为空" />
+          )
         ) : (
-          <Empty description="回收站为空" />
-        )
-      ) : (
-        <PhotoAlbumsView
-          appId={id}
-          albums={albums}
-          isLoading={!albumsQuery.data}
-          onToggleFavorite={handleToggleFavorite}
-          onRefresh={() => void albumsQuery.refetch()}
-          onNavigateToPerson={handleNavigateToPerson}
-        />
-      )}
+          <PhotoAlbumsView
+            appId={id}
+            albums={albums}
+            isLoading={!albumsQuery.data}
+            onToggleFavorite={handleToggleFavorite}
+            onRefresh={() => void albumsQuery.refetch()}
+            onNavigateToPerson={handleNavigateToPerson}
+          />
+        )}
+      </div>
 
       {/* Selection bar (floating bottom) */}
       <PhotoSelectionBar
