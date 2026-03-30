@@ -241,7 +241,7 @@ export function PhotoLocationsView({
               className="text-[var(--accent-text)] hover:underline"
               onClick={() =>
                 openWindow({
-                  type: "viewer",
+                  type: "system",
                   title: "Settings",
                   metadata: { pageId: "external-database" },
                 })
