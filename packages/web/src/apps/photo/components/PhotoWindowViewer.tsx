@@ -55,7 +55,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     () => photos.findIndex((p) => p.id === currentPhotoId),
     [photos, currentPhotoId],
   );
-  const photo: PhotoOutput | null = photos[currentIndex] ?? null;
+  const storePhoto: PhotoOutput | null = photos[currentIndex] ?? null;
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < photos.length - 1;
 
@@ -86,6 +86,11 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     { enabled: !!currentPhotoId },
   );
   const detail = detailQuery.data ?? undefined;
+
+  // Use store photo when available (for navigation), fall back to detail
+  // query for restored windows where the in-memory store is empty.
+  const photo: PhotoOutput | null =
+    storePhoto ?? (detail as PhotoOutput | undefined) ?? null;
 
   // ── Face/OCR queries (deferred until info panel is open) ───────
   const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
