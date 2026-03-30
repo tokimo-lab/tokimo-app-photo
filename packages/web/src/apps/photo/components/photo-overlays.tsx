@@ -163,6 +163,7 @@ export function OcrHighlightOverlay({
           return null;
 
         const pad = 4;
+        const angle = r.angle ?? 0;
         return (
           <div
             key={r.id}
@@ -172,6 +173,8 @@ export function OcrHighlightOverlay({
               top: r.y * scaleY - pad,
               width: r.w * scaleX + pad * 2,
               height: r.h * scaleY + pad * 2,
+              transform: angle ? `rotate(${angle}deg)` : undefined,
+              transformOrigin: "center center",
             }}
           />
         );
@@ -219,6 +222,7 @@ interface OcrBlockRect {
   y: number;
   w: number;
   h: number;
+  angle: number;
   charCount: number;
 }
 
@@ -307,7 +311,15 @@ function useOcrEngine(
         // Scale from original image coords to rendered coords and make relative to block
         hasBackendPositions = true;
         const blockOrigX = r.x as number;
-        dataChunks.push(bx, by, bw, bh, r.paragraphId ?? 0, chars.length);
+        dataChunks.push(
+          bx,
+          by,
+          bw,
+          bh,
+          r.angle ?? 0,
+          r.paragraphId ?? 0,
+          chars.length,
+        );
         for (const cp of r.charPositions) {
           dataChunks.push((cp.x - blockOrigX) * scX); // x relative to block, scaled
           dataChunks.push(cp.w * scX); // width, scaled
@@ -325,6 +337,7 @@ function useOcrEngine(
           by,
           bw,
           bh,
+          r.angle ?? 0,
           r.paragraphId ?? 0,
           chars.length,
           ...charWidths,
@@ -337,6 +350,7 @@ function useOcrEngine(
         y: by,
         w: bw,
         h: bh,
+        angle: r.angle ?? 0,
         charCount: chars.length,
       });
     }
@@ -463,14 +477,21 @@ export function OcrBlockSelectLayer({
       selection.focus.blockIdx,
       selection.focus.charIdx,
     );
-    const out: { x: number; y: number; w: number; h: number; key: string }[] =
-      [];
-    for (let i = 0; i < flat.length; i += 4) {
+    const out: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      angle: number;
+      key: string;
+    }[] = [];
+    for (let i = 0; i < flat.length; i += 5) {
       out.push({
         x: flat[i],
         y: flat[i + 1],
         w: flat[i + 2],
         h: flat[i + 3],
+        angle: flat[i + 4],
         key: `hl-${i}`,
       });
     }
@@ -659,6 +680,8 @@ export function OcrBlockSelectLayer({
               width: hl.w,
               height: hl.h,
               background: "rgba(56, 139, 253, 0.35)",
+              transform: hl.angle ? `rotate(${hl.angle}deg)` : undefined,
+              transformOrigin: "center center",
             }}
           />
         ))}
@@ -675,6 +698,8 @@ export function OcrBlockSelectLayer({
                 height: b.h,
                 cursor: "text",
                 pointerEvents: "auto",
+                transform: b.angle ? `rotate(${b.angle}deg)` : undefined,
+                transformOrigin: "center center",
               }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
