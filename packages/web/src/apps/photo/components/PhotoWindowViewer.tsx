@@ -666,7 +666,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               />
             )}
             {/* Download progress bar */}
-            {!fullLoaded && loadProgress > 0 && loadProgress < 1 && (
+            {!fullLoaded && loadProgress > 0 && (
               <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
                 <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
                   <div
