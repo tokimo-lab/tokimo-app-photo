@@ -189,7 +189,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         } catch {
           // Native decode failed — HEIC: convert in Web Worker (off main thread)
           URL.revokeObjectURL(url);
-          if (isHeic) {
+          // Check blob content-type (reliable) rather than filename (may not be loaded yet)
+          const blobIsHeic =
+            blob.type === "image/heic" || blob.type === "image/heif" || isHeic;
+          if (blobIsHeic) {
             const jpegBlob = await convertHeicToJpegOffThread(blob);
             if (abort.signal.aborted) return;
             const jpegUrl = URL.createObjectURL(jpegBlob);
