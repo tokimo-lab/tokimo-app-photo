@@ -388,6 +388,8 @@ export function OcrBlockSelectLayer({
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
   const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
+  /** Rotation angle (degrees) of the block where drag started; 0 for empty-space drags. */
+  const dragAngleRef = useRef(0);
 
   const { engineRef, blockRects } = useOcrEngine(
     ocrResults,
@@ -552,6 +554,7 @@ export function OcrBlockSelectLayer({
     if (idx >= 0 && hit) {
       setSelection({ anchor: hit, focus: hit });
       dragOriginRef.current = { x, y };
+      dragAngleRef.current = blockRects[idx].angle;
       isDraggingRef.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       e.stopPropagation();
@@ -560,6 +563,7 @@ export function OcrBlockSelectLayer({
     } else {
       setSelection(null);
       dragOriginRef.current = { x, y };
+      dragAngleRef.current = 0;
       isDraggingRef.current = true;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       e.stopPropagation();
@@ -577,40 +581,58 @@ export function OcrBlockSelectLayer({
         setSelection({ anchor: hit, focus: hit });
       }
     } else if (sel && origin) {
-      const rx0 = Math.min(origin.x, x);
-      const ry0 = Math.min(origin.y, y);
-      const rx1 = Math.max(origin.x, x);
-      const ry1 = Math.max(origin.y, y);
+      // Build drag rectangle in a coordinate frame rotated to match the
+      // initial text block's angle.  This prevents an axis-aligned rect
+      // from accidentally sweeping across adjacent rotated text lines.
+      const da = dragAngleRef.current;
+      const rad = (-da * Math.PI) / 180;
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+
+      // Rotate current mouse position around the drag origin
+      const dx = x - origin.x;
+      const dy = y - origin.y;
+      const rmx = dx * cosA - dy * sinA + origin.x;
+      const rmy = dx * sinA + dy * cosA + origin.y;
+
+      // AABB in the rotated frame
+      const rx0 = Math.min(origin.x, rmx);
+      const ry0 = Math.min(origin.y, rmy);
+      const rx1 = Math.max(origin.x, rmx);
+      const ry1 = Math.max(origin.y, rmy);
 
       let firstIdx = -1;
       for (let i = 0; i < blockRects.length; i++) {
         const b = blockRects[i];
-        // For rotated blocks, check if drag rect intersects rotated bounding box
-        let bx0 = b.x;
-        let by0 = b.y;
-        let bx1 = b.x + b.w;
-        let by1 = b.y + b.h;
-        if (b.angle) {
-          const cx = b.x + b.w / 2;
-          const cy = b.y + b.h / 2;
-          const rad = (b.angle * Math.PI) / 180;
-          const cos = Math.abs(Math.cos(rad));
-          const sin = Math.abs(Math.sin(rad));
-          const hw = (b.w * cos + b.h * sin) / 2;
-          const hh = (b.w * sin + b.h * cos) / 2;
-          bx0 = cx - hw;
-          by0 = cy - hh;
-          bx1 = cx + hw;
-          by1 = cy + hh;
-        }
-        if (bx1 > rx0 && bx0 < rx1 && by1 > ry0 && by0 < ry1) {
+        // Rotate block center into the drag frame
+        const bcx = b.x + b.w / 2;
+        const bcy = b.y + b.h / 2;
+        const bdx = bcx - origin.x;
+        const bdy = bcy - origin.y;
+        const rbcx = bdx * cosA - bdy * sinA + origin.x;
+        const rbcy = bdx * sinA + bdy * cosA + origin.y;
+
+        // Block AABB in the rotated frame: use the block's relative angle
+        const relRad = ((b.angle - da) * Math.PI) / 180;
+        const cosR = Math.abs(Math.cos(relRad));
+        const sinR = Math.abs(Math.sin(relRad));
+        const hw = (b.w * cosR + b.h * sinR) / 2;
+        const hh = (b.w * sinR + b.h * cosR) / 2;
+
+        if (
+          rbcx + hw > rx0 &&
+          rbcx - hw < rx1 &&
+          rbcy + hh > ry0 &&
+          rbcy - hh < ry1
+        ) {
           if (firstIdx < 0) firstIdx = i;
         }
       }
 
       if (firstIdx >= 0) {
-        const startHit = wasmHitTest(rx0, ry0, -1);
-        const endHit = wasmHitTest(rx1, ry1, -1);
+        // Use original (unrotated) coords for character-level hit testing
+        const startHit = wasmHitTest(origin.x, origin.y, -1);
+        const endHit = wasmHitTest(x, y, -1);
         if (startHit && endHit) {
           setSelection({
             anchor:
