@@ -121,6 +121,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   // Delay thumbnail fade-out so full-res has time to paint first
   const [thumbFadeOut, setThumbFadeOut] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [decoding, setDecoding] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -186,6 +187,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         }
 
         const url = URL.createObjectURL(blob);
+        setDecoding(true);
         const testImg = new Image();
         testImg.src = url;
         try {
@@ -214,11 +216,13 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           }
         }
         setLoadProgress(1);
+        setDecoding(false);
         setFullLoaded(true);
       } catch (err) {
         if (!abort.signal.aborted) {
           console.error("[PhotoWindowViewer] Failed to load image:", err);
           setLoadProgress(0);
+          setDecoding(false);
         }
       }
     })();
@@ -747,17 +751,27 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           )}
         </div>
 
-        {/* Download progress bar — container-level, always visible during load */}
+        {/* Loading progress bar — container-level, always visible during load */}
         {mounted && !fullLoaded && (
           <div className="absolute inset-x-0 bottom-0 z-10">
-            <div className="h-0.5 w-full bg-white/10">
-              <div
-                className="h-full bg-white/30"
-                style={{
-                  width: `${Math.max(loadProgress, 0.02) * 100}%`,
-                  transition: "width 150ms ease-out",
-                }}
-              />
+            <div className="h-0.5 w-full bg-white/10 overflow-hidden">
+              {decoding ? (
+                <div
+                  className="h-full w-1/4 rounded-full bg-white/40"
+                  style={{
+                    animation:
+                      "progress-indeterminate 1.4s ease-in-out infinite",
+                  }}
+                />
+              ) : (
+                <div
+                  className="h-full bg-white/30"
+                  style={{
+                    width: `${Math.max(loadProgress, 0.02) * 100}%`,
+                    transition: "width 150ms ease-out",
+                  }}
+                />
+              )}
             </div>
           </div>
         )}

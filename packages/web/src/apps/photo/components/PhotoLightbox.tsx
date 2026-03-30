@@ -199,6 +199,7 @@ export function PhotoLightbox({
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullDecoded, setFullDecoded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0); // 0..1
+  const [decoding, setDecoding] = useState(false);
   const prevPhotoId = useRef(photo.id);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -218,6 +219,7 @@ export function PhotoLightbox({
     setFullLoaded(false);
     setFullDecoded(false);
     setLoadProgress(0);
+    setDecoding(false);
     setScale(initialScaleValue);
     setPanX(0);
     setPanY(0);
@@ -639,12 +641,14 @@ export function PhotoLightbox({
         const url = URL.createObjectURL(blob);
 
         // Try native browser decode; fall back to WASM HEIC decoder if unsupported
+        setDecoding(true);
         const testImg = new Image();
         testImg.src = url;
         try {
           await testImg.decode();
           setFullBlobUrl(url);
           setLoadProgress(1);
+          setDecoding(false);
           setFullLoaded(true);
         } catch {
           URL.revokeObjectURL(url);
@@ -655,6 +659,7 @@ export function PhotoLightbox({
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
             setLoadProgress(1);
+            setDecoding(false);
             setFullLoaded(true);
           } catch {
             // Last resort: server-side JPEG conversion
@@ -666,6 +671,7 @@ export function PhotoLightbox({
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
             setLoadProgress(1);
+            setDecoding(false);
             setFullLoaded(true);
           }
         }
@@ -673,6 +679,7 @@ export function PhotoLightbox({
         if (!abort.signal.aborted) {
           console.error("[PhotoLightbox] Failed to load image:", err);
           setLoadProgress(0);
+          setDecoding(false);
         }
       }
     })();
@@ -921,17 +928,27 @@ export function PhotoLightbox({
                     onLoad={() => setFullDecoded(true)}
                   />
                 )}
-                {/* Real download progress bar */}
+                {/* Loading progress bar */}
                 {shouldLoadFull && !fullLoaded && fullSrc && (
                   <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
                     <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-white/30"
-                        style={{
-                          width: `${loadProgress * 100}%`,
-                          transition: "width 150ms ease-out",
-                        }}
-                      />
+                      {decoding ? (
+                        <div
+                          className="h-full w-1/4 rounded-full bg-white/40"
+                          style={{
+                            animation:
+                              "progress-indeterminate 1.4s ease-in-out infinite",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="h-full rounded-full bg-white/30"
+                          style={{
+                            width: `${loadProgress * 100}%`,
+                            transition: "width 150ms ease-out",
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
