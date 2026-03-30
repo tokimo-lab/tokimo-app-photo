@@ -571,6 +571,7 @@ export function OcrBlockSelectLayer({
     const hit = wasmHitTest(x, y, -1);
     const idx = hitBlockIdx(x, y);
     if (idx >= 0 && hit) {
+      engine.recomputeVisualOrder(idx);
       setSelection({ anchor: hit, focus: hit });
       dragOriginRef.current = { x, y };
       dragAngleRef.current = blockRects[idx].angle;
@@ -596,7 +597,9 @@ export function OcrBlockSelectLayer({
     const origin = dragOriginRef.current;
     if (!sel && origin) {
       const hit = wasmHitTest(x, y, -1);
-      if (hit && hitBlockIdx(x, y) >= 0) {
+      const hitIdx = hitBlockIdx(x, y);
+      if (hit && hitIdx >= 0) {
+        engine.recomputeVisualOrder(hitIdx);
         setSelection({ anchor: hit, focus: hit });
       }
     } else if (sel && origin) {
@@ -714,6 +717,7 @@ export function OcrBlockSelectLayer({
     }
     const idx = hitBlockIdx(x, y);
     if (idx >= 0) {
+      engine.recomputeVisualOrder(idx);
       setSelection({
         anchor: { blockIdx: idx, charIdx: 0 },
         focus: { blockIdx: idx, charIdx: blockRects[idx].charCount },
