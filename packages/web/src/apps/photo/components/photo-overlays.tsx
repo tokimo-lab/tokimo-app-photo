@@ -484,15 +484,19 @@ export function OcrBlockSelectLayer({
       w: number;
       h: number;
       angle: number;
+      ox: number;
+      oy: number;
       key: string;
     }[] = [];
-    for (let i = 0; i < flat.length; i += 5) {
+    for (let i = 0; i < flat.length; i += 7) {
       out.push({
         x: flat[i],
         y: flat[i + 1],
         w: flat[i + 2],
         h: flat[i + 3],
         angle: flat[i + 4],
+        ox: flat[i + 5],
+        oy: flat[i + 6],
         key: `hl-${i}`,
       });
     }
@@ -734,7 +738,7 @@ export function OcrBlockSelectLayer({
               height: hl.h,
               background: "rgba(56, 139, 253, 0.35)",
               transform: hl.angle ? `rotate(${hl.angle}deg)` : undefined,
-              transformOrigin: "center center",
+              transformOrigin: `${hl.ox}px ${hl.oy}px`,
             }}
           />
         ))}
