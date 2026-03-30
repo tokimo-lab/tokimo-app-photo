@@ -308,9 +308,8 @@ function useOcrEngine(
 
       if (r.charPositions && r.charPositions.length === chars.length) {
         // Backend provides char_positions (CTC alignment or Attention model)
-        // Scale from original image coords to rendered coords and make relative to block
+        // cp.x is already relative to block origin; just scale to CSS pixels
         hasBackendPositions = true;
-        const blockOrigX = r.x as number;
         dataChunks.push(
           bx,
           by,
@@ -321,7 +320,7 @@ function useOcrEngine(
           chars.length,
         );
         for (const cp of r.charPositions) {
-          dataChunks.push((cp.x - blockOrigX) * scX); // x relative to block, scaled
+          dataChunks.push(cp.x * scX); // x relative to block, scaled
           dataChunks.push(cp.w * scX); // width, scaled
         }
       } else {
