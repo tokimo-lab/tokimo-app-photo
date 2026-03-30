@@ -526,9 +526,23 @@ export function OcrBlockSelectLayer({
   };
 
   const hitBlockIdx = (px: number, py: number) =>
-    blockRects.findIndex(
-      (b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h,
-    );
+    blockRects.findIndex((b) => {
+      // Rotate point into block-local coordinates for angled blocks
+      let lx = px;
+      let ly = py;
+      if (b.angle) {
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        const rad = (-b.angle * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = px - cx;
+        const dy = py - cy;
+        lx = dx * cos - dy * sin + cx;
+        ly = dx * sin + dy * cos + cy;
+      }
+      return lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h;
+    });
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -572,7 +586,25 @@ export function OcrBlockSelectLayer({
       let firstIdx = -1;
       for (let i = 0; i < blockRects.length; i++) {
         const b = blockRects[i];
-        if (b.x + b.w > rx0 && b.x < rx1 && b.y + b.h > ry0 && b.y < ry1) {
+        // For rotated blocks, check if drag rect intersects rotated bounding box
+        let bx0 = b.x;
+        let by0 = b.y;
+        let bx1 = b.x + b.w;
+        let by1 = b.y + b.h;
+        if (b.angle) {
+          const cx = b.x + b.w / 2;
+          const cy = b.y + b.h / 2;
+          const rad = (b.angle * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(rad));
+          const sin = Math.abs(Math.sin(rad));
+          const hw = (b.w * cos + b.h * sin) / 2;
+          const hh = (b.w * sin + b.h * cos) / 2;
+          bx0 = cx - hw;
+          by0 = cy - hh;
+          bx1 = cx + hw;
+          by1 = cy + hh;
+        }
+        if (bx1 > rx0 && bx0 < rx1 && by1 > ry0 && by0 < ry1) {
           if (firstIdx < 0) firstIdx = i;
         }
       }
