@@ -811,11 +811,11 @@ export function PhotoLightbox({
             opacityTransition = "";
           } else if (animState === "entering") {
             flyOpacity = flyTransition ? 1 : 0;
-            opacityTransition = `opacity ${FADE_DURATION}ms ${FADE_IN_EASING}`;
+            opacityTransition = `opacity ${ANIM_DURATION}ms ${FADE_IN_EASING}`;
           } else {
-            // exiting: stay opaque, then fade out in the last ~FADE_DURATION ms
+            // exiting: fade out over the full animation duration
             flyOpacity = flyTransition ? 0 : 1;
-            opacityTransition = `opacity ${FADE_DURATION}ms ${FADE_OUT_EASING} ${ANIM_DURATION - FADE_DURATION}ms`;
+            opacityTransition = `opacity ${ANIM_DURATION}ms ${FADE_OUT_EASING}`;
           }
 
           const posTransition = `top ${ANIM_DURATION}ms ${ANIM_EASING}, left ${ANIM_DURATION}ms ${ANIM_EASING}, width ${ANIM_DURATION}ms ${ANIM_EASING}, height ${ANIM_DURATION}ms ${ANIM_EASING}, border-radius ${ANIM_DURATION}ms ${ANIM_EASING}`;
