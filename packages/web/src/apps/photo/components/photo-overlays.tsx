@@ -192,8 +192,8 @@ const ROTATION_ARM = 24;
 type Corner = "tl" | "tr" | "bl" | "br";
 type DragMode = { type: "corner"; corner: Corner } | { type: "rotate" };
 
-// Inline SVG rotation cursor
-const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><path d='M12 3a9 9 0 1 0 9 9' stroke='%23666' stroke-width='2' stroke-linecap='round'/><path d='M22 5l-1-4-4 1' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 12 12, crosshair`;
+// Inline SVG rotation cursor — white fill, black outline, circular arrow
+const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M12 4a8 8 0 1 0 8 8' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/><path d='M12 4a8 8 0 1 0 8 8' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round'/><path d='M20 4v5h-5' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 4v5h-5' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>") 12 12, crosshair`;
 
 // Rotation-aware resize cursor: maps corner base direction + box angle to CSS cursor
 function resizeCursor(cornerDeg: number, angleDeg: number): string {
