@@ -11,6 +11,13 @@ import type { OcrEngine } from "@tokiomo/tokimo-wasm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PhotoFaceOutput, PhotoOcrResultItem } from "@/generated/rust-api";
+import {
+  inverseTransformCornersForOrientation,
+  isOrientationSwapped,
+  transformAxisAlignedBoxForOrientation,
+  transformBboxForOrientation,
+  transformCornersForOrientation,
+} from "./photo-utils";
 
 // ── Shared image rect measurement hook ──────────────────────────────────────
 
@@ -81,18 +88,23 @@ export function FaceHighlightOverlay({
   photoWidth,
   photoHeight,
   imgRef,
+  orientation,
 }: {
   faces: PhotoFaceOutput[];
   hoveredFaceId: number;
   photoWidth: number;
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
+  orientation?: number | null;
 }) {
-  const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? photoHeight : photoWidth;
+  const dispH = swapped ? photoWidth : photoHeight;
+  const imgRect = useImgRect(imgRef, dispW, dispH);
   if (!imgRect) return null;
 
-  const scaleX = imgRect.w / photoWidth;
-  const scaleY = imgRect.h / photoHeight;
+  const scaleX = imgRect.w / dispW;
+  const scaleY = imgRect.h / dispH;
 
   return (
     <div
@@ -108,16 +120,22 @@ export function FaceHighlightOverlay({
         const isHovered = face.id === hoveredFaceId;
         if (!isHovered) return null;
 
-        const pad = Math.max(face.w, face.h) * 0.15;
+        const df = transformAxisAlignedBoxForOrientation(
+          face,
+          photoWidth,
+          photoHeight,
+          orientation,
+        );
+        const pad = Math.max(df.w, df.h) * 0.15;
         return (
           <div
             key={face.id}
             className="absolute rounded-md border-2 border-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.4)]"
             style={{
-              left: (face.x - pad) * scaleX,
-              top: (face.y - pad) * scaleY,
-              width: (face.w + pad * 2) * scaleX,
-              height: (face.h + pad * 2) * scaleY,
+              left: (df.x - pad) * scaleX,
+              top: (df.y - pad) * scaleY,
+              width: (df.w + pad * 2) * scaleX,
+              height: (df.h + pad * 2) * scaleY,
             }}
           />
         );
@@ -134,18 +152,23 @@ export function OcrHighlightOverlay({
   photoWidth,
   photoHeight,
   imgRef,
+  orientation,
 }: {
   ocrResults: PhotoOcrResultItem[];
   hoveredOcrId: string;
   photoWidth: number;
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
+  orientation?: number | null;
 }) {
-  const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? photoHeight : photoWidth;
+  const dispH = swapped ? photoWidth : photoHeight;
+  const imgRect = useImgRect(imgRef, dispW, dispH);
   if (!imgRect) return null;
 
-  const scaleX = imgRect.w / photoWidth;
-  const scaleY = imgRect.h / photoHeight;
+  const scaleX = imgRect.w / dispW;
+  const scaleY = imgRect.h / dispH;
 
   return (
     <div
@@ -164,7 +187,13 @@ export function OcrHighlightOverlay({
 
         // Quad corners mode — render SVG polygon
         if (r.corners && r.corners.length === 4) {
-          const points = r.corners
+          const dc = transformCornersForOrientation(
+            r.corners,
+            photoWidth,
+            photoHeight,
+            orientation,
+          );
+          const points = dc
             .map(([cx, cy]) => `${cx * scaleX},${cy * scaleY}`)
             .join(" ");
           return (
@@ -184,17 +213,22 @@ export function OcrHighlightOverlay({
           );
         }
 
-        const angle = r.angle ?? 0;
+        const db = transformBboxForOrientation(
+          { x: r.x, y: r.y, w: r.w, h: r.h, angle: r.angle ?? 0 },
+          photoWidth,
+          photoHeight,
+          orientation,
+        );
         return (
           <div
             key={r.id}
             className="absolute rounded border-2 border-emerald-400 bg-emerald-400/15 shadow-[0_0_12px_rgba(52,211,153,0.4)]"
             style={{
-              left: r.x * scaleX,
-              top: r.y * scaleY,
-              width: r.w * scaleX,
-              height: r.h * scaleY,
-              transform: `rotate(${angle}deg)`,
+              left: db.x * scaleX,
+              top: db.y * scaleY,
+              width: db.w * scaleX,
+              height: db.h * scaleY,
+              transform: `rotate(${db.angle}deg)`,
               transformOrigin: "center center",
             }}
           />
@@ -234,6 +268,7 @@ export function OcrBboxEditOverlay({
   photoHeight,
   imgRef,
   onBboxChange,
+  orientation,
 }: {
   ocrResults: PhotoOcrResultItem[];
   editingOcrId: string;
@@ -250,8 +285,12 @@ export function OcrBboxEditOverlay({
       corners?: [number, number][];
     } | null,
   ) => void;
+  orientation?: number | null;
 }) {
-  const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? photoHeight : photoWidth;
+  const dispH = swapped ? photoWidth : photoHeight;
+  const imgRect = useImgRect(imgRef, dispW, dispH);
   const r = ocrResults.find((o) => o.id === editingOcrId);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -259,6 +298,7 @@ export function OcrBboxEditOverlay({
   const hasQuadCorners = r?.corners && r.corners.length === 4;
 
   // ── Quad mode state (always used — rect params are converted to corners) ──
+  // localCorners are in DISPLAY space for correct drag behavior
   const [localCorners, setLocalCorners] = useState<[number, number][] | null>(
     null,
   );
@@ -286,13 +326,21 @@ export function OcrBboxEditOverlay({
   )
     return null;
 
-  const scaleX = imgRect.w / photoWidth;
-  const scaleY = imgRect.h / photoHeight;
+  const scaleX = imgRect.w / dispW;
+  const scaleY = imgRect.h / dispH;
 
   // ── Always use quad mode — compute corners from rect params if not stored ──
-  const storedPts = hasQuadCorners ? (r.corners as [number, number][]) : null;
+  // Transform raw-space corners to display space for rendering
+  const storedPts = hasQuadCorners
+    ? (transformCornersForOrientation(
+        r.corners as [number, number][],
+        photoWidth,
+        photoHeight,
+        orientation,
+      ) as [number, number][])
+    : null;
 
-  // Compute corners from x,y,w,h,angle when no explicit corners
+  // Compute corners from x,y,w,h,angle in raw space, then transform to display
   const computedPts = (): [number, number][] => {
     const cx = r.x! + r.w! / 2;
     const cy = r.y! + r.h! / 2;
@@ -301,21 +349,33 @@ export function OcrBboxEditOverlay({
     const rad = ((r.angle ?? 0) * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    // [TL, TR, BR, BL]
-    return [
+    // [TL, TR, BR, BL] in raw space
+    const rawPts: [number, number][] = [
       [cx + -hw * cos - -hh * sin, cy + -hw * sin + -hh * cos],
       [cx + hw * cos - -hh * sin, cy + hw * sin + -hh * cos],
       [cx + hw * cos - hh * sin, cy + hw * sin + hh * cos],
       [cx + -hw * cos - hh * sin, cy + -hw * sin + hh * cos],
     ];
+    return transformCornersForOrientation(
+      rawPts,
+      photoWidth,
+      photoHeight,
+      orientation,
+    ) as [number, number][];
   };
 
   const pts: [number, number][] = localCorners ?? storedPts ?? computedPts();
 
-  // Compute bounding box from corners for the payload
-  const emitChange = (newPts: [number, number][]) => {
-    const xs = newPts.map(([x]) => x);
-    const ys = newPts.map(([, y]) => y);
+  // Emit change: reverse-transform display-space corners to raw space for DB
+  const emitChange = (displayPts: [number, number][]) => {
+    const rawPts = inverseTransformCornersForOrientation(
+      displayPts,
+      photoWidth,
+      photoHeight,
+      orientation,
+    ) as [number, number][];
+    const xs = rawPts.map(([x]) => x);
+    const ys = rawPts.map(([, y]) => y);
     const minX = Math.min(...xs);
     const minY = Math.min(...ys);
     const maxX = Math.max(...xs);
@@ -325,7 +385,7 @@ export function OcrBboxEditOverlay({
       y: minY,
       w: maxX - minX,
       h: maxY - minY,
-      corners: newPts,
+      corners: rawPts,
     });
   };
 
@@ -650,6 +710,7 @@ function useOcrEngine(
   imgRect: ImgRect | null,
   photoWidth: number,
   photoHeight: number,
+  orientation?: number | null,
 ) {
   const engineRef = useRef<OcrEngine | null>(null);
   const [ready, setReady] = useState(false);
@@ -661,6 +722,10 @@ function useOcrEngine(
       setReady(true);
     });
   }, []);
+
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? photoHeight : photoWidth;
+  const dispH = swapped ? photoWidth : photoHeight;
 
   // Filter + sort results (stable ref via useMemo)
   const sorted = useMemo(
@@ -680,8 +745,8 @@ function useOcrEngine(
     const engine = engineRef.current;
     if (!engine || !imgRect || sorted.length === 0) return [];
 
-    const scX = imgRect.w / photoWidth;
-    const scY = imgRect.h / photoHeight;
+    const scX = imgRect.w / dispW;
+    const scY = imgRect.h / dispH;
     const ctx = getMeasureCtx();
     const texts: string[] = [];
     const dataChunks: number[] = [];
@@ -696,10 +761,23 @@ function useOcrEngine(
     });
 
     for (const r of sorted) {
-      const bw = (r.w as number) * scX;
-      const bh = (r.h as number) * scY;
-      const bx = (r.x as number) * scX;
-      const by = (r.y as number) * scY;
+      // Transform bbox from raw to display space, then scale to screen pixels
+      const db = transformBboxForOrientation(
+        {
+          x: r.x as number,
+          y: r.y as number,
+          w: r.w as number,
+          h: r.h as number,
+          angle: r.angle ?? 0,
+        },
+        photoWidth,
+        photoHeight,
+        orientation,
+      );
+      const bw = db.w * scX;
+      const bh = db.h * scY;
+      const bx = db.x * scX;
+      const by = db.y * scY;
       const chars = Array.from(r.text);
 
       texts.push(r.text);
@@ -714,11 +792,12 @@ function useOcrEngine(
           by,
           bw,
           bh,
-          r.angle ?? 0,
+          db.angle,
           r.paragraphId ?? 0,
           chars.length,
         );
         if (hasMatchingPos) {
+          // charPositions are inline offsets within the block — scale proportionally
           for (const cp of r.charPositions!) {
             dataChunks.push(cp.x * scX);
             dataChunks.push(cp.w * scX);
@@ -753,7 +832,7 @@ function useOcrEngine(
           by,
           bw,
           bh,
-          r.angle ?? 0,
+          db.angle,
           r.paragraphId ?? 0,
           chars.length,
           ...charWidths,
@@ -766,7 +845,7 @@ function useOcrEngine(
         y: by,
         w: bw,
         h: bh,
-        angle: r.angle ?? 0,
+        angle: db.angle,
         charCount: chars.length,
       });
     }
@@ -774,7 +853,16 @@ function useOcrEngine(
     engine.setBlocks(new Float32Array(dataChunks), texts, hasBackendPositions);
 
     return rects;
-  }, [sorted, imgRect, photoWidth, photoHeight, ready]); // ready triggers re-sync after WASM loads
+  }, [
+    sorted,
+    imgRect,
+    dispW,
+    dispH,
+    photoWidth,
+    photoHeight,
+    orientation,
+    ready,
+  ]);
 
   return { engineRef, blockRects, ready };
 }
@@ -786,6 +874,7 @@ export function OcrBlockSelectLayer({
   imgRef,
   isZoomed,
   onSelectionRanges,
+  orientation,
 }: {
   ocrResults: PhotoOcrResultItem[];
   photoWidth: number;
@@ -795,9 +884,13 @@ export function OcrBlockSelectLayer({
   onSelectionRanges?: (
     ranges: Map<string, { start: number; end: number }>,
   ) => void;
+  orientation?: number | null;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
-  const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? photoHeight : photoWidth;
+  const dispH = swapped ? photoWidth : photoHeight;
+  const imgRect = useImgRect(imgRef, dispW, dispH);
   const [selection, setSelection] = useState<{
     anchor: OcrTextAnchor;
     focus: OcrTextAnchor;
@@ -813,6 +906,7 @@ export function OcrBlockSelectLayer({
     imgRect,
     photoWidth,
     photoHeight,
+    orientation,
   );
 
   const selectionRef = useRef(selection);

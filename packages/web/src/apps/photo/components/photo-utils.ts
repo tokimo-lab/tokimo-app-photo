@@ -84,11 +84,191 @@ export function getDisplayDimensions(
   } | null,
 ): { width: number; height: number } | null {
   if (!photo?.width || !photo.height) return null;
-  const swapped =
-    photo.orientation != null &&
-    photo.orientation >= 5 &&
-    photo.orientation <= 8;
+  const swapped = isOrientationSwapped(photo.orientation);
   return swapped
     ? { width: photo.height, height: photo.width }
     : { width: photo.width, height: photo.height };
+}
+
+/** Whether the EXIF orientation swaps width/height (90° or 270° rotation). */
+export function isOrientationSwapped(
+  orientation: number | null | undefined,
+): boolean {
+  return orientation != null && orientation >= 5 && orientation <= 8;
+}
+
+/**
+ * Transform a point from raw image coordinates to display coordinates,
+ * accounting for EXIF orientation.
+ *
+ * OCR results are stored in raw sensor space. The browser auto-rotates the
+ * displayed image via EXIF, so overlay coordinates must be transformed to
+ * match. The `rawW`/`rawH` are the original sensor dimensions.
+ *
+ * EXIF orientations:
+ *   1 = normal          5 = flip-H + 90°CW
+ *   2 = flip-H          6 = 90°CW
+ *   3 = 180°            7 = flip-H + 270°CW
+ *   4 = flip-V          8 = 270°CW (= 90°CCW)
+ */
+export function transformPointForOrientation(
+  x: number,
+  y: number,
+  rawW: number,
+  rawH: number,
+  orientation: number | null | undefined,
+): { x: number; y: number } {
+  switch (orientation) {
+    case 2:
+      return { x: rawW - x, y };
+    case 3:
+      return { x: rawW - x, y: rawH - y };
+    case 4:
+      return { x, y: rawH - y };
+    case 5:
+      return { x: y, y: x };
+    case 6:
+      return { x: rawH - y, y: x };
+    case 7:
+      return { x: rawH - y, y: rawW - x };
+    case 8:
+      return { x: y, y: rawW - x };
+    default:
+      return { x, y };
+  }
+}
+
+/**
+ * Transform an OCR bounding box (oriented rectangle) from raw to display space.
+ *
+ * The box's intrinsic dimensions (w, h) stay the same — they represent the
+ * text region size, not axis-aligned extents. Only center and angle change.
+ */
+export function transformBboxForOrientation(
+  box: { x: number; y: number; w: number; h: number; angle: number },
+  rawW: number,
+  rawH: number,
+  orientation: number | null | undefined,
+): { x: number; y: number; w: number; h: number; angle: number } {
+  if (!orientation || orientation === 1) return box;
+
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  const tc = transformPointForOrientation(cx, cy, rawW, rawH, orientation);
+  const displayAngle = transformAngleForOrientation(box.angle, orientation);
+
+  return {
+    x: tc.x - box.w / 2,
+    y: tc.y - box.h / 2,
+    w: box.w,
+    h: box.h,
+    angle: displayAngle,
+  };
+}
+
+/**
+ * Transform quad corner coordinates from raw to display space.
+ */
+export function transformCornersForOrientation(
+  corners: [number, number][],
+  rawW: number,
+  rawH: number,
+  orientation: number | null | undefined,
+): [number, number][] {
+  if (!orientation || orientation === 1) return corners;
+  return corners.map(([cx, cy]) => {
+    const t = transformPointForOrientation(cx, cy, rawW, rawH, orientation);
+    return [t.x, t.y];
+  });
+}
+
+/**
+ * Reverse-transform corners from display space back to raw image space.
+ */
+export function inverseTransformCornersForOrientation(
+  displayCorners: [number, number][],
+  rawW: number,
+  rawH: number,
+  orientation: number | null | undefined,
+): [number, number][] {
+  if (!orientation || orientation === 1) return displayCorners;
+  const swapped = isOrientationSwapped(orientation);
+  const dispW = swapped ? rawH : rawW;
+  const dispH = swapped ? rawW : rawH;
+  const invOri = inverseOrientation(orientation);
+  return displayCorners.map(([cx, cy]) => {
+    const t = transformPointForOrientation(cx, cy, dispW, dispH, invOri);
+    return [t.x, t.y];
+  });
+}
+
+/**
+ * Transform an axis-aligned box (e.g. face box with no rotation) from raw
+ * to display space. Returns the axis-aligned bounding box of the result.
+ */
+export function transformAxisAlignedBoxForOrientation(
+  box: { x: number; y: number; w: number; h: number },
+  rawW: number,
+  rawH: number,
+  orientation: number | null | undefined,
+): { x: number; y: number; w: number; h: number } {
+  if (!orientation || orientation === 1) return box;
+  const corners: [number, number][] = [
+    [box.x, box.y],
+    [box.x + box.w, box.y],
+    [box.x + box.w, box.y + box.h],
+    [box.x, box.y + box.h],
+  ];
+  const tc = transformCornersForOrientation(corners, rawW, rawH, orientation);
+  const xs = tc.map(([x]) => x);
+  const ys = tc.map(([, y]) => y);
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/**
+ * Transform angle (degrees) from raw image space to display space.
+ * Accounts for both rotation and reflection components of EXIF orientation.
+ */
+function transformAngleForOrientation(
+  angle: number,
+  orientation: number | null | undefined,
+): number {
+  switch (orientation) {
+    case 2:
+      return 180 - angle;
+    case 3:
+      return angle + 180;
+    case 4:
+      return -angle;
+    case 5:
+      return 90 - angle;
+    case 6:
+      return angle + 90;
+    case 7:
+      return 270 - angle;
+    case 8:
+      return angle + 270;
+    default:
+      return angle;
+  }
+}
+
+/**
+ * Inverse orientation mapping: applying forward transform then inverse
+ * transform (with display dims) returns the original point.
+ */
+function inverseOrientation(orientation: number | null | undefined): number {
+  switch (orientation) {
+    case 6:
+      return 8;
+    case 8:
+      return 6;
+    default:
+      return orientation ?? 1;
+  }
 }

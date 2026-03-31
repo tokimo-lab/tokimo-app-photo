@@ -727,6 +727,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   photoWidth={detail.width}
                   photoHeight={detail.height}
                   imgRef={imgRef}
+                  orientation={detail.orientation}
                 />
               )}
             {editingOcrId != null &&
@@ -740,6 +741,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   photoHeight={detail.height}
                   imgRef={imgRef}
                   onBboxChange={setPendingBbox}
+                  orientation={detail.orientation}
                 />
               )}
             {hoveredOcrId != null &&
@@ -752,6 +754,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   photoWidth={detail.width}
                   photoHeight={detail.height}
                   imgRef={imgRef}
+                  orientation={detail.orientation}
                 />
               )}
             {ocrResults.length > 0 &&
@@ -765,6 +768,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   imgRef={imgRef}
                   isZoomed={isZoomed}
                   onSelectionRanges={setOcrSelectionRanges}
+                  orientation={detail.orientation}
                 />
               )}
             {/* Live Photo video overlay */}

@@ -958,6 +958,7 @@ export function PhotoLightbox({
                       photoWidth={detail.width}
                       photoHeight={detail.height}
                       imgRef={imgRef}
+                      orientation={detail.orientation}
                     />
                   )}
                 {hoveredOcrId != null &&
@@ -970,6 +971,7 @@ export function PhotoLightbox({
                       photoWidth={detail.width}
                       photoHeight={detail.height}
                       imgRef={imgRef}
+                      orientation={detail.orientation}
                     />
                   )}
                 {/* Live Text: block-based selectable OCR overlay (iOS-style) */}
@@ -984,6 +986,7 @@ export function PhotoLightbox({
                       imgRef={imgRef}
                       isZoomed={isZoomed}
                       onSelectionRanges={setOcrSelectionRanges}
+                      orientation={detail.orientation}
                     />
                   )}
                 {/* Live Photo video overlay */}
