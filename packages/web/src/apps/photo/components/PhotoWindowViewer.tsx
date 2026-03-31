@@ -680,7 +680,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             {/* Thumbnail layer — hidden during fly animation, instantly visible after */}
             <img
               ref={!fullDecoded ? imgRef : undefined}
-              data-photo-viewer-img=""
+              data-photo-viewer-img={win.id}
               src={thumbUrl}
               alt={photo?.filename ?? ""}
               className={`max-h-full max-w-full object-contain select-none pointer-events-none ${
@@ -701,7 +701,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             {fullBlobUrl && (
               <img
                 ref={fullDecoded ? imgRef : undefined}
-                data-photo-viewer-img=""
+                data-photo-viewer-img={win.id}
                 src={fullBlobUrl}
                 alt={photo?.filename ?? ""}
                 className={`absolute inset-0 max-h-full max-w-full object-contain select-none pointer-events-none transition-opacity duration-200 ${
@@ -1028,7 +1028,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         <PhotoLightbox
           photo={photo}
           allPhotos={photos}
-          animSourceSelector="[data-photo-viewer-img]"
+          animSourceSelector={`[data-photo-viewer-img="${win.id}"]`}
           onClose={() => setShowLightbox(false)}
           onNavigate={(p) => {
             setCurrentPhotoId(p.id);
