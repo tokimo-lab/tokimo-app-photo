@@ -36,44 +36,42 @@ function queryElementRect(selector: string): FlyRect | null {
   const raw = el.getBoundingClientRect();
   if (raw.width === 0 || raw.height === 0) return null;
 
-  // Clip to nearest overflow:hidden ancestor so zoomed/panned images report
-  // the visible portion rather than the full rendered size.
-  let top = raw.top;
-  let left = raw.left;
-  let right = raw.right;
-  let bottom = raw.bottom;
+  // Detect whether the element is clipped by an overflow:hidden ancestor
+  // (i.e. the image is zoomed beyond its container).
+  let clipped = false;
   let parent = el.parentElement;
   while (parent) {
     const ov = getComputedStyle(parent).overflow;
     if (ov === "hidden" || ov === "clip") {
       const pr = parent.getBoundingClientRect();
-      top = Math.max(top, pr.top);
-      left = Math.max(left, pr.left);
-      right = Math.min(right, pr.right);
-      bottom = Math.min(bottom, pr.bottom);
+      if (
+        raw.top < pr.top ||
+        raw.left < pr.left ||
+        raw.right > pr.right ||
+        raw.bottom > pr.bottom
+      ) {
+        clipped = true;
+      }
       break;
     }
     parent = parent.parentElement;
   }
 
-  const width = right - left;
-  const height = bottom - top;
-  if (width <= 0 || height <= 0) return null;
-
-  const clipped =
-    top !== raw.top ||
-    left !== raw.left ||
-    right !== raw.right ||
-    bottom !== raw.bottom;
-
+  // Viewport visibility: at least partially on screen
   if (
-    bottom < 0 ||
-    top > window.innerHeight ||
-    right < 0 ||
-    left > window.innerWidth
+    raw.bottom < 0 ||
+    raw.top > window.innerHeight ||
+    raw.right < 0 ||
+    raw.left > window.innerWidth
   )
     return null;
-  return { top, left, width, height, clipped };
+  return {
+    top: raw.top,
+    left: raw.left,
+    width: raw.width,
+    height: raw.height,
+    clipped,
+  };
 }
 
 /** For images smaller than the available area, compute a default zoom (up to 2×)
