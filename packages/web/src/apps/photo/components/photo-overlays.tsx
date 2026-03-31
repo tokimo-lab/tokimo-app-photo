@@ -187,10 +187,28 @@ export function OcrHighlightOverlay({
 
 const HANDLE_SIZE = 10;
 const HANDLE_HALF = HANDLE_SIZE / 2;
-const ROTATION_ARM = 24; // distance from top-center to rotation handle
+const ROTATION_ARM = 24;
 
 type Corner = "tl" | "tr" | "bl" | "br";
 type DragMode = { type: "corner"; corner: Corner } | { type: "rotate" };
+
+// Inline SVG rotation cursor
+const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><path d='M12 3a9 9 0 1 0 9 9' stroke='%23666' stroke-width='2' stroke-linecap='round'/><path d='M22 5l-1-4-4 1' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>") 12 12, crosshair`;
+
+// Rotation-aware resize cursor: maps corner base direction + box angle to CSS cursor
+function resizeCursor(cornerDeg: number, angleDeg: number): string {
+  let d = (((cornerDeg + angleDeg) % 360) + 360) % 360;
+  if (d >= 180) d -= 180;
+  const idx = Math.round(d / 45) % 4;
+  return ["ns-resize", "nesw-resize", "ew-resize", "nwse-resize"][idx];
+}
+// Corner natural directions (degrees from north, clockwise)
+const CORNER_DEG: Record<Corner, number> = {
+  tl: 315,
+  tr: 45,
+  bl: 225,
+  br: 135,
+};
 
 export function OcrBboxEditOverlay({
   ocrResults,
@@ -211,6 +229,7 @@ export function OcrBboxEditOverlay({
 }) {
   const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
   const r = ocrResults.find((o) => o.id === editingOcrId);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [localBbox, setLocalBbox] = useState<{
     x: number;
     y: number;
@@ -223,6 +242,7 @@ export function OcrBboxEditOverlay({
     startMouse: { x: number; y: number };
     startBbox: { x: number; y: number; w: number; h: number };
     startAngle: number;
+    containerRect: { left: number; top: number };
   } | null>(null);
 
   // Reset local bbox when editing target changes
@@ -247,7 +267,6 @@ export function OcrBboxEditOverlay({
   const origAngle = r.angle ?? 0;
   const angle = localBbox?.angle ?? origAngle;
 
-  // Use local bbox if user has dragged, otherwise use original
   const bbox = localBbox
     ? { x: localBbox.x, y: localBbox.y, w: localBbox.w, h: localBbox.h }
     : { x: r.x, y: r.y, w: r.w, h: r.h };
@@ -257,33 +276,35 @@ export function OcrBboxEditOverlay({
   const screenW = bbox.w * scaleX;
   const screenH = bbox.h * scaleY;
 
-  // Rotation handle position: above the top-center in screen coordinates
-  const rotHandleScreenX = screenW / 2;
-  const rotHandleScreenY = -ROTATION_ARM;
-
   const handlePointerDown = (mode: DragMode, e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const rect = overlayRef.current?.getBoundingClientRect();
     dragRef.current = {
       mode,
       startMouse: { x: e.clientX, y: e.clientY },
       startBbox: { ...bbox },
       startAngle: angle,
+      containerRect: rect
+        ? { left: rect.left, top: rect.top }
+        : { left: 0, top: 0 },
     };
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!dragRef.current) return;
     e.preventDefault();
-    const { mode, startMouse, startBbox, startAngle } = dragRef.current;
+    const { mode, startMouse, startBbox, startAngle, containerRect } =
+      dragRef.current;
 
     if (mode.type === "rotate") {
-      // Compute angle from center to mouse
+      // Center of bbox in viewport coordinates
       const cx =
-        imgRect.offsetX + startBbox.x * scaleX + (startBbox.w * scaleX) / 2;
+        containerRect.left + startBbox.x * scaleX + (startBbox.w * scaleX) / 2;
       const cy =
-        imgRect.offsetY + startBbox.y * scaleY + (startBbox.h * scaleY) / 2;
+        containerRect.top + startBbox.y * scaleY + (startBbox.h * scaleY) / 2;
+      // Angle from center to mouse (atan2(dx, -dy) → 0° = north, CW positive)
       const mouseAngle = Math.atan2(e.clientX - cx, -(e.clientY - cy));
       const startMouseAngle = Math.atan2(
         startMouse.x - cx,
@@ -304,14 +325,12 @@ export function OcrBboxEditOverlay({
     const dxPhoto = dxScreen / scaleX;
     const dyPhoto = dyScreen / scaleY;
 
-    // Rotate delta into local frame (using startAngle since bbox hasn't rotated)
     const sRad = (startAngle * Math.PI) / 180;
     const scos = Math.cos(sRad);
     const ssin = Math.sin(sRad);
     const dxLocal = dxPhoto * scos + dyPhoto * ssin;
     const dyLocal = -dxPhoto * ssin + dyPhoto * scos;
 
-    // Compute new dimensions
     let newW = startBbox.w;
     let newH = startBbox.h;
     if (corner === "tl") {
@@ -330,12 +349,10 @@ export function OcrBboxEditOverlay({
     if (newW < 5) newW = 5;
     if (newH < 5) newH = 5;
 
-    // Anchor the opposite corner: compute its position in world (photo) coords
-    // using the ORIGINAL bbox, then solve for new (x,y) that keeps it fixed.
+    // Anchor the opposite corner in world space
     const oldCx = startBbox.x + startBbox.w / 2;
     const oldCy = startBbox.y + startBbox.h / 2;
 
-    // Opposite corner's local offset in the original bbox
     let fixLx: number;
     let fixLy: number;
     if (corner === "tl") {
@@ -351,11 +368,9 @@ export function OcrBboxEditOverlay({
       fixLx = -startBbox.w / 2;
       fixLy = -startBbox.h / 2;
     }
-    // Opposite corner's world position
     const fixWx = oldCx + fixLx * scos - fixLy * ssin;
     const fixWy = oldCy + fixLx * ssin + fixLy * scos;
 
-    // Same corner's local offset in the NEW bbox
     let fixNLx: number;
     let fixNLy: number;
     if (corner === "tl") {
@@ -371,7 +386,6 @@ export function OcrBboxEditOverlay({
       fixNLx = -newW / 2;
       fixNLy = -newH / 2;
     }
-    // Solve: fixW = newCenter + rotate(fixNL) → newCenter = fixW - rotate(fixNL)
     const newCx = fixWx - (fixNLx * scos - fixNLy * ssin);
     const newCy = fixWy - (fixNLx * ssin + fixNLy * scos);
 
@@ -390,16 +404,17 @@ export function OcrBboxEditOverlay({
     dragRef.current = null;
   };
 
-  const corners: { key: Corner; cx: number; cy: number; cursor: string }[] = [
-    { key: "tl", cx: 0, cy: 0, cursor: "nwse-resize" },
-    { key: "tr", cx: screenW, cy: 0, cursor: "nesw-resize" },
-    { key: "bl", cx: 0, cy: screenH, cursor: "nesw-resize" },
-    { key: "br", cx: screenW, cy: screenH, cursor: "nwse-resize" },
+  const corners: { key: Corner; cx: number; cy: number }[] = [
+    { key: "tl", cx: 0, cy: 0 },
+    { key: "tr", cx: screenW, cy: 0 },
+    { key: "bl", cx: 0, cy: screenH },
+    { key: "br", cx: screenW, cy: screenH },
   ];
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
     <div
+      ref={overlayRef}
       className="absolute"
       style={{
         left: imgRect.offsetX,
@@ -417,12 +432,12 @@ export function OcrBboxEditOverlay({
           top: screenY,
           width: screenW,
           height: screenH,
-          transform: angle ? `rotate(${angle}deg)` : undefined,
+          transform: `rotate(${angle}deg)`,
           transformOrigin: "center center",
         }}
       >
-        {/* Corner handles */}
-        {corners.map(({ key, cx, cy, cursor }) => (
+        {/* Corner resize handles */}
+        {corners.map(({ key, cx, cy }) => (
           // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
           <div
             key={key}
@@ -432,7 +447,7 @@ export function OcrBboxEditOverlay({
               height: HANDLE_SIZE,
               left: cx - HANDLE_HALF,
               top: cy - HANDLE_HALF,
-              cursor,
+              cursor: resizeCursor(CORNER_DEG[key], angle),
             }}
             onPointerDown={(e) =>
               handlePointerDown({ type: "corner", corner: key }, e)
@@ -440,7 +455,7 @@ export function OcrBboxEditOverlay({
           />
         ))}
 
-        {/* Rotation arm + handle */}
+        {/* Rotation arm line */}
         <div
           className="absolute left-1/2 -translate-x-px"
           style={{
@@ -450,15 +465,30 @@ export function OcrBboxEditOverlay({
             background: "rgba(251,191,36,0.5)",
           }}
         />
+
+        {/* Text direction arrow (subtle downward triangle on arm) */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2"
+          style={{
+            top: -ROTATION_ARM * 0.4,
+            width: 0,
+            height: 0,
+            borderLeft: "3.5px solid transparent",
+            borderRight: "3.5px solid transparent",
+            borderTop: "5px solid rgba(251,191,36,0.55)",
+          }}
+        />
+
+        {/* Rotation handle */}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: rotation handle */}
         <div
           className="absolute z-10 rounded-full border-2 border-amber-400 bg-amber-400 shadow-md"
           style={{
             width: HANDLE_SIZE + 2,
             height: HANDLE_SIZE + 2,
-            left: rotHandleScreenX - (HANDLE_SIZE + 2) / 2,
-            top: rotHandleScreenY - (HANDLE_SIZE + 2) / 2,
-            cursor: "grab",
+            left: screenW / 2 - (HANDLE_SIZE + 2) / 2,
+            top: -ROTATION_ARM - (HANDLE_SIZE + 2) / 2,
+            cursor: ROTATE_CURSOR,
           }}
           onPointerDown={(e) => handlePointerDown({ type: "rotate" }, e)}
         />
