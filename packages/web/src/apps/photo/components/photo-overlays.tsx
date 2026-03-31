@@ -231,6 +231,20 @@ const CORNER_DEG: Record<Corner, number> = {
   br: 135,
 };
 
+// Quad edge definitions: [startCornerIdx, endCornerIdx] — TL→TR, TR→BR, BR→BL, BL→TL
+const QUAD_EDGES: [number, number][] = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 0],
+];
+
+// SVG double-arrow cursor rotated to be parallel to an edge
+function edgeCursor(x1: number, y1: number, x2: number, y2: number): string {
+  const angle = Math.round(Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI));
+  return `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><g transform='rotate(${angle} 12 12)'><line x1='4' y1='12' x2='20' y2='12' stroke='%23000' stroke-width='3' stroke-linecap='round'/><polyline points='8,8 4,12 8,16' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/><polyline points='16,8 20,12 16,16' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/><line x1='4' y1='12' x2='20' y2='12' stroke='%23fff' stroke-width='1.5' stroke-linecap='round'/><polyline points='8,8 4,12 8,16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/><polyline points='16,8 20,12 16,16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></g></svg>") 12 12, move`;
+}
+
 export function OcrBboxEditOverlay({
   ocrResults,
   editingOcrId,
@@ -283,7 +297,8 @@ export function OcrBboxEditOverlay({
     null,
   );
   const quadDragRef = useRef<{
-    cornerIdx: number;
+    type: "corner" | "edge";
+    idx: number;
     startMouse: { x: number; y: number };
     startCorners: [number, number][];
   } | null>(null);
@@ -332,14 +347,16 @@ export function OcrBboxEditOverlay({
     };
 
     const handleQuadPointerDown = (
-      cornerIdx: number,
+      type: "corner" | "edge",
+      idx: number,
       e: React.PointerEvent,
     ) => {
       e.preventDefault();
       e.stopPropagation();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
       quadDragRef.current = {
-        cornerIdx,
+        type,
+        idx,
         startMouse: { x: e.clientX, y: e.clientY },
         startCorners: pts.map(([x, y]) => [x, y] as [number, number]),
       };
@@ -348,18 +365,39 @@ export function OcrBboxEditOverlay({
     const handleQuadPointerMove = (e: React.PointerEvent) => {
       if (!quadDragRef.current) return;
       e.preventDefault();
-      const { cornerIdx, startMouse, startCorners } = quadDragRef.current;
+      const { type, idx, startMouse, startCorners } = quadDragRef.current;
       const dxPhoto = (e.clientX - startMouse.x) / scaleX;
       const dyPhoto = (e.clientY - startMouse.y) / scaleY;
-      const newPts = startCorners.map(
-        ([x, y], i) =>
-          (i === cornerIdx ? [x + dxPhoto, y + dyPhoto] : [x, y]) as [
-            number,
-            number,
-          ],
-      );
-      setLocalCorners(newPts);
-      emitChange(newPts);
+
+      if (type === "corner") {
+        const newPts = startCorners.map(
+          ([x, y], i) =>
+            (i === idx ? [x + dxPhoto, y + dyPhoto] : [x, y]) as [
+              number,
+              number,
+            ],
+        );
+        setLocalCorners(newPts);
+        emitChange(newPts);
+      } else {
+        // Edge drag: slide both endpoints along the edge's tangent direction
+        const [ei, ej] = QUAD_EDGES[idx];
+        const edgeDx = startCorners[ej][0] - startCorners[ei][0];
+        const edgeDy = startCorners[ej][1] - startCorners[ei][1];
+        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+        if (edgeLen < 1e-6) return;
+        const tx = edgeDx / edgeLen;
+        const ty = edgeDy / edgeLen;
+        const proj = dxPhoto * tx + dyPhoto * ty;
+        const newPts = startCorners.map(
+          ([x, y], i) =>
+            (i === ei || i === ej
+              ? [x + proj * tx, y + proj * ty]
+              : [x, y]) as [number, number],
+        );
+        setLocalCorners(newPts);
+        emitChange(newPts);
+      }
     };
 
     const handleQuadPointerUp = () => {
@@ -394,7 +432,31 @@ export function OcrBboxEditOverlay({
             fill="rgba(251,191,36,0.1)"
             stroke="rgb(251,191,36)"
             strokeWidth={2}
+            style={{ pointerEvents: "none" }}
           />
+          {/* Edge drag hit areas */}
+          {QUAD_EDGES.map(([ei, ej], edgeIdx) => {
+            const x1 = pts[ei][0] * scaleX;
+            const y1 = pts[ei][1] * scaleY;
+            const x2 = pts[ej][0] * scaleX;
+            const y2 = pts[ej][1] * scaleY;
+            const edgeKey = (["top", "right", "bottom", "left"] as const)[
+              edgeIdx
+            ];
+            return (
+              <line
+                key={edgeKey}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="transparent"
+                strokeWidth={14}
+                style={{ cursor: edgeCursor(x1, y1, x2, y2) }}
+                onPointerDown={(e) => handleQuadPointerDown("edge", edgeIdx, e)}
+              />
+            );
+          })}
         </svg>
         {pts.map(([px, py], idx) => {
           const cornerKey = (["tl", "tr", "br", "bl"] as const)[idx];
@@ -410,7 +472,7 @@ export function OcrBboxEditOverlay({
                 top: py * scaleY - HANDLE_HALF,
                 cursor: "move",
               }}
-              onPointerDown={(e) => handleQuadPointerDown(idx, e)}
+              onPointerDown={(e) => handleQuadPointerDown("corner", idx, e)}
             />
           );
         })}
