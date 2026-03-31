@@ -683,7 +683,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               data-photo-viewer-img=""
               src={thumbUrl}
               alt={photo?.filename ?? ""}
-              draggable={false}
               className={`max-h-full max-w-full object-contain select-none pointer-events-none ${
                 !mounted
                   ? "opacity-0"
@@ -705,7 +704,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                 data-photo-viewer-img=""
                 src={fullBlobUrl}
                 alt={photo?.filename ?? ""}
-                draggable={false}
                 className={`absolute inset-0 max-h-full max-w-full object-contain select-none pointer-events-none transition-opacity duration-200 ${
                   fullDecoded ? "opacity-100" : "opacity-0"
                 }`}

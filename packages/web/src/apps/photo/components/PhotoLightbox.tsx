@@ -779,12 +779,7 @@ export function PhotoLightbox({
             willChange: "top, left, width, height",
           }}
         >
-          <img
-            src={thumbSrc}
-            alt=""
-            className="h-full w-full object-cover"
-            draggable={false}
-          />
+          <img src={thumbSrc} alt="" className="h-full w-full object-cover" />
         </div>
       )}
 
@@ -918,7 +913,6 @@ export function PhotoLightbox({
                     alt={photo.title || photo.filename}
                     className="max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain"
                     style={thumbDisplaySize}
-                    draggable={false}
                   />
                 )}
                 {/* Full-res layer: starts rendering once blob URL is ready */}
@@ -928,7 +922,6 @@ export function PhotoLightbox({
                     src={fullBlobUrl}
                     alt={photo.title || photo.filename}
                     className={`max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain ${!fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
-                    draggable={false}
                     onLoad={() => setFullDecoded(true)}
                   />
                 )}

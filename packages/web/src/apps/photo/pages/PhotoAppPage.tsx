@@ -1,13 +1,9 @@
-import { Button, Checkbox, Empty, Modal, Spin, Tag } from "@tokiomo/components";
+import { Button, Empty, PillTabBar, Spin, Tag } from "@tokiomo/components";
 import {
   Calendar,
   FolderOpen,
-  FolderSync,
   Grid3x3,
-  LayoutGrid,
   MapPin,
-  MousePointerClick,
-  RefreshCw,
   ScanText,
   Sparkles,
   Star,
@@ -20,13 +16,10 @@ import { AlbumPickerDialog } from "@/apps/photo/components/AlbumPickerDialog";
 import { PhotoAlbumsView } from "@/apps/photo/components/PhotoAlbumsView";
 import { PhotoFoldersView } from "@/apps/photo/components/PhotoFoldersView";
 import { PhotoLocationTab } from "@/apps/photo/components/PhotoLocationTab";
+import { usePhotoMenuBarState } from "@/apps/photo/components/PhotoMenuBar";
 import { PhotoPeopleView } from "@/apps/photo/components/PhotoPeopleView";
 import { PhotoSelectionBar } from "@/apps/photo/components/PhotoSelectionBar";
-import {
-  loadSavedSizeIndex,
-  PHOTO_SIZE_LEVELS,
-  saveSizeIndex,
-} from "@/apps/photo/components/PhotoSizeSlider";
+import { PHOTO_SIZE_LEVELS } from "@/apps/photo/components/PhotoSizeSlider";
 import { PhotoTimeline } from "@/apps/photo/components/PhotoTimeline";
 import { PAGE_SIZE } from "@/apps/photo/components/photo-utils";
 import {
@@ -36,8 +29,7 @@ import {
 import { SyncProgressOverlay } from "@/apps/photo/components/SyncProgressOverlay";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
-import type { MenuBarConfig } from "@/system";
-import { useMenuBar, useMessage, useWindowNav } from "@/system";
+import { useMessage, useWindowNav } from "@/system";
 
 type TabKey =
   | "timeline"
@@ -64,20 +56,24 @@ export default function PhotoAppPage() {
   const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // ── Grid size state (from menubar context) ───────────────────────────
+  const menuBarState = usePhotoMenuBarState();
+  const { sizeIndex, isSelecting, setIsSelecting } = menuBarState;
+  const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
+
   const [tab, setTabRaw] = useState<TabKey>(
     (params.tab as TabKey) || "timeline",
   );
-  const setTab = useCallback((t: TabKey) => {
-    setTabRaw(t);
-    setSelectedIds(new Set());
-    setIsSelecting(false);
-    setSearchQuery("");
-    // Don't reset pagination — each tab keeps its scroll position & loaded pages
-  }, []);
-
-  // ── Grid size state ──────────────────────────────────────────────────
-  const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
-  const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
+  const setTab = useCallback(
+    (t: TabKey) => {
+      setTabRaw(t);
+      setSelectedIds(new Set());
+      menuBarState.setIsSelecting(false);
+      setSearchQuery("");
+      // Don't reset pagination — each tab keeps its scroll position & loaded pages
+    },
+    [menuBarState.setIsSelecting],
+  );
 
   // ── Navigate to person (from lightbox face click) ──────────────────
   const [navigateToPersonId, setNavigateToPersonId] = useState<string | null>(
@@ -131,36 +127,30 @@ export default function PhotoAppPage() {
 
   // ── Selection state ────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSelecting, setIsSelecting] = useState(false);
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
 
-  const handleSelect = useCallback((photo: PhotoOutput) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(photo.id)) {
-        next.delete(photo.id);
-      } else {
-        next.add(photo.id);
-      }
-      if (next.size > 0) {
-        setIsSelecting(true);
-      }
-      return next;
-    });
-  }, []);
+  const handleSelect = useCallback(
+    (photo: PhotoOutput) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(photo.id)) {
+          next.delete(photo.id);
+        } else {
+          next.add(photo.id);
+        }
+        if (next.size > 0) {
+          setIsSelecting(true);
+        }
+        return next;
+      });
+    },
+    [setIsSelecting],
+  );
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
     setIsSelecting(false);
-  }, []);
-
-  const toggleSelectMode = useCallback(() => {
-    if (isSelecting) {
-      clearSelection();
-    } else {
-      setIsSelecting(true);
-    }
-  }, [isSelecting, clearSelection]);
+  }, [setIsSelecting]);
 
   // ── Infinite scroll pagination ─────────────────────────────────────────
   const [timelinePage, setTimelinePage] = useState(1);
@@ -172,7 +162,6 @@ export default function PhotoAppPage() {
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [favLoadingMore, setFavLoadingMore] = useState(false);
   const [trashLoadingMore, setTrashLoadingMore] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
@@ -374,18 +363,6 @@ export default function PhotoAppPage() {
   const messageRef = useRef(message);
   messageRef.current = message;
 
-  const syncMutation = api.app.sync.useMutation({
-    onMutate: () => setIsSyncing(true),
-    onSettled: () => setIsSyncing(false),
-    onSuccess: () => {
-      message.success("同步已开始");
-      setTimelinePage(1);
-      accTimelineRef.current = [];
-      void photosQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "同步失败"),
-  });
-
   // ── Favorite toggle ─────────────────────────────────────────────────────
   const toggleFavMutation = api.app.togglePhotoFavorite.useMutation({
     onSuccess: () => {
@@ -470,7 +447,7 @@ export default function PhotoAppPage() {
         },
       },
     );
-  }, [id, selectedIds]);
+  }, [id, selectedIds, setIsSelecting]);
 
   // ── Trash mutation ────────────────────────────────────────────
   const trashMutation = api.app.trashPhotos.useMutation();
@@ -495,7 +472,7 @@ export default function PhotoAppPage() {
         },
       },
     );
-  }, [id, selectedIds]);
+  }, [id, selectedIds, setIsSelecting]);
 
   // ── Trash operations ──────────────────────────────────────────────────
   const restoreMutation = api.app.restorePhotos.useMutation({
@@ -575,155 +552,25 @@ export default function PhotoAppPage() {
     setTrashPage((p) => p + 1);
   }, []);
 
-  // ── MenuBar ──────────────────────────────────────────────────────────────
-  const handleRefresh = useCallback(() => {
-    setTimelinePage(1);
-    setFavPage(1);
-    setTrashPage(1);
-    setTimelineLoadingMore(false);
-    setFavLoadingMore(false);
-    setTrashLoadingMore(false);
-    accTimelineRef.current = [];
-    accFavRef.current = [];
-    accTrashRef.current = [];
-    void photosRefetchRef.current();
-    void favRefetchRef.current();
-    void trashedRefetchRef.current();
-  }, []);
-
-  const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [syncClearData, setSyncClearData] = useState(false);
-
-  const menuBarConfig: MenuBarConfig | null = useMemo(() => {
-    if (!id) return null;
-
-    const sizeItems = PHOTO_SIZE_LEVELS.map((level, i) => ({
-      key: `size-${i}`,
-      label: `${level.label}${i === sizeIndex ? " ✓" : ""}`,
-      icon: <LayoutGrid size={14} />,
-      onClick: () => {
-        setSizeIndex(i);
-        saveSizeIndex(i);
-      },
-    }));
-
-    return {
-      menus: [
-        {
-          key: "view",
-          label: "显示",
-          items: sizeItems,
-        },
-        {
-          key: "actions",
-          label: "操作",
-          items: [
-            {
-              key: "select",
-              label: isSelecting ? "取消选择" : "选择",
-              icon: <MousePointerClick size={14} />,
-              onClick: toggleSelectMode,
-            },
-            { type: "divider" as const },
-            {
-              key: "refresh",
-              label: "刷新",
-              icon: <RefreshCw size={14} />,
-              disabled: false,
-              onClick: handleRefresh,
-            },
-            {
-              key: "sync",
-              label: "同步资料库",
-              icon: <FolderSync size={14} />,
-              disabled: false,
-              onClick: () => {
-                setSyncClearData(false);
-                setSyncModalOpen(true);
-              },
-            },
-          ],
-        },
-      ],
-      search: {
-        appId: id,
-        searchType: "photo" as const,
-        placeholder: "搜索照片…",
-        onSelect: () => {},
-        recentItems: [],
-      },
-    };
-  }, [id, handleRefresh, toggleSelectMode, isSelecting, sizeIndex]);
-
-  useMenuBar(menuBarConfig);
-
   if (!id) return null;
 
   return (
     <div ref={rootRef} className="relative space-y-3">
-      <Modal
-        open={syncModalOpen}
-        title="同步资料库"
-        okText="开始同步"
-        cancelText="取消"
-        confirmLoading={isSyncing}
-        onCancel={() => setSyncModalOpen(false)}
-        onOk={async () => {
-          if (!id) return;
-          try {
-            await syncMutation.mutateAsync({
-              id,
-              clearData: syncClearData,
-            });
-          } finally {
-            setSyncModalOpen(false);
-          }
-        }}
-      >
-        <Checkbox
-          checked={syncClearData}
-          onChange={(e) => setSyncClearData(e.target.checked)}
-        >
-          清空数据重新同步
-        </Checkbox>
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
-          勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。
-        </p>
-      </Modal>
-      {/* Tab bar — sticky at top */}
-      <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-0 bg-[var(--bg-primary)] px-3 pt-3 pb-3 lg:-mx-4 lg:-mt-4 lg:px-4 lg:pt-4 lg:pb-3">
-        <div className="relative flex items-center justify-center">
-          <div className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-black/20 p-1 backdrop-blur-xl dark:border-white/[0.06] dark:bg-white/[0.06]">
-            {tabs.map((t) => {
-              const Icon = t.icon;
-              const active = tab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium transition-all duration-200 ${
-                    active
-                      ? "bg-white/90 text-neutral-900 shadow-sm dark:bg-white/15 dark:text-white"
-                      : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200"
-                  }`}
-                  onClick={() => setTab(t.key)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-          {/* Photo count — right-aligned, clear of timeline scrubber */}
-          <div className="absolute right-16 text-right">
+      <PillTabBar
+        tabs={tabs}
+        activeTab={tab}
+        onTabChange={setTab}
+        trailingClassName="right-16"
+        trailing={
+          <>
             {tab === "timeline" && timelineTotal > 0 && (
               <Tag>{timelineTotal} 张</Tag>
             )}
             {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
             {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Scrollable content */}
       <div className="space-y-3">

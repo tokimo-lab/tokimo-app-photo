@@ -7,6 +7,7 @@ export const manifest: AppManifest = {
   supportedTypes: ["photo"],
   defaultSize: { width: 1200, height: 800 },
   component: () => import("./pages/PhotoAppPage"),
+  menuBar: () => import("./components/PhotoMenuBar"),
 
   settings: [
     {
