@@ -150,6 +150,7 @@ function OcrResultRow({
     w: number;
     h: number;
     angle?: number;
+    corners?: [number, number][];
   } | null;
   onHover: (id: string | null) => void;
   onStartEdit: () => void;
@@ -193,12 +194,14 @@ function OcrResultRow({
       w?: number;
       h?: number;
       angle?: number;
+      corners?: [number, number][];
     } = { ocrResultId: Number(r.id) };
     if (textChanged) payload.text = trimmed;
     if (bboxChanged) {
-      const { angle: bboxAngle, ...coords } = pendingBbox;
+      const { angle: bboxAngle, corners: bboxCorners, ...coords } = pendingBbox;
       Object.assign(payload, coords);
       if (bboxAngle != null) payload.angle = bboxAngle;
+      if (bboxCorners) payload.corners = bboxCorners;
     }
     updateMutation.mutate(payload, {
       onSuccess: invalidateOcr,
@@ -377,6 +380,7 @@ export function PhotoInfoPanel({
     w: number;
     h: number;
     angle?: number;
+    corners?: [number, number][];
   } | null;
   onAddOcr?: () => void;
 }) {

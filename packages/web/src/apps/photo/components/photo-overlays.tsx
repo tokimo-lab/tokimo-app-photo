@@ -162,18 +162,39 @@ export function OcrHighlightOverlay({
         if (r.x == null || r.y == null || r.w == null || r.h == null)
           return null;
 
-        const pad = 0;
+        // Quad corners mode — render SVG polygon
+        if (r.corners && r.corners.length === 4) {
+          const points = r.corners
+            .map(([cx, cy]) => `${cx * scaleX},${cy * scaleY}`)
+            .join(" ");
+          return (
+            <svg
+              key={r.id}
+              className="absolute left-0 top-0"
+              width={imgRect.w}
+              height={imgRect.h}
+            >
+              <polygon
+                points={points}
+                fill="rgba(52,211,153,0.15)"
+                stroke="rgb(52,211,153)"
+                strokeWidth={2}
+              />
+            </svg>
+          );
+        }
+
         const angle = r.angle ?? 0;
         return (
           <div
             key={r.id}
             className="absolute rounded border-2 border-emerald-400 bg-emerald-400/15 shadow-[0_0_12px_rgba(52,211,153,0.4)]"
             style={{
-              left: r.x * scaleX - pad,
-              top: r.y * scaleY - pad,
-              width: r.w * scaleX + pad * 2,
-              height: r.h * scaleY + pad * 2,
-              transform: angle ? `rotate(${angle}deg)` : undefined,
+              left: r.x * scaleX,
+              top: r.y * scaleY,
+              width: r.w * scaleX,
+              height: r.h * scaleY,
+              transform: `rotate(${angle}deg)`,
               transformOrigin: "center center",
             }}
           />
@@ -224,12 +245,24 @@ export function OcrBboxEditOverlay({
   photoHeight: number;
   imgRef: React.RefObject<HTMLImageElement | null>;
   onBboxChange?: (
-    bbox: { x: number; y: number; w: number; h: number; angle?: number } | null,
+    bbox: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      angle?: number;
+      corners?: [number, number][];
+    } | null,
   ) => void;
 }) {
   const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
   const r = ocrResults.find((o) => o.id === editingOcrId);
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Determine if this result uses quad corners
+  const hasQuadCorners = r?.corners && r.corners.length === 4;
+
+  // ── Rect mode state ──
   const [localBbox, setLocalBbox] = useState<{
     x: number;
     y: number;
@@ -245,10 +278,21 @@ export function OcrBboxEditOverlay({
     containerRect: { left: number; top: number };
   } | null>(null);
 
-  // Reset local bbox when editing target changes
+  // ── Quad mode state ──
+  const [localCorners, setLocalCorners] = useState<[number, number][] | null>(
+    null,
+  );
+  const quadDragRef = useRef<{
+    cornerIdx: number;
+    startMouse: { x: number; y: number };
+    startCorners: [number, number][];
+  } | null>(null);
+
+  // Reset state when editing target changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: editingOcrId is the intentional trigger
   useEffect(() => {
     setLocalBbox(null);
+    setLocalCorners(null);
     onBboxChange?.(null);
   }, [editingOcrId, onBboxChange]);
 
@@ -264,6 +308,117 @@ export function OcrBboxEditOverlay({
 
   const scaleX = imgRect.w / photoWidth;
   const scaleY = imgRect.h / photoHeight;
+
+  // ── Quad corners mode ──
+  if (hasQuadCorners) {
+    const pts: [number, number][] =
+      localCorners ?? (r.corners as [number, number][]);
+
+    // Compute bounding box from corners for the payload
+    const emitChange = (newPts: [number, number][]) => {
+      const xs = newPts.map(([x]) => x);
+      const ys = newPts.map(([, y]) => y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      const maxX = Math.max(...xs);
+      const maxY = Math.max(...ys);
+      onBboxChange?.({
+        x: minX,
+        y: minY,
+        w: maxX - minX,
+        h: maxY - minY,
+        corners: newPts,
+      });
+    };
+
+    const handleQuadPointerDown = (
+      cornerIdx: number,
+      e: React.PointerEvent,
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      quadDragRef.current = {
+        cornerIdx,
+        startMouse: { x: e.clientX, y: e.clientY },
+        startCorners: pts.map(([x, y]) => [x, y] as [number, number]),
+      };
+    };
+
+    const handleQuadPointerMove = (e: React.PointerEvent) => {
+      if (!quadDragRef.current) return;
+      e.preventDefault();
+      const { cornerIdx, startMouse, startCorners } = quadDragRef.current;
+      const dxPhoto = (e.clientX - startMouse.x) / scaleX;
+      const dyPhoto = (e.clientY - startMouse.y) / scaleY;
+      const newPts = startCorners.map(
+        ([x, y], i) =>
+          (i === cornerIdx ? [x + dxPhoto, y + dyPhoto] : [x, y]) as [
+            number,
+            number,
+          ],
+      );
+      setLocalCorners(newPts);
+      emitChange(newPts);
+    };
+
+    const handleQuadPointerUp = () => {
+      quadDragRef.current = null;
+    };
+
+    const svgPoints = pts
+      .map(([x, y]) => `${x * scaleX},${y * scaleY}`)
+      .join(" ");
+
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
+      <div
+        ref={overlayRef}
+        className="absolute"
+        style={{
+          left: imgRect.offsetX,
+          top: imgRect.offsetY,
+          width: imgRect.w,
+          height: imgRect.h,
+        }}
+        onPointerMove={handleQuadPointerMove}
+        onPointerUp={handleQuadPointerUp}
+      >
+        <svg
+          className="absolute left-0 top-0"
+          width={imgRect.w}
+          height={imgRect.h}
+        >
+          <polygon
+            points={svgPoints}
+            fill="rgba(251,191,36,0.1)"
+            stroke="rgb(251,191,36)"
+            strokeWidth={2}
+          />
+        </svg>
+        {pts.map(([px, py], idx) => {
+          const cornerKey = (["tl", "tr", "br", "bl"] as const)[idx];
+          return (
+            // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
+            <div
+              key={cornerKey}
+              className="absolute z-10 rounded-full border-2 border-amber-400 bg-white shadow-md"
+              style={{
+                width: HANDLE_SIZE,
+                height: HANDLE_SIZE,
+                left: px * scaleX - HANDLE_HALF,
+                top: py * scaleY - HANDLE_HALF,
+                cursor: "move",
+              }}
+              onPointerDown={(e) => handleQuadPointerDown(idx, e)}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Rect + angle mode (original) ──
   const origAngle = r.angle ?? 0;
   const angle = localBbox?.angle ?? origAngle;
 
@@ -299,12 +454,10 @@ export function OcrBboxEditOverlay({
       dragRef.current;
 
     if (mode.type === "rotate") {
-      // Center of bbox in viewport coordinates
       const cx =
         containerRect.left + startBbox.x * scaleX + (startBbox.w * scaleX) / 2;
       const cy =
         containerRect.top + startBbox.y * scaleY + (startBbox.h * scaleY) / 2;
-      // Angle from center to mouse (atan2(dx, -dy) → 0° = north, CW positive)
       const mouseAngle = Math.atan2(e.clientX - cx, -(e.clientY - cy));
       const startMouseAngle = Math.atan2(
         startMouse.x - cx,
@@ -318,7 +471,6 @@ export function OcrBboxEditOverlay({
       return;
     }
 
-    // Corner drag — project mouse delta into the bbox's local (rotated) axes
     const { corner } = mode;
     const dxScreen = e.clientX - startMouse.x;
     const dyScreen = e.clientY - startMouse.y;
@@ -349,7 +501,6 @@ export function OcrBboxEditOverlay({
     if (newW < 5) newW = 5;
     if (newH < 5) newH = 5;
 
-    // Anchor the opposite corner in world space
     const oldCx = startBbox.x + startBbox.w / 2;
     const oldCy = startBbox.y + startBbox.h / 2;
 
@@ -404,7 +555,7 @@ export function OcrBboxEditOverlay({
     dragRef.current = null;
   };
 
-  const corners: { key: Corner; cx: number; cy: number }[] = [
+  const rectCorners: { key: Corner; cx: number; cy: number }[] = [
     { key: "tl", cx: 0, cy: 0 },
     { key: "tr", cx: screenW, cy: 0 },
     { key: "bl", cx: 0, cy: screenH },
@@ -437,7 +588,7 @@ export function OcrBboxEditOverlay({
         }}
       >
         {/* Corner resize handles */}
-        {corners.map(({ key, cx, cy }) => (
+        {rectCorners.map(({ key, cx, cy }) => (
           // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
           <div
             key={key}
