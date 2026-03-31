@@ -120,6 +120,36 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     setEditingOcrId(id);
     setPendingBbox(null);
   }, []);
+
+  const createOcrMut = api.photoSettings.createOcrResult.useMutation();
+  const handleAddOcr = useCallback(async () => {
+    if (!detail) return;
+    const pw = detail.width || 1000;
+    const ph = detail.height || 1000;
+    // Default bbox: small region near center
+    const w = Math.round(pw * 0.2);
+    const h = Math.round(ph * 0.04);
+    const x = Math.round((pw - w) / 2);
+    const y = Math.round((ph - h) / 2);
+    try {
+      const result = await createOcrMut.mutateAsync({
+        photoId: detail.id,
+        text: "",
+        x,
+        y,
+        w,
+        h,
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/photos/{id}/ocr-results"],
+      });
+      // Enter edit mode for the newly created result
+      setEditingOcrId(result.id);
+      setPendingBbox(null);
+    } catch {
+      // mutation error handled by react-query
+    }
+  }, [detail, createOcrMut, queryClient]);
   const [ocrSelectionRanges, setOcrSelectionRanges] = useState<
     Map<string, { start: number; end: number }>
   >(new Map());
@@ -719,16 +749,19 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   imgRef={imgRef}
                 />
               )}
-            {ocrResults.length > 0 && detail?.width && detail?.height && (
-              <OcrBlockSelectLayer
-                ocrResults={ocrResults}
-                photoWidth={detail.width}
-                photoHeight={detail.height}
-                imgRef={imgRef}
-                isZoomed={isZoomed}
-                onSelectionRanges={setOcrSelectionRanges}
-              />
-            )}
+            {ocrResults.length > 0 &&
+              detail?.width &&
+              detail?.height &&
+              editingOcrId == null && (
+                <OcrBlockSelectLayer
+                  ocrResults={ocrResults}
+                  photoWidth={detail.width}
+                  photoHeight={detail.height}
+                  imgRef={imgRef}
+                  isZoomed={isZoomed}
+                  onSelectionRanges={setOcrSelectionRanges}
+                />
+              )}
             {/* Live Photo video overlay */}
             {isLive && showLiveVideo && (
               <video
@@ -851,6 +884,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   editingOcrId={editingOcrId}
                   onEditOcr={handleEditOcr}
                   pendingBbox={pendingBbox}
+                  onAddOcr={handleAddOcr}
                   editForm={
                     editing ? (
                       <div className="mb-4 space-y-2">

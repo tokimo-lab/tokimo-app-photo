@@ -6,9 +6,11 @@ import {
   FileText,
   MapPin,
   Pencil,
+  Plus,
   ScanText,
   SearchCode,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -87,17 +89,20 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function InfoSection({
   icon,
   title,
+  actions,
   children,
 }: {
   icon: ReactNode;
   title: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="border-t border-white/10 pt-3">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">
         {icon}
-        {title}
+        <span className="flex-1">{title}</span>
+        {actions}
       </div>
       <div className="space-y-2">{children}</div>
     </div>
@@ -133,6 +138,7 @@ function OcrResultRow({
   onHover,
   onStartEdit,
   onFinishEdit,
+  onDelete,
 }: {
   r: PhotoOcrResultItem;
   isHovered: boolean;
@@ -142,12 +148,14 @@ function OcrResultRow({
   onHover: (id: string | null) => void;
   onStartEdit: () => void;
   onFinishEdit: () => void;
+  onDelete: () => void;
 }) {
   const [editText, setEditText] = useState(r.text);
   const [itemHovered, setItemHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const updateMutation = api.photoSettings.updateOcrResult.useMutation();
+  const deleteMutation = api.photoSettings.deleteOcrResult.useMutation();
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -156,6 +164,12 @@ function OcrResultRow({
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isEditing, r.text]);
+
+  const invalidateOcr = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: ["/api/photos/{id}/ocr-results"],
+    });
+  }, [queryClient]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = editText.trim();
@@ -176,11 +190,7 @@ function OcrResultRow({
     if (textChanged) payload.text = trimmed;
     if (bboxChanged) Object.assign(payload, pendingBbox);
     updateMutation.mutate(payload, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: ["/api/photos/{id}/ocr-results"],
-        });
-      },
+      onSuccess: invalidateOcr,
       onSettled: onFinishEdit,
     });
   }, [
@@ -190,17 +200,32 @@ function OcrResultRow({
     pendingBbox,
     updateMutation,
     onFinishEdit,
-    queryClient,
+    invalidateOcr,
   ]);
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(
+      { ocrResultId: Number(r.id) },
+      {
+        onSuccess: () => {
+          invalidateOcr();
+          onDelete();
+        },
+      },
+    );
+  }, [deleteMutation, r.id, invalidateOcr, onDelete]);
 
   const textChars = Array.from(r.text);
   const hasRange = range && range.start < range.end;
+
+  // Shared min-height to prevent visual jump between display / edit modes
+  const rowClass = "rounded px-2 py-1 text-sm leading-relaxed min-h-[1.875rem]";
 
   if (isEditing) {
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions: editable OCR row
       <div
-        className="flex items-center gap-1 rounded bg-white/10 px-2 py-1"
+        className={`${rowClass} flex items-center gap-1 bg-white/10`}
         onMouseEnter={() => onHover(r.id)}
         onMouseLeave={() => onHover(null)}
       >
@@ -226,6 +251,14 @@ function OcrResultRow({
         </button>
         <button
           type="button"
+          onClick={handleDelete}
+          className="shrink-0 rounded p-0.5 text-red-400/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
+          title="删除此识别区域"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
           onClick={onFinishEdit}
           className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
           title="取消 (Esc)"
@@ -239,7 +272,7 @@ function OcrResultRow({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: OCR row with hover tracking
     <div
-      className={`group relative cursor-default rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+      className={`${rowClass} flex cursor-default transition-colors ${
         isHovered
           ? "bg-emerald-400/15 text-white"
           : hasRange
@@ -255,7 +288,7 @@ function OcrResultRow({
         onHover(null);
       }}
     >
-      <span className="break-all">
+      <span className="min-w-0 flex-1 break-all">
         {hasRange ? (
           <>
             {textChars.slice(0, range.start).join("")}
@@ -268,26 +301,26 @@ function OcrResultRow({
           r.text
         )}
       </span>
-      {/* Right-aligned: confidence + edit icon (edit shown on hover) */}
-      <span className="float-right ml-2 inline-flex items-center gap-1">
+      {/* Right-aligned: confidence + edit icon (no space when hidden) */}
+      <span className="ml-1 inline-flex shrink-0 items-center gap-1 self-center">
         {r.score != null && (
           <span className="text-xs text-white/30">
             {Math.round(r.score * 100)}%
           </span>
         )}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStartEdit();
-          }}
-          className={`inline-flex items-center rounded p-0.5 text-white/30 transition-all hover:bg-white/10 hover:text-white/60 ${
-            itemHovered ? "opacity-100" : "opacity-0"
-          }`}
-          title="编辑识别文字"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
+        {itemHovered && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartEdit();
+            }}
+            className="inline-flex items-center rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
+            title="编辑识别文字"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
       </span>
     </div>
   );
@@ -309,6 +342,7 @@ export function PhotoInfoPanel({
   editingOcrId,
   onEditOcr,
   pendingBbox,
+  onAddOcr,
 }: {
   detail: PhotoDetailOutput;
   fallbackTitle: string;
@@ -323,6 +357,7 @@ export function PhotoInfoPanel({
   editingOcrId?: string | null;
   onEditOcr?: (ocrId: string | null) => void;
   pendingBbox?: { x: number; y: number; w: number; h: number } | null;
+  onAddOcr?: () => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
   const [showOcrDebug, setShowOcrDebug] = useState(false);
@@ -511,7 +546,20 @@ export function PhotoInfoPanel({
 
         {/* ── OCR text section ──────────────────────────────────── */}
         {ocrResults && ocrResults.length > 0 && (
-          <InfoSection icon={<ScanText className="h-3 w-3" />} title="文字识别">
+          <InfoSection
+            icon={<ScanText className="h-3 w-3" />}
+            title="文字识别"
+            actions={
+              <button
+                type="button"
+                onClick={() => onAddOcr?.()}
+                className="rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
+                title="手动新增识别区域"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            }
+          >
             <div className="space-y-1.5">
               {ocrResults.map((r) => (
                 <OcrResultRow
@@ -524,6 +572,7 @@ export function PhotoInfoPanel({
                   onHover={(id) => onHoverOcr?.(id)}
                   onStartEdit={() => onEditOcr?.(r.id)}
                   onFinishEdit={() => onEditOcr?.(null)}
+                  onDelete={() => onEditOcr?.(null)}
                 />
               ))}
             </div>
