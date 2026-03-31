@@ -687,7 +687,13 @@ function useOcrEngine(
     const dataChunks: number[] = [];
     const rects: OcrBlockRect[] = [];
 
-    let hasBackendPositions = false;
+    // Determine if ANY block has matching backend char positions.
+    // All blocks must use the same format (backend: N*2 values, or measureText: N values)
+    // to keep the flat buffer parseable by WASM.
+    const hasBackendPositions = sorted.some((r) => {
+      const n = Array.from(r.text).length;
+      return r.charPositions && r.charPositions.length === n;
+    });
 
     for (const r of sorted) {
       const bw = (r.w as number) * scX;
@@ -698,10 +704,11 @@ function useOcrEngine(
 
       texts.push(r.text);
 
-      if (r.charPositions && r.charPositions.length === chars.length) {
-        // Backend provides char_positions (CTC alignment or Attention model)
-        // cp.x is already relative to block origin; just scale to CSS pixels
-        hasBackendPositions = true;
+      const hasMatchingPos =
+        r.charPositions && r.charPositions.length === chars.length;
+
+      if (hasBackendPositions) {
+        // All blocks push [x, w] pairs (N*2 values) for consistency
         dataChunks.push(
           bx,
           by,
@@ -711,12 +718,30 @@ function useOcrEngine(
           r.paragraphId ?? 0,
           chars.length,
         );
-        for (const cp of r.charPositions) {
-          dataChunks.push(cp.x * scX); // x relative to block, scaled
-          dataChunks.push(cp.w * scX); // width, scaled
+        if (hasMatchingPos) {
+          for (const cp of r.charPositions!) {
+            dataChunks.push(cp.x * scX);
+            dataChunks.push(cp.w * scX);
+          }
+        } else {
+          // Synthesize [x, w] pairs from measureText proportional widths
+          let rawWidths: number[];
+          if (ctx) {
+            rawWidths = chars.map((c) => ctx.measureText(c).width || 1);
+          } else {
+            rawWidths = chars.map(() => 1);
+          }
+          const totalRaw = rawWidths.reduce((s, v) => s + v, 0) || 1;
+          let accX = 0;
+          for (const rw of rawWidths) {
+            const w = (rw / totalRaw) * bw;
+            dataChunks.push(accX);
+            dataChunks.push(w);
+            accX += w;
+          }
         }
       } else {
-        // Fallback: Canvas measureText proportional estimation
+        // All blocks push raw measureText widths (N values)
         let charWidths: number[];
         if (ctx) {
           charWidths = chars.map((c) => ctx.measureText(c).width || 1);
