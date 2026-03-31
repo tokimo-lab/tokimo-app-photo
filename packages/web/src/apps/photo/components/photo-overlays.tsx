@@ -775,24 +775,33 @@ function useOcrEngine(
         orientation,
       );
 
-      // Normalize block so WASM "width" direction matches the on-screen text
-      // direction. The backend stores charPositions along bbox.w, but after EXIF
-      // rotation the text direction may end up along bbox.h. The WASM hit-test
-      // uses local_x (0..bw) for character selection, so we swap w↔h and adjust
-      // the angle to keep the visual block identical while aligning charPositions
-      // with the actual text flow direction on screen.
+      // Normalize block so WASM "width" direction matches the text direction.
+      //
+      // The backend's crop_rotated_text_region() rotates tall crops (h/w >= 1.5)
+      // by 90° CW so the recognizer sees horizontal text, but recognize_text()
+      // still computes charPositions using bbox.w (the short perpendicular side).
+      // This means charPositions span ~w pixels when they should span ~h pixels.
+      //
+      // Fix: when h >= w * 1.5, swap w↔h and subtract 90° from the angle.
+      // This keeps the visual rectangle identical while making the WASM's width
+      // (and thus local_x hit-test range) match the actual text direction.
+      // CharPositions are rescaled by h/w to span the correct range.
+      //
+      // This handles ALL EXIF orientations (90°/180°/270° + flips) plus
+      // non-EXIF vertical text uniformly — the condition depends on the raw
+      // block aspect ratio, not the display angle.
       let dw = db.w;
       let dh = db.h;
       let dAngle = db.angle;
       let charPosScale = 1;
-      let normAngle = ((db.angle % 360) + 360) % 360;
-      if (normAngle > 180) normAngle -= 360;
-      if (Math.abs(normAngle) > 45 && Math.abs(normAngle) < 135) {
+      if (db.h >= db.w * 1.5 && db.w > 0) {
         const oldW = dw;
         dw = dh;
         dh = oldW;
-        dAngle = normAngle > 0 ? normAngle - 90 : normAngle + 90;
-        charPosScale = dw / dh; // rescale charPositions from old w-range to new w-range
+        let normAngle = ((db.angle % 360) + 360) % 360;
+        if (normAngle > 180) normAngle -= 360;
+        dAngle = normAngle >= 0 ? normAngle - 90 : normAngle + 90;
+        charPosScale = dw / dh; // = h/w, rescale charPositions from w-range to h-range
       }
 
       const dcx = db.x + db.w / 2;
