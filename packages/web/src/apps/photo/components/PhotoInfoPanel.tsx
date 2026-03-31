@@ -1,15 +1,27 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
-  Crosshair,
+  CornerDownLeft,
   ExternalLink,
   FileText,
   MapPin,
+  Pencil,
   ScanText,
   SearchCode,
   Sparkles,
+  X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import type { PhotoDetailOutput } from "@/generated/rust-api";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type {
+  PhotoDetailOutput,
+  PhotoOcrResultItem,
+} from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
@@ -110,6 +122,177 @@ const EXTRA_EXIF_FIELDS: [string, string][] = [
   ["SensingMethod", "感光方式"],
 ];
 
+// ── OCR result row with inline edit ──────────────────────────────────────────
+
+function OcrResultRow({
+  r,
+  isHovered,
+  isEditing,
+  range,
+  pendingBbox,
+  onHover,
+  onStartEdit,
+  onFinishEdit,
+}: {
+  r: PhotoOcrResultItem;
+  isHovered: boolean;
+  isEditing: boolean;
+  range?: { start: number; end: number };
+  pendingBbox?: { x: number; y: number; w: number; h: number } | null;
+  onHover: (id: string | null) => void;
+  onStartEdit: () => void;
+  onFinishEdit: () => void;
+}) {
+  const [editText, setEditText] = useState(r.text);
+  const [itemHovered, setItemHovered] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const updateMutation = api.photoSettings.updateOcrResult.useMutation();
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      setEditText(r.text);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [isEditing, r.text]);
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = editText.trim();
+    const textChanged = trimmed && trimmed !== r.text;
+    const bboxChanged = pendingBbox != null;
+    if (!textChanged && !bboxChanged) {
+      onFinishEdit();
+      return;
+    }
+    const payload: {
+      ocrResultId: number;
+      text?: string;
+      x?: number;
+      y?: number;
+      w?: number;
+      h?: number;
+    } = { ocrResultId: Number(r.id) };
+    if (textChanged) payload.text = trimmed;
+    if (bboxChanged) Object.assign(payload, pendingBbox);
+    updateMutation.mutate(payload, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/photos/{id}/ocr-results"],
+        });
+      },
+      onSettled: onFinishEdit,
+    });
+  }, [
+    editText,
+    r.id,
+    r.text,
+    pendingBbox,
+    updateMutation,
+    onFinishEdit,
+    queryClient,
+  ]);
+
+  const textChars = Array.from(r.text);
+  const hasRange = range && range.start < range.end;
+
+  if (isEditing) {
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: editable OCR row
+      <div
+        className="flex items-center gap-1 rounded bg-white/10 px-2 py-1"
+        onMouseEnter={() => onHover(r.id)}
+        onMouseLeave={() => onHover(null)}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+            else if (e.key === "Escape") onFinishEdit();
+          }}
+          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
+          placeholder={r.text}
+        />
+        <button
+          type="button"
+          onClick={handleSubmit}
+          className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
+          title="确认 (Enter)"
+        >
+          <CornerDownLeft className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onFinishEdit}
+          className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
+          title="取消 (Esc)"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: OCR row with hover tracking
+    <div
+      className={`group relative cursor-default rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
+        isHovered
+          ? "bg-emerald-400/15 text-white"
+          : hasRange
+            ? "bg-white/5 text-white"
+            : "bg-white/5 text-white/80 hover:bg-white/10"
+      }`}
+      onMouseEnter={() => {
+        setItemHovered(true);
+        onHover(r.id);
+      }}
+      onMouseLeave={() => {
+        setItemHovered(false);
+        onHover(null);
+      }}
+    >
+      <span className="break-all">
+        {hasRange ? (
+          <>
+            {textChars.slice(0, range.start).join("")}
+            <mark className="rounded-sm bg-blue-400/30 text-white">
+              {textChars.slice(range.start, range.end).join("")}
+            </mark>
+            {textChars.slice(range.end).join("")}
+          </>
+        ) : (
+          r.text
+        )}
+      </span>
+      {/* Right-aligned: confidence + edit icon (edit shown on hover) */}
+      <span className="float-right ml-2 inline-flex items-center gap-1">
+        {r.score != null && (
+          <span className="text-xs text-white/30">
+            {Math.round(r.score * 100)}%
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartEdit();
+          }}
+          className={`inline-flex items-center rounded p-0.5 text-white/30 transition-all hover:bg-white/10 hover:text-white/60 ${
+            itemHovered ? "opacity-100" : "opacity-0"
+          }`}
+          title="编辑识别文字"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function PhotoInfoPanel({
@@ -123,6 +306,9 @@ export function PhotoInfoPanel({
   ocrSelectionRanges,
   onRefreshComplete,
   onNavigateToPerson,
+  editingOcrId,
+  onEditOcr,
+  pendingBbox,
 }: {
   detail: PhotoDetailOutput;
   fallbackTitle: string;
@@ -134,6 +320,9 @@ export function PhotoInfoPanel({
   ocrSelectionRanges?: Map<string, { start: number; end: number }>;
   onRefreshComplete?: () => void;
   onNavigateToPerson?: (personId: string) => void;
+  editingOcrId?: string | null;
+  onEditOcr?: (ocrId: string | null) => void;
+  pendingBbox?: { x: number; y: number; w: number; h: number } | null;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
   const [showOcrDebug, setShowOcrDebug] = useState(false);
@@ -324,55 +513,19 @@ export function PhotoInfoPanel({
         {ocrResults && ocrResults.length > 0 && (
           <InfoSection icon={<ScanText className="h-3 w-3" />} title="文字识别">
             <div className="space-y-1.5">
-              {ocrResults.map((r) => {
-                const range = ocrSelectionRanges?.get(r.id);
-                const textChars = Array.from(r.text);
-                const isHovered = hoveredOcrId === r.id;
-                const hasRange = range && range.start < range.end;
-                return (
-                  <p
-                    key={r.id}
-                    className={`cursor-default break-all rounded px-2 py-1 text-sm leading-relaxed transition-colors ${
-                      isHovered
-                        ? "bg-emerald-400/15 text-white"
-                        : hasRange
-                          ? "bg-white/5 text-white"
-                          : "bg-white/5 text-white/80 hover:bg-white/10"
-                    }`}
-                    onMouseEnter={() => onHoverOcr?.(r.id)}
-                    onMouseLeave={() => onHoverOcr?.(null)}
-                  >
-                    {hasRange ? (
-                      <>
-                        {textChars.slice(0, range.start).join("")}
-                        <mark className="rounded-sm bg-blue-400/30 text-white">
-                          {textChars.slice(range.start, range.end).join("")}
-                        </mark>
-                        {textChars.slice(range.end).join("")}
-                      </>
-                    ) : (
-                      r.text
-                    )}
-                    {r.score != null && (
-                      <span className="ml-2 text-xs text-white/30">
-                        {Math.round(r.score * 100)}%
-                      </span>
-                    )}
-                    {r.charPositions && r.charPositions.length > 0 && (
-                      <span
-                        className={`ml-1.5 inline-flex items-center gap-0.5 text-xs ${
-                          r.positioningType === "attention"
-                            ? "text-amber-400/50"
-                            : "text-emerald-400/50"
-                        }`}
-                        title={`字符级定位: ${r.positioningType === "attention" ? "Attention 对齐" : "CTC 对齐"}`}
-                      >
-                        <Crosshair className="h-2.5 w-2.5" />
-                      </span>
-                    )}
-                  </p>
-                );
-              })}
+              {ocrResults.map((r) => (
+                <OcrResultRow
+                  key={r.id}
+                  r={r}
+                  isHovered={hoveredOcrId === r.id}
+                  isEditing={editingOcrId === r.id}
+                  range={ocrSelectionRanges?.get(r.id)}
+                  pendingBbox={editingOcrId === r.id ? pendingBbox : undefined}
+                  onHover={(id) => onHoverOcr?.(id)}
+                  onStartEdit={() => onEditOcr?.(r.id)}
+                  onFinishEdit={() => onEditOcr?.(null)}
+                />
+              ))}
             </div>
             {detail.ocrScannedAt && (
               <p className="mt-2 flex items-center gap-1 text-xs text-white/30">

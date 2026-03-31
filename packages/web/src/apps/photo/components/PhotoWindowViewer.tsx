@@ -26,6 +26,7 @@ import { PhotoInfoPanel } from "./PhotoInfoPanel";
 import { PhotoLightbox } from "./PhotoLightbox";
 import {
   FaceHighlightOverlay,
+  OcrBboxEditOverlay,
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
@@ -108,6 +109,17 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   // ── Hover states for overlays ──────────────────────────────────
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
   const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
+  const [editingOcrId, setEditingOcrId] = useState<string | null>(null);
+  const [pendingBbox, setPendingBbox] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const handleEditOcr = useCallback((id: string | null) => {
+    setEditingOcrId(id);
+    setPendingBbox(null);
+  }, []);
   const [ocrSelectionRanges, setOcrSelectionRanges] = useState<
     Map<string, { start: number; end: number }>
   >(new Map());
@@ -682,6 +694,19 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   imgRef={imgRef}
                 />
               )}
+            {editingOcrId != null &&
+              ocrResults.length > 0 &&
+              detail?.width &&
+              detail?.height && (
+                <OcrBboxEditOverlay
+                  ocrResults={ocrResults}
+                  editingOcrId={editingOcrId}
+                  photoWidth={detail.width}
+                  photoHeight={detail.height}
+                  imgRef={imgRef}
+                  onBboxChange={setPendingBbox}
+                />
+              )}
             {hoveredOcrId != null &&
               ocrResults.length > 0 &&
               detail?.width &&
@@ -823,6 +848,9 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                   onHoverOcr={setHoveredOcrId}
                   ocrSelectionRanges={ocrSelectionRanges}
                   onRefreshComplete={invalidateAllQueries}
+                  editingOcrId={editingOcrId}
+                  onEditOcr={handleEditOcr}
+                  pendingBbox={pendingBbox}
                   editForm={
                     editing ? (
                       <div className="mb-4 space-y-2">

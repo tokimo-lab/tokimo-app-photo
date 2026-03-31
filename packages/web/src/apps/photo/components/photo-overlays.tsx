@@ -183,6 +183,172 @@ export function OcrHighlightOverlay({
   );
 }
 
+// ── OCR Bbox Edit Overlay (draggable corners) ───────────────────────────────
+
+const HANDLE_SIZE = 10;
+const HANDLE_HALF = HANDLE_SIZE / 2;
+
+type Corner = "tl" | "tr" | "bl" | "br";
+
+export function OcrBboxEditOverlay({
+  ocrResults,
+  editingOcrId,
+  photoWidth,
+  photoHeight,
+  imgRef,
+  onBboxChange,
+}: {
+  ocrResults: PhotoOcrResultItem[];
+  editingOcrId: string;
+  photoWidth: number;
+  photoHeight: number;
+  imgRef: React.RefObject<HTMLImageElement | null>;
+  onBboxChange?: (
+    bbox: { x: number; y: number; w: number; h: number } | null,
+  ) => void;
+}) {
+  const imgRect = useImgRect(imgRef, photoWidth, photoHeight);
+  const r = ocrResults.find((o) => o.id === editingOcrId);
+  const [localBbox, setLocalBbox] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const dragRef = useRef<{
+    corner: Corner;
+    startMouse: { x: number; y: number };
+    startBbox: { x: number; y: number; w: number; h: number };
+  } | null>(null);
+
+  // Reset local bbox when editing target changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: editingOcrId is the intentional trigger
+  useEffect(() => {
+    setLocalBbox(null);
+    onBboxChange?.(null);
+  }, [editingOcrId, onBboxChange]);
+
+  if (
+    !imgRect ||
+    !r ||
+    r.x == null ||
+    r.y == null ||
+    r.w == null ||
+    r.h == null
+  )
+    return null;
+
+  const scaleX = imgRect.w / photoWidth;
+  const scaleY = imgRect.h / photoHeight;
+  const angle = r.angle ?? 0;
+
+  // Use local bbox if user has dragged, otherwise use original
+  const bbox = localBbox ?? { x: r.x, y: r.y, w: r.w, h: r.h };
+
+  const screenX = bbox.x * scaleX;
+  const screenY = bbox.y * scaleY;
+  const screenW = bbox.w * scaleX;
+  const screenH = bbox.h * scaleY;
+
+  const handlePointerDown = (corner: Corner, e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      corner,
+      startMouse: { x: e.clientX, y: e.clientY },
+      startBbox: { ...bbox },
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    e.preventDefault();
+    const { corner, startMouse, startBbox } = dragRef.current;
+    const dx = (e.clientX - startMouse.x) / scaleX;
+    const dy = (e.clientY - startMouse.y) / scaleY;
+
+    const next = { ...startBbox };
+    if (corner === "tl") {
+      next.x = startBbox.x + dx;
+      next.y = startBbox.y + dy;
+      next.w = startBbox.w - dx;
+      next.h = startBbox.h - dy;
+    } else if (corner === "tr") {
+      next.y = startBbox.y + dy;
+      next.w = startBbox.w + dx;
+      next.h = startBbox.h - dy;
+    } else if (corner === "bl") {
+      next.x = startBbox.x + dx;
+      next.w = startBbox.w - dx;
+      next.h = startBbox.h + dy;
+    } else {
+      next.w = startBbox.w + dx;
+      next.h = startBbox.h + dy;
+    }
+
+    // Enforce minimum size
+    if (next.w < 5) next.w = 5;
+    if (next.h < 5) next.h = 5;
+    setLocalBbox(next);
+    onBboxChange?.(next);
+  };
+
+  const handlePointerUp = () => {
+    dragRef.current = null;
+  };
+
+  const corners: { key: Corner; cx: number; cy: number; cursor: string }[] = [
+    { key: "tl", cx: 0, cy: 0, cursor: "nwse-resize" },
+    { key: "tr", cx: screenW, cy: 0, cursor: "nesw-resize" },
+    { key: "bl", cx: 0, cy: screenH, cursor: "nesw-resize" },
+    { key: "br", cx: screenW, cy: screenH, cursor: "nwse-resize" },
+  ];
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
+    <div
+      className="absolute"
+      style={{
+        left: imgRect.offsetX,
+        top: imgRect.offsetY,
+        width: imgRect.w,
+        height: imgRect.h,
+      }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      <div
+        className="absolute border-2 border-amber-400 bg-amber-400/10"
+        style={{
+          left: screenX,
+          top: screenY,
+          width: screenW,
+          height: screenH,
+          transform: angle ? `rotate(${angle}deg)` : undefined,
+          transformOrigin: "center center",
+        }}
+      >
+        {corners.map(({ key, cx, cy, cursor }) => (
+          // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
+          <div
+            key={key}
+            className="absolute z-10 rounded-full border-2 border-amber-400 bg-white shadow-md"
+            style={{
+              width: HANDLE_SIZE,
+              height: HANDLE_SIZE,
+              left: cx - HANDLE_HALF,
+              top: cy - HANDLE_HALF,
+              cursor,
+            }}
+            onPointerDown={(e) => handlePointerDown(key, e)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── OCR Character-level Selection Layer ─────────────────────────────────────
 
 // Lazy-loaded WASM module
