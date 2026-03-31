@@ -16,6 +16,8 @@ import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+/** Opacity fade duration for clipped-source animations (≈ 1/4 of ANIM_DURATION). */
+const FADE_DURATION = 80;
 
 const preventDrag = (e: React.SyntheticEvent) => e.preventDefault();
 
@@ -24,6 +26,8 @@ interface FlyRect {
   left: number;
   width: number;
   height: number;
+  /** True when the rect was clipped by an overflow:hidden ancestor (zoomed image). */
+  clipped?: boolean;
 }
 
 function queryElementRect(selector: string): FlyRect | null {
@@ -56,6 +60,12 @@ function queryElementRect(selector: string): FlyRect | null {
   const height = bottom - top;
   if (width <= 0 || height <= 0) return null;
 
+  const clipped =
+    top !== raw.top ||
+    left !== raw.left ||
+    right !== raw.right ||
+    bottom !== raw.bottom;
+
   if (
     bottom < 0 ||
     top > window.innerHeight ||
@@ -63,7 +73,7 @@ function queryElementRect(selector: string): FlyRect | null {
     left > window.innerWidth
   )
     return null;
-  return { top, left, width, height };
+  return { top, left, width, height, clipped };
 }
 
 /** For images smaller than the available area, compute a default zoom (up to 2×)
@@ -215,6 +225,8 @@ export function PhotoLightbox({
   });
   const [flyRect, setFlyRect] = useState<FlyRect | null>(null);
   const [flyTransition, setFlyTransition] = useState(false);
+  /** True when the animation source is clipped (zoomed windowed viewer). */
+  const sourceClippedRef = useRef(false);
 
   // ── Progressive image loading: thumbnail first, then full-res ─────────────
   const [fullLoaded, setFullLoaded] = useState(false);
@@ -322,6 +334,8 @@ export function PhotoLightbox({
       return;
     }
 
+    sourceClippedRef.current = thumbRect.clipped ?? false;
+
     // Use showInfo (from localStorage) to compute correct target position
     const target = computeCenterRect(
       photoDims.width,
@@ -358,6 +372,7 @@ export function PhotoLightbox({
     const infoVisible = showInfo && detail != null;
 
     if (thumbRect && photoDims && thumbSrc) {
+      sourceClippedRef.current = thumbRect.clipped ?? false;
       const current = computeCenterRect(
         photoDims.width,
         photoDims.height,
@@ -777,31 +792,60 @@ export function PhotoLightbox({
       />
 
       {/* Flying image overlay (visible during enter/exit animation) */}
-      {showFlyImage && flyRect && (
-        <div
-          className="pointer-events-none fixed overflow-hidden"
-          style={{
-            zIndex: 20,
-            top: flyRect.top,
-            left: flyRect.left,
-            width: flyRect.width,
-            height: flyRect.height,
-            borderRadius: flyTransition
-              ? animState === "entering"
-                ? 0
-                : 6
-              : animState === "entering"
-                ? 6
-                : 0,
-            transition: flyTransition
-              ? `top ${ANIM_DURATION}ms ${ANIM_EASING}, left ${ANIM_DURATION}ms ${ANIM_EASING}, width ${ANIM_DURATION}ms ${ANIM_EASING}, height ${ANIM_DURATION}ms ${ANIM_EASING}, border-radius ${ANIM_DURATION}ms ${ANIM_EASING}`
-              : "none",
-            willChange: "top, left, width, height",
-          }}
-        >
-          <img src={thumbSrc} alt="" className="h-full w-full object-cover" />
-        </div>
-      )}
+      {showFlyImage &&
+        flyRect &&
+        (() => {
+          const clipped = sourceClippedRef.current;
+          // When the source is clipped (zoomed viewer), fade the fly image to
+          // avoid a visual "shrink then grow" jump:
+          //   enter: 0 → 1 quickly   |  exit: 1 → 0 quickly near end
+          let flyOpacity: number;
+          let opacityTransition: string;
+          if (!clipped) {
+            flyOpacity = 1;
+            opacityTransition = "";
+          } else if (animState === "entering") {
+            flyOpacity = flyTransition ? 1 : 0;
+            opacityTransition = `opacity ${FADE_DURATION}ms ease-out`;
+          } else {
+            // exiting: stay opaque, then fade out in the last ~FADE_DURATION ms
+            flyOpacity = flyTransition ? 0 : 1;
+            opacityTransition = `opacity ${FADE_DURATION}ms ease-in ${ANIM_DURATION - FADE_DURATION}ms`;
+          }
+          const posTransition = `top ${ANIM_DURATION}ms ${ANIM_EASING}, left ${ANIM_DURATION}ms ${ANIM_EASING}, width ${ANIM_DURATION}ms ${ANIM_EASING}, height ${ANIM_DURATION}ms ${ANIM_EASING}, border-radius ${ANIM_DURATION}ms ${ANIM_EASING}`;
+          return (
+            <div
+              className="pointer-events-none fixed overflow-hidden"
+              style={{
+                zIndex: 20,
+                top: flyRect.top,
+                left: flyRect.left,
+                width: flyRect.width,
+                height: flyRect.height,
+                opacity: flyOpacity,
+                borderRadius: flyTransition
+                  ? animState === "entering"
+                    ? 0
+                    : 6
+                  : animState === "entering"
+                    ? 6
+                    : 0,
+                transition: flyTransition
+                  ? [posTransition, opacityTransition]
+                      .filter(Boolean)
+                      .join(", ")
+                  : "none",
+                willChange: "top, left, width, height, opacity",
+              }}
+            >
+              <img
+                src={thumbSrc}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            </div>
+          );
+        })()}
 
       {/* Main content */}
       <div
