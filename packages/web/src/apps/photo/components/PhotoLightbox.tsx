@@ -29,21 +29,41 @@ interface FlyRect {
 function queryElementRect(selector: string): FlyRect | null {
   const el = document.querySelector(selector);
   if (!el) return null;
-  const rect = el.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return null;
+  const raw = el.getBoundingClientRect();
+  if (raw.width === 0 || raw.height === 0) return null;
+
+  // Clip to nearest overflow:hidden ancestor so zoomed/panned images report
+  // the visible portion rather than the full rendered size.
+  let top = raw.top;
+  let left = raw.left;
+  let right = raw.right;
+  let bottom = raw.bottom;
+  let parent = el.parentElement;
+  while (parent) {
+    const ov = getComputedStyle(parent).overflow;
+    if (ov === "hidden" || ov === "clip") {
+      const pr = parent.getBoundingClientRect();
+      top = Math.max(top, pr.top);
+      left = Math.max(left, pr.left);
+      right = Math.min(right, pr.right);
+      bottom = Math.min(bottom, pr.bottom);
+      break;
+    }
+    parent = parent.parentElement;
+  }
+
+  const width = right - left;
+  const height = bottom - top;
+  if (width <= 0 || height <= 0) return null;
+
   if (
-    rect.bottom < 0 ||
-    rect.top > window.innerHeight ||
-    rect.right < 0 ||
-    rect.left > window.innerWidth
+    bottom < 0 ||
+    top > window.innerHeight ||
+    right < 0 ||
+    left > window.innerWidth
   )
     return null;
-  return {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  };
+  return { top, left, width, height };
 }
 
 /** For images smaller than the available area, compute a default zoom (up to 2×)
