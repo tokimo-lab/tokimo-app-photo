@@ -342,6 +342,7 @@ export function PhotoLightbox({
       photoDims.height,
       showInfo,
     );
+
     setFlyRect(thumbRect);
     setFlyTransition(false);
 
@@ -378,6 +379,7 @@ export function PhotoLightbox({
         photoDims.height,
         infoVisible,
       );
+
       setAnimState("exiting");
       setFlyRect(current);
       setFlyTransition(false);
@@ -812,6 +814,7 @@ export function PhotoLightbox({
             flyOpacity = flyTransition ? 0 : 1;
             opacityTransition = `opacity ${FADE_DURATION}ms ease-in ${ANIM_DURATION - FADE_DURATION}ms`;
           }
+
           const posTransition = `top ${ANIM_DURATION}ms ${ANIM_EASING}, left ${ANIM_DURATION}ms ${ANIM_EASING}, width ${ANIM_DURATION}ms ${ANIM_EASING}, height ${ANIM_DURATION}ms ${ANIM_EASING}, border-radius ${ANIM_DURATION}ms ${ANIM_EASING}`;
           return (
             <div
