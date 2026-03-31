@@ -36,6 +36,8 @@ import { getViewerPhotos } from "./photo-viewer-store";
 const MAX_SCALE = 20;
 const INFO_PANEL_STORAGE_KEY = "photo-viewer-info-panel-open";
 
+const preventDrag = (e: React.SyntheticEvent) => e.preventDefault();
+
 interface Props {
   win: WindowState;
 }
@@ -472,6 +474,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0 || !isZoomed) return;
+      e.preventDefault();
       isDragging.current = true;
       setDragging(true);
       dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
@@ -647,7 +650,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: zoom/pan canvas needs mouse events */}
       <div
         ref={containerRef}
-        className={`relative flex-1 overflow-hidden ${
+        className={`relative flex-1 overflow-hidden select-none ${
           isZoomed
             ? dragging
               ? "cursor-grabbing"
@@ -657,7 +660,9 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onDoubleClick={handleDoubleClick}
+        onDragStart={preventDrag}
       >
         {/* Two-layer rendering: shrink-wrap transform div like Lightbox */}
         <div className="absolute inset-0 flex items-center justify-center">
@@ -678,7 +683,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               src={thumbUrl}
               alt={photo?.filename ?? ""}
               draggable={false}
-              className={`max-h-full max-w-full object-contain select-none ${
+              className={`max-h-full max-w-full object-contain select-none pointer-events-none ${
                 !mounted
                   ? "opacity-0"
                   : thumbFadeOut
@@ -700,7 +705,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
                 src={fullBlobUrl}
                 alt={photo?.filename ?? ""}
                 draggable={false}
-                className={`absolute inset-0 max-h-full max-w-full object-contain select-none transition-opacity duration-200 ${
+                className={`absolute inset-0 max-h-full max-w-full object-contain select-none pointer-events-none transition-opacity duration-200 ${
                   fullDecoded ? "opacity-100" : "opacity-0"
                 }`}
                 style={{

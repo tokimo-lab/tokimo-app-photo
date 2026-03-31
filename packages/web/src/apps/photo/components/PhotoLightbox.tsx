@@ -17,6 +17,8 @@ import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 
+const preventDrag = (e: React.SyntheticEvent) => e.preventDefault();
+
 interface FlyRect {
   top: number;
   left: number;
@@ -559,6 +561,7 @@ export function PhotoLightbox({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0 || !isZoomed) return;
+      e.preventDefault();
       isDragging.current = true;
       setDragging(true);
       dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
@@ -885,7 +888,7 @@ export function PhotoLightbox({
           <div
             ref={imageContainerRef}
             role="application"
-            className="flex flex-1 items-center justify-center overflow-hidden p-12"
+            className="flex flex-1 items-center justify-center overflow-hidden select-none p-12"
             style={{
               cursor: dragging ? "grabbing" : isZoomed ? "grab" : "default",
             }}
@@ -894,6 +897,7 @@ export function PhotoLightbox({
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onDoubleClick={handleDoubleClick}
+            onDragStart={preventDrag}
           >
             {thumbSrc || fullSrc ? (
               <div
@@ -912,7 +916,7 @@ export function PhotoLightbox({
                     ref={fullDecoded ? undefined : imgRef}
                     src={thumbSrc}
                     alt={photo.title || photo.filename}
-                    className="max-h-[calc(100vh-6rem)] max-w-full select-none object-contain"
+                    className="max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain"
                     style={thumbDisplaySize}
                     draggable={false}
                   />
@@ -923,12 +927,11 @@ export function PhotoLightbox({
                     ref={fullDecoded ? imgRef : undefined}
                     src={fullBlobUrl}
                     alt={photo.title || photo.filename}
-                    className={`max-h-[calc(100vh-6rem)] max-w-full select-none object-contain ${!fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
+                    className={`max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain ${!fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
                     draggable={false}
                     onLoad={() => setFullDecoded(true)}
                   />
                 )}
-                {/* Loading progress bar */}
                 {shouldLoadFull && !fullLoaded && fullSrc && (
                   <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
                     <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/10">
