@@ -204,32 +204,14 @@ export function OcrHighlightOverlay({
   );
 }
 
-// ── OCR Bbox Edit Overlay (draggable corners + rotation) ─────────────────────
+// ── OCR Bbox Edit Overlay (draggable corners + edges + rotation) ─────────────
 
 const HANDLE_SIZE = 10;
 const HANDLE_HALF = HANDLE_SIZE / 2;
 const ROTATION_ARM = 24;
 
-type Corner = "tl" | "tr" | "bl" | "br";
-type DragMode = { type: "corner"; corner: Corner } | { type: "rotate" };
-
 // Inline SVG rotation cursor — white fill, black outline, circular arrow
 const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M12 4a8 8 0 1 0 8 8' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round'/><path d='M12 4a8 8 0 1 0 8 8' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round'/><path d='M20 4v5h-5' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 4v5h-5' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>") 12 12, crosshair`;
-
-// Rotation-aware resize cursor: maps corner base direction + box angle to CSS cursor
-function resizeCursor(cornerDeg: number, angleDeg: number): string {
-  let d = (((cornerDeg + angleDeg) % 360) + 360) % 360;
-  if (d >= 180) d -= 180;
-  const idx = Math.round(d / 45) % 4;
-  return ["ns-resize", "nesw-resize", "ew-resize", "nwse-resize"][idx];
-}
-// Corner natural directions (degrees from north, clockwise)
-const CORNER_DEG: Record<Corner, number> = {
-  tl: 315,
-  tr: 45,
-  bl: 225,
-  br: 135,
-};
 
 // Quad edge definitions: [startCornerIdx, endCornerIdx] — TL→TR, TR→BR, BR→BL, BL→TL
 const QUAD_EDGES: [number, number][] = [
@@ -276,28 +258,12 @@ export function OcrBboxEditOverlay({
   // Determine if this result uses quad corners
   const hasQuadCorners = r?.corners && r.corners.length === 4;
 
-  // ── Rect mode state ──
-  const [localBbox, setLocalBbox] = useState<{
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    angle?: number;
-  } | null>(null);
-  const dragRef = useRef<{
-    mode: DragMode;
-    startMouse: { x: number; y: number };
-    startBbox: { x: number; y: number; w: number; h: number };
-    startAngle: number;
-    containerRect: { left: number; top: number };
-  } | null>(null);
-
-  // ── Quad mode state ──
+  // ── Quad mode state (always used — rect params are converted to corners) ──
   const [localCorners, setLocalCorners] = useState<[number, number][] | null>(
     null,
   );
   const quadDragRef = useRef<{
-    type: "corner" | "edge";
+    type: "corner" | "edge" | "rotate";
     idx: number;
     startMouse: { x: number; y: number };
     startCorners: [number, number][];
@@ -306,7 +272,6 @@ export function OcrBboxEditOverlay({
   // Reset state when editing target changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: editingOcrId is the intentional trigger
   useEffect(() => {
-    setLocalBbox(null);
     setLocalCorners(null);
     onBboxChange?.(null);
   }, [editingOcrId, onBboxChange]);
@@ -324,305 +289,175 @@ export function OcrBboxEditOverlay({
   const scaleX = imgRect.w / photoWidth;
   const scaleY = imgRect.h / photoHeight;
 
-  // ── Quad corners mode ──
-  if (hasQuadCorners) {
-    const pts: [number, number][] =
-      localCorners ?? (r.corners as [number, number][]);
+  // ── Always use quad mode — compute corners from rect params if not stored ──
+  const storedPts = hasQuadCorners ? (r.corners as [number, number][]) : null;
 
-    // Compute bounding box from corners for the payload
-    const emitChange = (newPts: [number, number][]) => {
-      const xs = newPts.map(([x]) => x);
-      const ys = newPts.map(([, y]) => y);
-      const minX = Math.min(...xs);
-      const minY = Math.min(...ys);
-      const maxX = Math.max(...xs);
-      const maxY = Math.max(...ys);
-      onBboxChange?.({
-        x: minX,
-        y: minY,
-        w: maxX - minX,
-        h: maxY - minY,
-        corners: newPts,
-      });
-    };
+  // Compute corners from x,y,w,h,angle when no explicit corners
+  const computedPts = (): [number, number][] => {
+    const cx = r.x! + r.w! / 2;
+    const cy = r.y! + r.h! / 2;
+    const hw = r.w! / 2;
+    const hh = r.h! / 2;
+    const rad = ((r.angle ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    // [TL, TR, BR, BL]
+    return [
+      [cx + -hw * cos - -hh * sin, cy + -hw * sin + -hh * cos],
+      [cx + hw * cos - -hh * sin, cy + hw * sin + -hh * cos],
+      [cx + hw * cos - hh * sin, cy + hw * sin + hh * cos],
+      [cx + -hw * cos - hh * sin, cy + -hw * sin + hh * cos],
+    ];
+  };
 
-    const handleQuadPointerDown = (
-      type: "corner" | "edge",
-      idx: number,
-      e: React.PointerEvent,
-    ) => {
-      e.preventDefault();
-      e.stopPropagation();
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
-      quadDragRef.current = {
-        type,
-        idx,
-        startMouse: { x: e.clientX, y: e.clientY },
-        startCorners: pts.map(([x, y]) => [x, y] as [number, number]),
-      };
-    };
+  const pts: [number, number][] = localCorners ?? storedPts ?? computedPts();
 
-    const handleQuadPointerMove = (e: React.PointerEvent) => {
-      if (!quadDragRef.current) return;
-      e.preventDefault();
-      const { type, idx, startMouse, startCorners } = quadDragRef.current;
-      const dxPhoto = (e.clientX - startMouse.x) / scaleX;
-      const dyPhoto = (e.clientY - startMouse.y) / scaleY;
+  // Compute bounding box from corners for the payload
+  const emitChange = (newPts: [number, number][]) => {
+    const xs = newPts.map(([x]) => x);
+    const ys = newPts.map(([, y]) => y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    onBboxChange?.({
+      x: minX,
+      y: minY,
+      w: maxX - minX,
+      h: maxY - minY,
+      corners: newPts,
+    });
+  };
 
-      if (type === "corner") {
-        const newPts = startCorners.map(
-          ([x, y], i) =>
-            (i === idx ? [x + dxPhoto, y + dyPhoto] : [x, y]) as [
-              number,
-              number,
-            ],
-        );
-        setLocalCorners(newPts);
-        emitChange(newPts);
-      } else {
-        // Edge drag: slide both endpoints along the edge's tangent direction
-        const [ei, ej] = QUAD_EDGES[idx];
-        const edgeDx = startCorners[ej][0] - startCorners[ei][0];
-        const edgeDy = startCorners[ej][1] - startCorners[ei][1];
-        const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-        if (edgeLen < 1e-6) return;
-        const tx = edgeDx / edgeLen;
-        const ty = edgeDy / edgeLen;
-        const proj = dxPhoto * tx + dyPhoto * ty;
-        const newPts = startCorners.map(
-          ([x, y], i) =>
-            (i === ei || i === ej
-              ? [x + proj * tx, y + proj * ty]
-              : [x, y]) as [number, number],
-        );
-        setLocalCorners(newPts);
-        emitChange(newPts);
-      }
-    };
+  // Centroid of quad (rotation pivot)
+  const centroid: [number, number] = [
+    (pts[0][0] + pts[1][0] + pts[2][0] + pts[3][0]) / 4,
+    (pts[0][1] + pts[1][1] + pts[2][1] + pts[3][1]) / 4,
+  ];
 
-    const handleQuadPointerUp = () => {
-      quadDragRef.current = null;
-    };
-
-    const svgPoints = pts
-      .map(([x, y]) => `${x * scaleX},${y * scaleY}`)
-      .join(" ");
-
-    return (
-      // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
-      <div
-        ref={overlayRef}
-        className="absolute"
-        style={{
-          left: imgRect.offsetX,
-          top: imgRect.offsetY,
-          width: imgRect.w,
-          height: imgRect.h,
-        }}
-        onPointerMove={handleQuadPointerMove}
-        onPointerUp={handleQuadPointerUp}
-      >
-        <svg
-          className="absolute left-0 top-0"
-          width={imgRect.w}
-          height={imgRect.h}
-        >
-          <polygon
-            points={svgPoints}
-            fill="rgba(251,191,36,0.1)"
-            stroke="rgb(251,191,36)"
-            strokeWidth={2}
-            style={{ pointerEvents: "none" }}
-          />
-          {/* Edge drag hit areas */}
-          {QUAD_EDGES.map(([ei, ej], edgeIdx) => {
-            const x1 = pts[ei][0] * scaleX;
-            const y1 = pts[ei][1] * scaleY;
-            const x2 = pts[ej][0] * scaleX;
-            const y2 = pts[ej][1] * scaleY;
-            const edgeKey = (["top", "right", "bottom", "left"] as const)[
-              edgeIdx
-            ];
-            return (
-              <line
-                key={edgeKey}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="transparent"
-                strokeWidth={14}
-                style={{ cursor: edgeCursor(x1, y1, x2, y2) }}
-                onPointerDown={(e) => handleQuadPointerDown("edge", edgeIdx, e)}
-              />
-            );
-          })}
-        </svg>
-        {pts.map(([px, py], idx) => {
-          const cornerKey = (["tl", "tr", "br", "bl"] as const)[idx];
-          return (
-            // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
-            <div
-              key={cornerKey}
-              className="absolute z-10 rounded-full border-2 border-amber-400 bg-white shadow-md"
-              style={{
-                width: HANDLE_SIZE,
-                height: HANDLE_SIZE,
-                left: px * scaleX - HANDLE_HALF,
-                top: py * scaleY - HANDLE_HALF,
-                cursor: "move",
-              }}
-              onPointerDown={(e) => handleQuadPointerDown("corner", idx, e)}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  // ── Rect + angle mode (original) ──
-  const origAngle = r.angle ?? 0;
-  const angle = localBbox?.angle ?? origAngle;
-
-  const bbox = localBbox
-    ? { x: localBbox.x, y: localBbox.y, w: localBbox.w, h: localBbox.h }
-    : { x: r.x, y: r.y, w: r.w, h: r.h };
-
-  const screenX = bbox.x * scaleX;
-  const screenY = bbox.y * scaleY;
-  const screenW = bbox.w * scaleX;
-  const screenH = bbox.h * scaleY;
-
-  const handlePointerDown = (mode: DragMode, e: React.PointerEvent) => {
+  const handleQuadPointerDown = (
+    type: "corner" | "edge" | "rotate",
+    idx: number,
+    e: React.PointerEvent,
+  ) => {
     e.preventDefault();
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const rect = overlayRef.current?.getBoundingClientRect();
-    dragRef.current = {
-      mode,
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    quadDragRef.current = {
+      type,
+      idx,
       startMouse: { x: e.clientX, y: e.clientY },
-      startBbox: { ...bbox },
-      startAngle: angle,
-      containerRect: rect
-        ? { left: rect.left, top: rect.top }
-        : { left: 0, top: 0 },
+      startCorners: pts.map(([x, y]) => [x, y] as [number, number]),
     };
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
+  const handleQuadPointerMove = (e: React.PointerEvent) => {
+    if (!quadDragRef.current) return;
     e.preventDefault();
-    const { mode, startMouse, startBbox, startAngle, containerRect } =
-      dragRef.current;
+    const { type, idx, startMouse, startCorners } = quadDragRef.current;
+    const dxPhoto = (e.clientX - startMouse.x) / scaleX;
+    const dyPhoto = (e.clientY - startMouse.y) / scaleY;
 
-    if (mode.type === "rotate") {
-      const cx =
-        containerRect.left + startBbox.x * scaleX + (startBbox.w * scaleX) / 2;
-      const cy =
-        containerRect.top + startBbox.y * scaleY + (startBbox.h * scaleY) / 2;
-      const mouseAngle = Math.atan2(e.clientX - cx, -(e.clientY - cy));
-      const startMouseAngle = Math.atan2(
-        startMouse.x - cx,
-        -(startMouse.y - cy),
+    if (type === "corner") {
+      const newPts = startCorners.map(
+        ([x, y], i) =>
+          (i === idx ? [x + dxPhoto, y + dyPhoto] : [x, y]) as [number, number],
       );
-      const deltaAngle = ((mouseAngle - startMouseAngle) * 180) / Math.PI;
-      const newAngle = startAngle + deltaAngle;
-      const next = { ...startBbox, angle: newAngle };
-      setLocalBbox(next);
-      onBboxChange?.(next);
-      return;
-    }
-
-    const { corner } = mode;
-    const dxScreen = e.clientX - startMouse.x;
-    const dyScreen = e.clientY - startMouse.y;
-    const dxPhoto = dxScreen / scaleX;
-    const dyPhoto = dyScreen / scaleY;
-
-    const sRad = (startAngle * Math.PI) / 180;
-    const scos = Math.cos(sRad);
-    const ssin = Math.sin(sRad);
-    const dxLocal = dxPhoto * scos + dyPhoto * ssin;
-    const dyLocal = -dxPhoto * ssin + dyPhoto * scos;
-
-    let newW = startBbox.w;
-    let newH = startBbox.h;
-    if (corner === "tl") {
-      newW = startBbox.w - dxLocal;
-      newH = startBbox.h - dyLocal;
-    } else if (corner === "tr") {
-      newW = startBbox.w + dxLocal;
-      newH = startBbox.h - dyLocal;
-    } else if (corner === "bl") {
-      newW = startBbox.w - dxLocal;
-      newH = startBbox.h + dyLocal;
+      setLocalCorners(newPts);
+      emitChange(newPts);
+    } else if (type === "edge") {
+      // Edge drag: slide both endpoints along the edge's tangent direction
+      const [ei, ej] = QUAD_EDGES[idx];
+      const edgeDx = startCorners[ej][0] - startCorners[ei][0];
+      const edgeDy = startCorners[ej][1] - startCorners[ei][1];
+      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+      if (edgeLen < 1e-6) return;
+      const tx = edgeDx / edgeLen;
+      const ty = edgeDy / edgeLen;
+      const proj = dxPhoto * tx + dyPhoto * ty;
+      const newPts = startCorners.map(
+        ([x, y], i) =>
+          (i === ei || i === ej ? [x + proj * tx, y + proj * ty] : [x, y]) as [
+            number,
+            number,
+          ],
+      );
+      setLocalCorners(newPts);
+      emitChange(newPts);
     } else {
-      newW = startBbox.w + dxLocal;
-      newH = startBbox.h + dyLocal;
+      // Rotate all corners around centroid
+      const cx =
+        (startCorners[0][0] +
+          startCorners[1][0] +
+          startCorners[2][0] +
+          startCorners[3][0]) /
+        4;
+      const cy =
+        (startCorners[0][1] +
+          startCorners[1][1] +
+          startCorners[2][1] +
+          startCorners[3][1]) /
+        4;
+      // Use screen-space for angle calc (accounts for non-uniform scale)
+      const cxS = cx * scaleX;
+      const cyS = cy * scaleY;
+      const rect = overlayRef.current?.getBoundingClientRect();
+      const offX = rect?.left ?? 0;
+      const offY = rect?.top ?? 0;
+      const mouseAngle = Math.atan2(
+        e.clientX - (offX + cxS),
+        -(e.clientY - (offY + cyS)),
+      );
+      const startMouseAngle = Math.atan2(
+        startMouse.x - (offX + cxS),
+        -(startMouse.y - (offY + cyS)),
+      );
+      const deltaRad = mouseAngle - startMouseAngle;
+      const cosD = Math.cos(deltaRad);
+      const sinD = Math.sin(deltaRad);
+      const newPts = startCorners.map(([x, y]) => {
+        const dx = x - cx;
+        const dy = y - cy;
+        return [cx + dx * cosD - dy * sinD, cy + dx * sinD + dy * cosD] as [
+          number,
+          number,
+        ];
+      });
+      setLocalCorners(newPts);
+      emitChange(newPts);
     }
-    if (newW < 5) newW = 5;
-    if (newH < 5) newH = 5;
-
-    const oldCx = startBbox.x + startBbox.w / 2;
-    const oldCy = startBbox.y + startBbox.h / 2;
-
-    let fixLx: number;
-    let fixLy: number;
-    if (corner === "tl") {
-      fixLx = startBbox.w / 2;
-      fixLy = startBbox.h / 2;
-    } else if (corner === "tr") {
-      fixLx = -startBbox.w / 2;
-      fixLy = startBbox.h / 2;
-    } else if (corner === "bl") {
-      fixLx = startBbox.w / 2;
-      fixLy = -startBbox.h / 2;
-    } else {
-      fixLx = -startBbox.w / 2;
-      fixLy = -startBbox.h / 2;
-    }
-    const fixWx = oldCx + fixLx * scos - fixLy * ssin;
-    const fixWy = oldCy + fixLx * ssin + fixLy * scos;
-
-    let fixNLx: number;
-    let fixNLy: number;
-    if (corner === "tl") {
-      fixNLx = newW / 2;
-      fixNLy = newH / 2;
-    } else if (corner === "tr") {
-      fixNLx = -newW / 2;
-      fixNLy = newH / 2;
-    } else if (corner === "bl") {
-      fixNLx = newW / 2;
-      fixNLy = -newH / 2;
-    } else {
-      fixNLx = -newW / 2;
-      fixNLy = -newH / 2;
-    }
-    const newCx = fixWx - (fixNLx * scos - fixNLy * ssin);
-    const newCy = fixWy - (fixNLx * ssin + fixNLy * scos);
-
-    const next = {
-      x: newCx - newW / 2,
-      y: newCy - newH / 2,
-      w: newW,
-      h: newH,
-      angle: startAngle,
-    };
-    setLocalBbox(next);
-    onBboxChange?.(next);
   };
 
-  const handlePointerUp = () => {
-    dragRef.current = null;
+  const handleQuadPointerUp = () => {
+    quadDragRef.current = null;
   };
 
-  const rectCorners: { key: Corner; cx: number; cy: number }[] = [
-    { key: "tl", cx: 0, cy: 0 },
-    { key: "tr", cx: screenW, cy: 0 },
-    { key: "bl", cx: 0, cy: screenH },
-    { key: "br", cx: screenW, cy: screenH },
-  ];
+  const svgPoints = pts
+    .map(([x, y]) => `${x * scaleX},${y * scaleY}`)
+    .join(" ");
+
+  // Rotation handle: above top edge midpoint, offset along outward normal
+  const topMidX = ((pts[0][0] + pts[1][0]) / 2) * scaleX;
+  const topMidY = ((pts[0][1] + pts[1][1]) / 2) * scaleY;
+  const topEdgeDx = pts[1][0] * scaleX - pts[0][0] * scaleX;
+  const topEdgeDy = pts[1][1] * scaleY - pts[0][1] * scaleY;
+  const topEdgeLen = Math.sqrt(topEdgeDx * topEdgeDx + topEdgeDy * topEdgeDy);
+  // Outward normal (perpendicular, pointing away from centroid)
+  let normalX = topEdgeLen > 0 ? -topEdgeDy / topEdgeLen : 0;
+  let normalY = topEdgeLen > 0 ? topEdgeDx / topEdgeLen : -1;
+  const centroidSx = centroid[0] * scaleX;
+  const centroidSy = centroid[1] * scaleY;
+  if (normalX * (topMidX - centroidSx) + normalY * (topMidY - centroidSy) < 0) {
+    normalX = -normalX;
+    normalY = -normalY;
+  }
+  const rotHandleX = topMidX + normalX * ROTATION_ARM;
+  const rotHandleY = topMidY + normalY * ROTATION_ARM;
+  // Direction arrow midpoint on arm
+  const arrowX = topMidX + normalX * ROTATION_ARM * 0.4;
+  const arrowY = topMidY + normalY * ROTATION_ARM * 0.4;
+  // Arrow rotation: perpendicular to arm pointing "down" toward the quad
+  const armAngleDeg = Math.atan2(normalY, normalX) * (180 / Math.PI) + 90;
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
@@ -635,77 +470,96 @@ export function OcrBboxEditOverlay({
         width: imgRect.w,
         height: imgRect.h,
       }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerMove={handleQuadPointerMove}
+      onPointerUp={handleQuadPointerUp}
     >
-      <div
-        className="absolute border-2 border-amber-400 bg-amber-400/10"
-        style={{
-          left: screenX,
-          top: screenY,
-          width: screenW,
-          height: screenH,
-          transform: `rotate(${angle}deg)`,
-          transformOrigin: "center center",
-        }}
+      <svg
+        className="absolute left-0 top-0"
+        width={imgRect.w}
+        height={imgRect.h}
+        style={{ overflow: "visible" }}
       >
-        {/* Corner resize handles */}
-        {rectCorners.map(({ key, cx, cy }) => (
+        <polygon
+          points={svgPoints}
+          fill="rgba(251,191,36,0.1)"
+          stroke="rgb(251,191,36)"
+          strokeWidth={2}
+          style={{ pointerEvents: "none" }}
+        />
+        {/* Edge drag hit areas — pointerEvents="all" to catch transparent strokes */}
+        {QUAD_EDGES.map(([ei, ej], edgeIdx) => {
+          const x1 = pts[ei][0] * scaleX;
+          const y1 = pts[ei][1] * scaleY;
+          const x2 = pts[ej][0] * scaleX;
+          const y2 = pts[ej][1] * scaleY;
+          const edgeKey = (["top", "right", "bottom", "left"] as const)[
+            edgeIdx
+          ];
+          return (
+            <line
+              key={edgeKey}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="transparent"
+              strokeWidth={14}
+              pointerEvents="all"
+              style={{ cursor: edgeCursor(x1, y1, x2, y2) }}
+              onPointerDown={(e) => handleQuadPointerDown("edge", edgeIdx, e)}
+            />
+          );
+        })}
+        {/* Rotation arm line */}
+        <line
+          x1={topMidX}
+          y1={topMidY}
+          x2={rotHandleX}
+          y2={rotHandleY}
+          stroke="rgba(251,191,36,0.5)"
+          strokeWidth={2}
+          style={{ pointerEvents: "none" }}
+        />
+        {/* Text direction arrow on arm */}
+        <g
+          transform={`translate(${arrowX},${arrowY}) rotate(${armAngleDeg})`}
+          style={{ pointerEvents: "none" }}
+        >
+          <polygon points="0,-4 3.5,3 -3.5,3" fill="rgba(251,191,36,0.55)" />
+        </g>
+      </svg>
+      {/* Corner handles */}
+      {pts.map(([px, py], idx) => {
+        const cornerKey = (["tl", "tr", "br", "bl"] as const)[idx];
+        return (
           // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
           <div
-            key={key}
+            key={cornerKey}
             className="absolute z-10 rounded-full border-2 border-amber-400 bg-white shadow-md"
             style={{
               width: HANDLE_SIZE,
               height: HANDLE_SIZE,
-              left: cx - HANDLE_HALF,
-              top: cy - HANDLE_HALF,
-              cursor: resizeCursor(CORNER_DEG[key], angle),
+              left: px * scaleX - HANDLE_HALF,
+              top: py * scaleY - HANDLE_HALF,
+              cursor: "move",
             }}
-            onPointerDown={(e) =>
-              handlePointerDown({ type: "corner", corner: key }, e)
-            }
+            onPointerDown={(e) => handleQuadPointerDown("corner", idx, e)}
           />
-        ))}
-
-        {/* Rotation arm line */}
-        <div
-          className="absolute left-1/2 -translate-x-px"
-          style={{
-            top: -ROTATION_ARM,
-            width: 2,
-            height: ROTATION_ARM,
-            background: "rgba(251,191,36,0.5)",
-          }}
-        />
-
-        {/* Text direction arrow (subtle downward triangle on arm) */}
-        <div
-          className="absolute left-1/2 -translate-x-1/2"
-          style={{
-            top: -ROTATION_ARM * 0.4,
-            width: 0,
-            height: 0,
-            borderLeft: "3.5px solid transparent",
-            borderRight: "3.5px solid transparent",
-            borderTop: "5px solid rgba(251,191,36,0.55)",
-          }}
-        />
-
-        {/* Rotation handle */}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: rotation handle */}
-        <div
-          className="absolute z-10 rounded-full border-2 border-amber-400 bg-amber-400 shadow-md"
-          style={{
-            width: HANDLE_SIZE + 2,
-            height: HANDLE_SIZE + 2,
-            left: screenW / 2 - (HANDLE_SIZE + 2) / 2,
-            top: -ROTATION_ARM - (HANDLE_SIZE + 2) / 2,
-            cursor: ROTATE_CURSOR,
-          }}
-          onPointerDown={(e) => handlePointerDown({ type: "rotate" }, e)}
-        />
-      </div>
+        );
+      })}
+      {/* Rotation handle */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: rotation handle */}
+      <div
+        className="absolute z-10 rounded-full border-2 border-amber-400 bg-amber-400 shadow-md"
+        style={{
+          width: HANDLE_SIZE + 2,
+          height: HANDLE_SIZE + 2,
+          left: rotHandleX - (HANDLE_SIZE + 2) / 2,
+          top: rotHandleY - (HANDLE_SIZE + 2) / 2,
+          cursor: ROTATE_CURSOR,
+        }}
+        onPointerDown={(e) => handleQuadPointerDown("rotate", 0, e)}
+      />
     </div>
   );
 }
