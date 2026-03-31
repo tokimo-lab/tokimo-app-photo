@@ -115,6 +115,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     y: number;
     w: number;
     h: number;
+    angle?: number;
   } | null>(null);
   const handleEditOcr = useCallback((id: string | null) => {
     setEditingOcrId(id);

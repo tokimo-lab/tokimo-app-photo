@@ -144,7 +144,13 @@ function OcrResultRow({
   isHovered: boolean;
   isEditing: boolean;
   range?: { start: number; end: number };
-  pendingBbox?: { x: number; y: number; w: number; h: number } | null;
+  pendingBbox?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    angle?: number;
+  } | null;
   onHover: (id: string | null) => void;
   onStartEdit: () => void;
   onFinishEdit: () => void;
@@ -186,9 +192,14 @@ function OcrResultRow({
       y?: number;
       w?: number;
       h?: number;
+      angle?: number;
     } = { ocrResultId: Number(r.id) };
     if (textChanged) payload.text = trimmed;
-    if (bboxChanged) Object.assign(payload, pendingBbox);
+    if (bboxChanged) {
+      const { angle: bboxAngle, ...coords } = pendingBbox;
+      Object.assign(payload, coords);
+      if (bboxAngle != null) payload.angle = bboxAngle;
+    }
     updateMutation.mutate(payload, {
       onSuccess: invalidateOcr,
       onSettled: onFinishEdit,
@@ -301,11 +312,15 @@ function OcrResultRow({
           r.text
         )}
       </span>
-      {/* Right-aligned: confidence + edit icon (no space when hidden) */}
+      {/* Right-aligned: confidence or manual indicator + edit icon */}
       <span className="ml-1 inline-flex shrink-0 items-center gap-1 self-center">
-        {r.score != null && (
+        {r.score != null ? (
           <span className="text-xs text-white/30">
             {Math.round(r.score * 100)}%
+          </span>
+        ) : (
+          <span className="text-xs text-white/20" title="手动编辑">
+            ✎
           </span>
         )}
         {itemHovered && (
@@ -356,7 +371,13 @@ export function PhotoInfoPanel({
   onNavigateToPerson?: (personId: string) => void;
   editingOcrId?: string | null;
   onEditOcr?: (ocrId: string | null) => void;
-  pendingBbox?: { x: number; y: number; w: number; h: number } | null;
+  pendingBbox?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    angle?: number;
+  } | null;
   onAddOcr?: () => void;
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
