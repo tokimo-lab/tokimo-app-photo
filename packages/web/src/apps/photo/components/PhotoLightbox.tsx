@@ -16,8 +16,13 @@ import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
 
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
-/** Opacity fade duration for clipped-source animations (≈ 1/4 of ANIM_DURATION). */
-const FADE_DURATION = 80;
+/** Opacity fade duration for clipped-source animations. */
+const FADE_DURATION = 200;
+// Slow start near 0, accelerates through mid, reaches 1 smoothly.
+// Gives the "emerging from nothing" feel — lingers transparent, then snaps in.
+const FADE_IN_EASING = "cubic-bezier(0.7, 0, 0.3, 1)";
+// Mirror: stays opaque, then slowly fades toward 0 at the end.
+const FADE_OUT_EASING = "cubic-bezier(0.7, 0, 0.3, 1)";
 
 const preventDrag = (e: React.SyntheticEvent) => e.preventDefault();
 
@@ -806,11 +811,11 @@ export function PhotoLightbox({
             opacityTransition = "";
           } else if (animState === "entering") {
             flyOpacity = flyTransition ? 1 : 0;
-            opacityTransition = `opacity ${FADE_DURATION}ms ease-out`;
+            opacityTransition = `opacity ${FADE_DURATION}ms ${FADE_IN_EASING}`;
           } else {
             // exiting: stay opaque, then fade out in the last ~FADE_DURATION ms
             flyOpacity = flyTransition ? 0 : 1;
-            opacityTransition = `opacity ${FADE_DURATION}ms ease-in ${ANIM_DURATION - FADE_DURATION}ms`;
+            opacityTransition = `opacity ${FADE_DURATION}ms ${FADE_OUT_EASING} ${ANIM_DURATION - FADE_DURATION}ms`;
           }
 
           const posTransition = `top ${ANIM_DURATION}ms ${ANIM_EASING}, left ${ANIM_DURATION}ms ${ANIM_EASING}, width ${ANIM_DURATION}ms ${ANIM_EASING}, height ${ANIM_DURATION}ms ${ANIM_EASING}, border-radius ${ANIM_DURATION}ms ${ANIM_EASING}`;
