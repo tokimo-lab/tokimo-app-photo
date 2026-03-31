@@ -774,10 +774,33 @@ function useOcrEngine(
         photoHeight,
         orientation,
       );
-      const bw = db.w * scX;
-      const bh = db.h * scY;
-      const bx = db.x * scX;
-      const by = db.y * scY;
+
+      // Normalize block so WASM "width" direction matches the on-screen text
+      // direction. The backend stores charPositions along bbox.w, but after EXIF
+      // rotation the text direction may end up along bbox.h. The WASM hit-test
+      // uses local_x (0..bw) for character selection, so we swap w↔h and adjust
+      // the angle to keep the visual block identical while aligning charPositions
+      // with the actual text flow direction on screen.
+      let dw = db.w;
+      let dh = db.h;
+      let dAngle = db.angle;
+      let charPosScale = 1;
+      let normAngle = ((db.angle % 360) + 360) % 360;
+      if (normAngle > 180) normAngle -= 360;
+      if (Math.abs(normAngle) > 45 && Math.abs(normAngle) < 135) {
+        const oldW = dw;
+        dw = dh;
+        dh = oldW;
+        dAngle = normAngle > 0 ? normAngle - 90 : normAngle + 90;
+        charPosScale = dw / dh; // rescale charPositions from old w-range to new w-range
+      }
+
+      const dcx = db.x + db.w / 2;
+      const dcy = db.y + db.h / 2;
+      const bx = (dcx - dw / 2) * scX;
+      const by = (dcy - dh / 2) * scY;
+      const bw = dw * scX;
+      const bh = dh * scY;
       const chars = Array.from(r.text);
 
       texts.push(r.text);
@@ -792,15 +815,16 @@ function useOcrEngine(
           by,
           bw,
           bh,
-          db.angle,
+          dAngle,
           r.paragraphId ?? 0,
           chars.length,
         );
         if (hasMatchingPos) {
           // charPositions are inline offsets within the block — scale proportionally
+          const cpScale = scX * charPosScale;
           for (const cp of r.charPositions!) {
-            dataChunks.push(cp.x * scX);
-            dataChunks.push(cp.w * scX);
+            dataChunks.push(cp.x * cpScale);
+            dataChunks.push(cp.w * cpScale);
           }
         } else {
           // Synthesize [x, w] pairs from measureText proportional widths
@@ -832,7 +856,7 @@ function useOcrEngine(
           by,
           bw,
           bh,
-          db.angle,
+          dAngle,
           r.paragraphId ?? 0,
           chars.length,
           ...charWidths,
@@ -845,7 +869,7 @@ function useOcrEngine(
         y: by,
         w: bw,
         h: bh,
-        angle: db.angle,
+        angle: dAngle,
         charCount: chars.length,
       });
     }
