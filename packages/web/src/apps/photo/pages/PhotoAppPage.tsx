@@ -51,8 +51,8 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
 ];
 
 export default function PhotoAppPage() {
-  const { params } = useWindowNav();
-  const id = params.appId as string | undefined;
+  const { metadata } = useWindowNav();
+  const id = metadata.appId as string | undefined;
   const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +62,7 @@ export default function PhotoAppPage() {
   const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
 
   const [tab, setTabRaw] = useState<TabKey>(
-    (params.tab as TabKey) || "timeline",
+    (metadata.tab as TabKey) || "timeline",
   );
   const setTab = useCallback(
     (t: TabKey) => {

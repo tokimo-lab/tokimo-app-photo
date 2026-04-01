@@ -124,6 +124,7 @@ export function PhotoTimeline({
       openWindow({
         type: "image",
         title: photo.filename,
+        route: `/photos/${photo.id}`,
         appId,
         sourceType: "photo",
         sourceId: photo.id,

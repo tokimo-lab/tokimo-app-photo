@@ -47,8 +47,8 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
-  const { params } = useWindowNav();
-  const id = params.appId as string | undefined;
+  const { metadata } = useWindowNav();
+  const id = metadata.appId as string | undefined;
   const message = useMessage();
   const qc = useQueryClient();
 
