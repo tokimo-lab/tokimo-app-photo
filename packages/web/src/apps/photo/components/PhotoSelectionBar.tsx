@@ -55,7 +55,7 @@ export function PhotoSelectionBar({
 
       <button
         type="button"
-        className="cursor-pointer rounded-full p-1.5 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+        className="cursor-pointer rounded-full p-1.5 text-fg-muted transition-colors hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
         onClick={onClear}
         title="取消选择"
       >

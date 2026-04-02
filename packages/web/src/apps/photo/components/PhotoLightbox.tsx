@@ -1074,7 +1074,7 @@ export function PhotoLightbox({
                 )}
               </div>
             ) : (
-              <div className="text-neutral-400">无法加载图片</div>
+              <div className="text-fg-muted">无法加载图片</div>
             )}
           </div>
 
@@ -1119,7 +1119,7 @@ export function PhotoLightbox({
                       <button
                         type="button"
                         onClick={() => setEditing(false)}
-                        className="cursor-pointer rounded px-2 py-0.5 text-xs text-neutral-400 hover:bg-white/10"
+                        className="cursor-pointer rounded px-2 py-0.5 text-xs text-fg-muted hover:bg-white/10"
                       >
                         取消
                       </button>
@@ -1153,7 +1153,7 @@ export function PhotoLightbox({
                       editing ? (
                         <div className="mb-4 space-y-2">
                           <label className="block">
-                            <span className="mb-1 block text-xs text-neutral-500">
+                            <span className="mb-1 block text-xs text-fg-muted">
                               标题
                             </span>
                             <input
@@ -1165,7 +1165,7 @@ export function PhotoLightbox({
                             />
                           </label>
                           <label className="block">
-                            <span className="mb-1 block text-xs text-neutral-500">
+                            <span className="mb-1 block text-xs text-fg-muted">
                               描述
                             </span>
                             <textarea
@@ -1177,7 +1177,7 @@ export function PhotoLightbox({
                             />
                           </label>
                           <label className="block">
-                            <span className="mb-1 block text-xs text-neutral-500">
+                            <span className="mb-1 block text-xs text-fg-muted">
                               拍摄时间
                             </span>
                             <input
@@ -1201,7 +1201,7 @@ export function PhotoLightbox({
                   </span>
                 </div>
                 <div className="flex flex-1 items-center justify-center">
-                  <div className="text-xs text-neutral-500">加载中…</div>
+                  <div className="text-xs text-fg-muted">加载中…</div>
                 </div>
               </>
             )}

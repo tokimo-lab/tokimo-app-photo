@@ -262,7 +262,7 @@ export function PhotoLocationsView({
       <div className="flex items-center gap-1 px-4 text-sm">
         {breadcrumb.map((item, i) => (
           <span key={item.label} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
             {item.onClick ? (
               <button
                 type="button"
@@ -278,7 +278,7 @@ export function PhotoLocationsView({
             )}
           </span>
         ))}
-        <span className="ml-2 text-neutral-400 dark:text-neutral-500">
+        <span className="ml-2 text-fg-muted">
           {drill.level === "photos"
             ? `${photosTotal} 张照片`
             : `${totalGeoPhotos} 张照片已标注地理位置`}
@@ -299,7 +299,7 @@ export function PhotoLocationsView({
               <button
                 type="button"
                 key={`${g.province}-${g.city}-${g.district}`}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-left transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-750"
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-white px-4 py-3 text-left transition-colors hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-750"
                 onClick={() => handleDrill(g)}
               >
                 <MapPin className="h-5 w-5 shrink-0 text-blue-500" />
@@ -307,11 +307,11 @@ export function PhotoLocationsView({
                   <div className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
                     {label || "未知"}
                   </div>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  <div className="text-xs text-fg-muted">
                     {g.photoCount} 张照片
                   </div>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-fg-muted" />
               </button>
             );
           })}

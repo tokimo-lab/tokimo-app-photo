@@ -542,7 +542,7 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
         <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
           <button
             type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-surface-elevated/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
             onClick={() => setThemeOpen(!themeOpen)}
           >
             <Layers className="h-4 w-4" />

@@ -1,5 +1,6 @@
+import { Slider } from "@tokiomo/components";
 import { Image, LayoutGrid } from "lucide-react";
-import { useCallback, useId } from "react";
+import { useCallback } from "react";
 
 /** Discrete size levels with corresponding target row heights (px). */
 export const PHOTO_SIZE_LEVELS = [
@@ -42,14 +43,12 @@ export function PhotoSizeSlider({
   value: number;
   onChange: (index: number) => void;
 }) {
-  const sliderId = useId();
   const max = PHOTO_SIZE_LEVELS.length - 1;
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const idx = Number.parseInt(e.target.value, 10);
-      onChange(idx);
-      saveSizeIndex(idx);
+    (v: number) => {
+      onChange(v);
+      saveSizeIndex(v);
     },
     [onChange],
   );
@@ -59,41 +58,17 @@ export function PhotoSizeSlider({
       className="flex items-center gap-1.5"
       title={PHOTO_SIZE_LEVELS[value].label}
     >
-      <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-neutral-400 dark:text-neutral-500" />
-      <input
-        id={sliderId}
-        type="range"
+      <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+      <Slider
         min={0}
         max={max}
         step={1}
         value={value}
         onChange={handleChange}
-        className="
-          h-1 w-20 cursor-pointer appearance-none rounded-full
-          bg-neutral-200 outline-none
-          dark:bg-neutral-700
-          [&::-webkit-slider-thumb]:h-3.5
-          [&::-webkit-slider-thumb]:w-3.5
-          [&::-webkit-slider-thumb]:appearance-none
-          [&::-webkit-slider-thumb]:rounded-full
-          [&::-webkit-slider-thumb]:bg-neutral-500
-          [&::-webkit-slider-thumb]:transition-colors
-          [&::-webkit-slider-thumb]:hover:bg-neutral-600
-          [&::-webkit-slider-thumb]:dark:bg-neutral-400
-          [&::-webkit-slider-thumb]:dark:hover:bg-neutral-300
-          [&::-moz-range-thumb]:h-3.5
-          [&::-moz-range-thumb]:w-3.5
-          [&::-moz-range-thumb]:appearance-none
-          [&::-moz-range-thumb]:rounded-full
-          [&::-moz-range-thumb]:border-0
-          [&::-moz-range-thumb]:bg-neutral-500
-          [&::-moz-range-thumb]:transition-colors
-          [&::-moz-range-thumb]:hover:bg-neutral-600
-          [&::-moz-range-thumb]:dark:bg-neutral-400
-          [&::-moz-range-thumb]:dark:hover:bg-neutral-300
-        "
+        size="small"
+        className="w-20"
       />
-      <Image className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
+      <Image className="h-4 w-4 shrink-0 text-fg-muted" />
     </div>
   );
 }

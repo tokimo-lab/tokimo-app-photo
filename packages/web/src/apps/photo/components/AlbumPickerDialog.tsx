@@ -73,7 +73,7 @@ export function AlbumPickerDialog({
               className="flex w-full cursor-pointer items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-black/[0.04] disabled:opacity-50 dark:hover:bg-white/[0.06]"
               onClick={() => onPick(album.id)}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
                 {album.coverPhotoId ? (
                   <img
                     src={`/api/apps/photo/${album.coverPhotoId}/thumbnail?w=80`}
@@ -81,7 +81,7 @@ export function AlbumPickerDialog({
                     className="h-full w-full rounded-lg object-cover"
                   />
                 ) : (
-                  <Grid3x3 className="h-5 w-5 text-neutral-400" />
+                  <Grid3x3 className="h-5 w-5 text-fg-muted" />
                 )}
               </div>
               <div className="min-w-0 flex-1">

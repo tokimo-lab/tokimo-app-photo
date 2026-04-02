@@ -138,19 +138,19 @@ function PersonPickerModal({
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">
-                      <Users className="h-4 w-4 text-neutral-400" />
+                      <Users className="h-4 w-4 text-fg-muted" />
                     </div>
                   )}
                 </div>
                 <span className="truncate">{person.name ?? "未命名"}</span>
-                <span className="ml-auto text-xs text-neutral-400">
+                <span className="ml-auto text-xs text-fg-muted">
                   {person.faceCount} 张
                 </span>
               </button>
             ))}
           </div>
         ) : (
-          <p className="py-4 text-center text-sm text-neutral-500">暂无人物</p>
+          <p className="py-4 text-center text-sm text-fg-muted">暂无人物</p>
         )}
       </div>
     </Modal>

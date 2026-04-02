@@ -72,7 +72,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     // biome-ignore lint/a11y/noStaticElementInteractions: Live Photo hover preview
     <div
       data-photo-id={photo.id}
-      className={`group relative overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800 ${
+      className={`group relative overflow-hidden rounded-md bg-fill-tertiary ${
         !loaded && !errored && src ? "skeleton-shimmer" : ""
       } ${fillContainer ? "h-full w-full" : "aspect-square"} ${
         isSelected

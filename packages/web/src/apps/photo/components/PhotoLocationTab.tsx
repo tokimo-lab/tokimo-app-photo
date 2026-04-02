@@ -104,12 +104,12 @@ export function PhotoLocationTab({
           <ChevronLeft className="h-3.5 w-3.5" />
           全部地点
         </button>
-        <span className="text-neutral-400 dark:text-neutral-500">/</span>
+        <span className="text-fg-muted">/</span>
         <span className="flex items-center gap-1.5 font-medium text-neutral-700 dark:text-neutral-200">
           <MapPin className="h-3.5 w-3.5" />
           {sel.label}
         </span>
-        <span className="text-neutral-400 dark:text-neutral-500">
+        <span className="text-fg-muted">
           {photosTotal > 0 ? `${photosTotal} 张照片` : `约 ${sel.count} 张照片`}
         </span>
       </div>
@@ -134,7 +134,7 @@ export function PhotoLocationTab({
           <Spin />
         </div>
       ) : (
-        <div className="flex h-64 items-center justify-center text-neutral-400">
+        <div className="flex h-64 items-center justify-center text-fg-muted">
           该区域暂无照片
         </div>
       )}

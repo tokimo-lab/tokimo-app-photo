@@ -57,13 +57,13 @@ export function PhotoFoldersView({
       <div className="flex items-center gap-1 text-sm">
         {breadcrumbs.map((crumb, i) => (
           <span key={crumb.path} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
             <button
               type="button"
               className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
                 i === breadcrumbs.length - 1
                   ? "font-medium text-neutral-900 dark:text-neutral-100"
-                  : "text-neutral-500 dark:text-neutral-400"
+                  : "text-fg-muted"
               }`}
               onClick={() => setCurrentPath(crumb.path)}
             >
@@ -83,7 +83,7 @@ export function PhotoFoldersView({
               className="group flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--glass-border)] bg-white/50 p-3 text-left transition-colors hover:bg-neutral-50 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
               onClick={() => setCurrentPath(folder.path)}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
                 {folder.coverPhotoId ? (
                   <img
                     src={`/api/apps/photo/${folder.coverPhotoId}/thumbnail?w=80`}
@@ -93,16 +93,14 @@ export function PhotoFoldersView({
                     decoding="async"
                   />
                 ) : (
-                  <FolderOpen className="h-5 w-5 text-neutral-400" />
+                  <FolderOpen className="h-5 w-5 text-fg-muted" />
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {folder.name}
                 </p>
-                <p className="text-xs text-neutral-500">
-                  {folder.photoCount} 张
-                </p>
+                <p className="text-xs text-fg-muted">{folder.photoCount} 张</p>
               </div>
             </button>
           ))}

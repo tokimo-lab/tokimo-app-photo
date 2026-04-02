@@ -23,7 +23,7 @@ function CreateAlbumDialog({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-[var(--glass-border)] bg-white p-6 shadow-2xl dark:bg-neutral-900">
+      <div className="w-full max-w-md rounded-xl border border-[var(--glass-border)] bg-surface-elevated p-6 shadow-2xl ">
         <h3 className="mb-4 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           新建相册
         </h3>
@@ -40,7 +40,7 @@ function CreateAlbumDialog({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+              className="w-full rounded-lg border border-border-base bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500  dark:bg-neutral-800 dark:text-neutral-100"
               placeholder="输入相册名称"
             />
           </div>
@@ -55,7 +55,7 @@ function CreateAlbumDialog({
               id="album-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+              className="w-full rounded-lg border border-border-base bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500  dark:bg-neutral-800 dark:text-neutral-100"
               placeholder="描述一下这个相册"
               rows={3}
             />
@@ -111,7 +111,7 @@ function AlbumDetailView({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="cursor-pointer text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            className="cursor-pointer text-sm text-fg-muted hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
             onClick={onBack}
           >
             ← 返回
@@ -119,7 +119,7 @@ function AlbumDetailView({
           <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
             {album.name}
           </h3>
-          <span className="text-sm text-neutral-500">{total} 张</span>
+          <span className="text-sm text-fg-muted">{total} 张</span>
         </div>
         <Button
           onClick={() => onDeleteAlbum(album.id)}
@@ -130,7 +130,7 @@ function AlbumDetailView({
       </div>
 
       {album.description && (
-        <p className="text-sm text-neutral-500">{album.description}</p>
+        <p className="text-sm text-fg-muted">{album.description}</p>
       )}
 
       {/* Photos grid */}
@@ -268,7 +268,7 @@ export function PhotoAlbumsView({
               className="group cursor-pointer overflow-hidden rounded-xl border border-[var(--glass-border)] bg-white/50 text-left transition-shadow hover:shadow-lg dark:bg-white/[0.03]"
               onClick={() => setActiveAlbum(album)}
             >
-              <div className="aspect-[4/3] bg-neutral-100 dark:bg-neutral-800">
+              <div className="aspect-[4/3] bg-fill-tertiary">
                 {album.coverPhotoId ? (
                   <img
                     src={`/api/apps/photo/${album.coverPhotoId}/thumbnail?w=400`}
@@ -287,7 +287,7 @@ export function PhotoAlbumsView({
                 <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {album.name}
                 </p>
-                <p className="mt-0.5 text-xs text-neutral-500">
+                <p className="mt-0.5 text-xs text-fg-muted">
                   {album.photoCount} 张照片
                 </p>
               </div>

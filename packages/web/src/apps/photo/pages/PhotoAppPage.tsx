@@ -634,7 +634,7 @@ export default function PhotoAppPage() {
             <div>
               <div className="mb-3 flex items-center gap-2 px-1">
                 <Sparkles className="h-4 w-4 text-purple-500" />
-                <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                <span className="text-sm text-fg-muted">
                   找到 {clipResults.length} 张相似照片
                 </span>
               </div>
@@ -642,7 +642,7 @@ export default function PhotoAppPage() {
                 {clipResults.map((result) => (
                   <div
                     key={result.photoId}
-                    className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
+                    className="group relative aspect-square overflow-hidden rounded-lg bg-fill-tertiary"
                   >
                     <img
                       src={`/api/apps/photo/${result.photoId}/thumbnail`}
@@ -739,7 +739,7 @@ export default function PhotoAppPage() {
           allTrashPhotos.length > 0 ? (
             <div>
               <div className="mb-4 flex items-center justify-between px-4">
-                <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                <span className="text-sm text-fg-muted">
                   {trashTotal} 张照片在回收站中
                 </span>
                 {selectedIds.size > 0 && (

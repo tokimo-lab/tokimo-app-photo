@@ -186,7 +186,7 @@ export function PhotoPeopleView({
       <div className="flex items-center gap-1 px-4 text-sm">
         {breadcrumb.map((item, i) => (
           <span key={item.label} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
             {item.onClick ? (
               <button
                 type="button"
@@ -202,7 +202,7 @@ export function PhotoPeopleView({
             )}
           </span>
         ))}
-        <span className="ml-2 text-neutral-400 dark:text-neutral-500">
+        <span className="ml-2 text-fg-muted">
           {view.level === "detail"
             ? `${photosTotal} 张照片`
             : `${persons.length} 位人物`}
@@ -216,11 +216,11 @@ export function PhotoPeopleView({
             <button
               type="button"
               key={person.id}
-              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-neutral-200 bg-white p-4 text-center transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-750"
+              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-border-base bg-white p-4 text-center transition-colors hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-750"
               onClick={() => handleSelectPerson(person)}
             >
               {/* Avatar */}
-              <div className="relative h-20 w-20 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
+              <div className="relative h-20 w-20 overflow-hidden rounded-full bg-fill-tertiary dark:bg-neutral-700">
                 {person.avatarPhotoId ? (
                   <img
                     src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
@@ -229,7 +229,7 @@ export function PhotoPeopleView({
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <User className="h-8 w-8 text-neutral-400 dark:text-neutral-500" />
+                    <User className="h-8 w-8 text-fg-muted" />
                   </div>
                 )}
               </div>
@@ -249,7 +249,7 @@ export function PhotoPeopleView({
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-24 rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-center text-sm dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-100"
+                      className="w-24 rounded border border-border-base bg-white px-1.5 py-0.5 text-center text-sm  dark:bg-neutral-700 dark:text-neutral-100"
                     />
                     <Button
                       size="small"
@@ -268,7 +268,7 @@ export function PhotoPeopleView({
                       {person.name ?? "未命名"}
                     </span>
                     <Pencil
-                      className="h-3 w-3 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="h-3 w-3 shrink-0 text-fg-muted opacity-0 transition-opacity group-hover:opacity-100"
                       onClick={(e) => startRename(e, person)}
                     />
                   </>
@@ -276,7 +276,7 @@ export function PhotoPeopleView({
               </div>
 
               {/* Face count */}
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+              <span className="text-xs text-fg-muted">
                 {person.faceCount} 张照片
               </span>
             </button>
