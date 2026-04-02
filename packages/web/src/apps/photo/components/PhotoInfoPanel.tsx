@@ -398,6 +398,7 @@ export function PhotoInfoPanel({
         appId: detail.appId,
         title: selection.label,
         metadata: {
+          appId: detail.appId,
           tab: "locations",
           locationBbox: selection,
         },

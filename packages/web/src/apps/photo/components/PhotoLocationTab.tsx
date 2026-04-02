@@ -88,6 +88,7 @@ export function PhotoLocationTab({
         appId,
         title: selection.label,
         metadata: {
+          appId,
           tab: "locations",
           locationBbox: selection,
         },
