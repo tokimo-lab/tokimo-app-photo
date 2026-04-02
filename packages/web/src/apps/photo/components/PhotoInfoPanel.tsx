@@ -11,6 +11,7 @@ import {
   Search,
   SearchCode,
   Sparkles,
+  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -398,6 +399,11 @@ export function PhotoInfoPanel({
     { enabled: !!detail.id },
   );
 
+  const { data: tagsData } = api.photoSettings.photoTags.useQuery(
+    { photoId: detail.id },
+    { enabled: !!detail.id },
+  );
+
   const hasCameraData =
     detail.cameraMake ||
     detail.cameraModel ||
@@ -511,6 +517,24 @@ export function PhotoInfoPanel({
                     </span>
                   </div>
                 </div>
+              ))}
+            </div>
+          </InfoSection>
+        )}
+
+        {/* ── AI Tags (CLIP zero-shot) section ────────────────────── */}
+        {tagsData?.indexed && tagsData.tags.length > 0 && (
+          <InfoSection icon={<Tag className="h-3 w-3" />} title="智能标签">
+            <div className="flex flex-wrap gap-1.5">
+              {tagsData.tags.map((tag) => (
+                <span
+                  key={`${tag.category}-${tag.subcategory}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                  title={`${tag.category} · ${tag.subcategory} (${Math.round(tag.score * 100)}%)`}
+                >
+                  <span>{tag.icon}</span>
+                  <span>{tag.subcategory}</span>
+                </span>
               ))}
             </div>
           </InfoSection>
