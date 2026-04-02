@@ -5,6 +5,7 @@ import {
   Grid3x3,
   MapPin,
   ScanText,
+  Search,
   Sparkles,
   Star,
   Trash2,
@@ -80,6 +81,39 @@ export default function PhotoAppPage() {
   const [navigateToPersonId, setNavigateToPersonId] = useState<string | null>(
     null,
   );
+
+  // ── Similar photos filter (from info panel "more" button) ──────────
+  const [similarSourceId, setSimilarSourceId] = useState<string | null>(
+    (metadata.similarSourceId as string) || null,
+  );
+
+  const similarQuery = api.photoSettings.similarPhotos.useQuery(
+    { photoId: similarSourceId!, limit: 50 },
+    { enabled: !!similarSourceId && tab === "timeline" },
+  );
+
+  const similarPhotos: PhotoOutput[] = useMemo(() => {
+    if (!similarQuery.data?.items) return [];
+    return similarQuery.data.items.map((item) => ({
+      id: item.photoId,
+      appId: item.appId,
+      filename: item.filename,
+      path: item.path,
+      title: item.title ?? null,
+      width: item.width ?? null,
+      height: item.height ?? null,
+      fileSize: item.fileSize ?? null,
+      mimeType: item.mimeType ?? null,
+      takenAt: item.takenAt ?? null,
+      thumbnailPath: item.thumbnailPath ?? null,
+      isFavorite: item.isFavorite,
+      cameraMake: null,
+      cameraModel: null,
+      orientation: null,
+      liveVideoPath: null,
+      sourceId: null,
+    }));
+  }, [similarQuery.data]);
 
   const handleNavigateToPerson = useCallback(
     (personId: string) => {
@@ -564,9 +598,12 @@ export default function PhotoAppPage() {
         trailingClassName="right-16"
         trailing={
           <>
-            {tab === "timeline" && timelineTotal > 0 && (
-              <Tag>{timelineTotal} 张</Tag>
-            )}
+            {tab === "timeline" && similarSourceId
+              ? similarPhotos.length > 0 && (
+                  <Tag>{similarPhotos.length} 张相似</Tag>
+                )
+              : tab === "timeline" &&
+                timelineTotal > 0 && <Tag>{timelineTotal} 张</Tag>}
             {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
             {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
           </>
@@ -668,6 +705,46 @@ export default function PhotoAppPage() {
           ) : (
             <Empty description="未找到匹配的照片，试试换个描述" />
           )
+        ) : tab === "timeline" && similarSourceId ? (
+          /* ── Similar photos filtered view ─────────────────────────── */
+          <>
+            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 dark:border-purple-800 dark:bg-purple-950/50">
+              <Search className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+              <span className="flex-1 text-sm text-purple-700 dark:text-purple-300">
+                {similarPhotos.length > 0
+                  ? `${similarPhotos.length} 张相似照片`
+                  : "正在搜索相似照片…"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSimilarSourceId(null)}
+                className="rounded p-0.5 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {similarQuery.isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Spin />
+              </div>
+            ) : similarPhotos.length > 0 ? (
+              <PhotoTimeline
+                photos={similarPhotos}
+                appId={id!}
+                total={similarPhotos.length}
+                hasMore={false}
+                onLoadMore={() => {}}
+                isLoadingMore={false}
+                onToggleFavorite={handleToggleFavorite}
+                isSelecting={isSelecting}
+                selectedIds={selectedIds}
+                onSelect={handleSelect}
+                targetRowHeight={targetRowHeight}
+              />
+            ) : (
+              <Empty description="未找到相似照片" />
+            )}
+          </>
         ) : tab === "timeline" ? (
           allTimelinePhotos.length > 0 ? (
             <PhotoTimeline

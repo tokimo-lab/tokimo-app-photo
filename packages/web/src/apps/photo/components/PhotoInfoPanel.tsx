@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
+  ChevronRight,
   CornerDownLeft,
   FileText,
   MapPin,
@@ -517,17 +518,53 @@ export function PhotoInfoPanel({
 
         {/* ── Similar photos (CLIP) section ────────────────────────── */}
         {similarData?.indexed && similarData.items.length > 0 && (
-          <InfoSection icon={<Search className="h-3 w-3" />} title="相似照片">
+          <InfoSection
+            icon={<Search className="h-3 w-3" />}
+            title="相似照片"
+            actions={
+              <button
+                type="button"
+                onClick={() => {
+                  openWindow({
+                    type: "page",
+                    appId: detail.appId,
+                    title: "相似照片",
+                    metadata: {
+                      appId: detail.appId,
+                      tab: "timeline",
+                      similarSourceId: detail.id,
+                    },
+                    forceNew: true,
+                  });
+                }}
+                className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-white/40 hover:bg-white/10 hover:text-white/70"
+              >
+                更多
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            }
+          >
             <div className="grid grid-cols-3 gap-1.5">
               {similarData.items.map((item) => (
-                <div
+                <button
+                  type="button"
                   key={item.photoId}
-                  className="group relative aspect-square overflow-hidden rounded"
+                  className="group relative aspect-square overflow-hidden rounded cursor-pointer"
+                  onClick={() => {
+                    openWindow({
+                      type: "image",
+                      title: item.filename,
+                      route: `/photos/${item.photoId}`,
+                      appId: detail.appId,
+                      sourceType: "photo",
+                      sourceId: item.photoId,
+                    });
+                  }}
                 >
                   <img
                     src={`/api/apps/photo/${item.photoId}/thumbnail?w=160`}
                     alt={item.filename}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
                     loading="lazy"
                   />
                   <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1 pb-0.5 pt-3 text-right">
@@ -535,7 +572,7 @@ export function PhotoInfoPanel({
                       {Math.round(item.similarity * 100)}%
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </InfoSection>
