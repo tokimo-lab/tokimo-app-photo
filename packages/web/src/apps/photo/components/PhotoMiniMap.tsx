@@ -23,6 +23,7 @@ type AMapInstance = {
   on(event: string, handler: () => void): void;
   off(event: string, handler: () => void): void;
   addControl(ctrl: unknown): void;
+  setStatus(opts: Record<string, boolean>): void;
   destroy(): void;
 };
 
@@ -45,6 +46,17 @@ interface PhotoMiniMapProps {
 }
 
 const THUMB_SIZE = 40;
+
+/** Walk up the DOM to find the nearest scrollable ancestor. */
+function findScrollParent(el: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
 
 /** Build a MapClusterSelection from a supercluster feature. */
 function buildClusterSelection(
@@ -241,7 +253,7 @@ export function PhotoMiniMap({
           showLabel: true,
           dragEnable: true,
           zoomEnable: true,
-          scrollWheel: true,
+          scrollWheel: false, // starts disabled; enabled after pointer enters + no parent scroll
         }) as unknown as AMapInstance;
         mapRef.current = map;
 
@@ -281,6 +293,58 @@ export function PhotoMiniMap({
       map.off("zoomend", handler);
     };
   }, [mapReady, updateMarkers]);
+
+  // ── Scroll guard: disable map scroll-zoom while the parent panel is scrolling ──
+  // Without this, scrolling the info panel accidentally zooms the map when the
+  // cursor passes over it. We listen on the nearest scrollable ancestor for
+  // scroll events and suppress map scrollWheel during + 1s after scrolling.
+  useEffect(() => {
+    if (!mapReady) return;
+    const container = containerRef.current;
+    const map = mapRef.current;
+    if (!container || !map) return;
+
+    const scrollParent = findScrollParent(container);
+    if (!scrollParent) return;
+
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+    let scrolling = false;
+    let pointerInside = false;
+
+    const disableScroll = () => {
+      if (!scrolling) {
+        scrolling = true;
+        map.setStatus({ scrollWheel: false });
+      }
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        scrolling = false;
+        if (pointerInside) {
+          map.setStatus({ scrollWheel: true });
+        }
+      }, 1000);
+    };
+
+    const onEnter = () => {
+      pointerInside = true;
+      if (!scrolling) map.setStatus({ scrollWheel: true });
+    };
+    const onLeave = () => {
+      pointerInside = false;
+      map.setStatus({ scrollWheel: false });
+    };
+
+    scrollParent.addEventListener("scroll", disableScroll, { passive: true });
+    container.addEventListener("pointerenter", onEnter);
+    container.addEventListener("pointerleave", onLeave);
+
+    return () => {
+      scrollParent.removeEventListener("scroll", disableScroll);
+      container.removeEventListener("pointerenter", onEnter);
+      container.removeEventListener("pointerleave", onLeave);
+      if (scrollTimer) clearTimeout(scrollTimer);
+    };
+  }, [mapReady]);
 
   // ── No API key: fallback to "open in Amap" link ─────────────────────────
   if (geoSettings.isLoading) {
