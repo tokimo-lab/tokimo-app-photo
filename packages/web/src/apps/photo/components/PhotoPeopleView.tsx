@@ -196,7 +196,7 @@ export function PhotoPeopleView({
                 {item.label}
               </button>
             ) : (
-              <span className="font-medium text-neutral-700 dark:text-neutral-200">
+              <span className="font-medium text-fg-secondary">
                 {item.label}
               </span>
             )}
@@ -216,11 +216,11 @@ export function PhotoPeopleView({
             <button
               type="button"
               key={person.id}
-              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-border-base bg-white p-4 text-center transition-colors hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-750"
+              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-border-base bg-surface-elevated p-4 text-center transition-colors hover:bg-fill-tertiary "
               onClick={() => handleSelectPerson(person)}
             >
               {/* Avatar */}
-              <div className="relative h-20 w-20 overflow-hidden rounded-full bg-fill-tertiary dark:bg-neutral-700">
+              <div className="relative h-20 w-20 overflow-hidden rounded-full bg-fill-tertiary dark:bg-white/[0.10]">
                 {person.avatarPhotoId ? (
                   <img
                     src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
@@ -249,7 +249,7 @@ export function PhotoPeopleView({
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-24 rounded border border-border-base bg-white px-1.5 py-0.5 text-center text-sm  dark:bg-neutral-700 dark:text-neutral-100"
+                      className="w-24 rounded border border-border-base bg-surface-elevated px-1.5 py-0.5 text-center text-sm text-fg-primary"
                     />
                     <Button
                       size="small"
@@ -264,7 +264,7 @@ export function PhotoPeopleView({
                   </fieldset>
                 ) : (
                   <>
-                    <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                    <span className="truncate text-sm font-medium text-fg-primary">
                       {person.name ?? "未命名"}
                     </span>
                     <Pencil

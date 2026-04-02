@@ -542,7 +542,7 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
         <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
           <button
             type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-neutral-700 shadow-md backdrop-blur-sm transition-colors hover:bg-surface-elevated/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-fg-secondary shadow-md backdrop-blur-sm transition-colors hover:bg-surface-elevated/90"
             onClick={() => setThemeOpen(!themeOpen)}
           >
             <Layers className="h-4 w-4" />
@@ -550,15 +550,15 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
           </button>
 
           {themeOpen && (
-            <div className="mt-1 overflow-hidden rounded-lg bg-white/95 shadow-lg backdrop-blur-sm dark:bg-neutral-800/95">
+            <div className="mt-1 overflow-hidden rounded-lg bg-surface-glass shadow-lg backdrop-blur-sm">
               {themes.map((t) => (
                 <button
                   key={t.key}
                   type="button"
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-fill-tertiary ${
                     mapTheme === t.key
                       ? "font-medium text-blue-600 dark:text-blue-400"
-                      : "text-neutral-700 dark:text-neutral-300"
+                      : "text-fg-secondary"
                   }`}
                   onClick={() => handleSetTheme(t.key)}
                 >

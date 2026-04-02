@@ -105,7 +105,7 @@ export function PhotoLocationTab({
           全部地点
         </button>
         <span className="text-fg-muted">/</span>
-        <span className="flex items-center gap-1.5 font-medium text-neutral-700 dark:text-neutral-200">
+        <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
           <MapPin className="h-3.5 w-3.5" />
           {sel.label}
         </span>

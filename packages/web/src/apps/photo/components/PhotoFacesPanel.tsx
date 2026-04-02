@@ -126,10 +126,10 @@ function PersonPickerModal({
               <button
                 key={person.id}
                 type="button"
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-fill-tertiary"
                 onClick={() => onSelect(person)}
               >
-                <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-600">
+                <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-fill-tertiary">
                   {person.avatarPhotoId ? (
                     <img
                       src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}

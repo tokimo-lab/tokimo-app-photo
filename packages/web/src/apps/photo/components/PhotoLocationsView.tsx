@@ -272,7 +272,7 @@ export function PhotoLocationsView({
                 {item.label}
               </button>
             ) : (
-              <span className="font-medium text-neutral-700 dark:text-neutral-200">
+              <span className="font-medium text-fg-secondary">
                 {item.label}
               </span>
             )}
@@ -299,12 +299,12 @@ export function PhotoLocationsView({
               <button
                 type="button"
                 key={`${g.province}-${g.city}-${g.district}`}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-white px-4 py-3 text-left transition-colors hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-750"
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-surface-elevated px-4 py-3 text-left transition-colors hover:bg-fill-tertiary "
                 onClick={() => handleDrill(g)}
               >
                 <MapPin className="h-5 w-5 shrink-0 text-blue-500" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  <div className="truncate text-sm font-medium text-fg-primary">
                     {label || "未知"}
                   </div>
                   <div className="text-xs text-fg-muted">

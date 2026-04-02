@@ -24,14 +24,12 @@ function CreateAlbumDialog({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-xl border border-[var(--glass-border)] bg-surface-elevated p-6 shadow-2xl ">
-        <h3 className="mb-4 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-          新建相册
-        </h3>
+        <h3 className="mb-4 text-lg font-semibold text-fg-primary">新建相册</h3>
         <div className="space-y-4">
           <div>
             <label
               htmlFor="album-name"
-              className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+              className="mb-1 block text-sm font-medium text-fg-secondary"
             >
               名称
             </label>
@@ -40,14 +38,14 @@ function CreateAlbumDialog({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500  dark:bg-neutral-800 dark:text-neutral-100"
+              className="w-full rounded-lg border border-border-base bg-surface-elevated px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="输入相册名称"
             />
           </div>
           <div>
             <label
               htmlFor="album-desc"
-              className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+              className="mb-1 block text-sm font-medium text-fg-secondary"
             >
               描述（可选）
             </label>
@@ -55,7 +53,7 @@ function CreateAlbumDialog({
               id="album-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500  dark:bg-neutral-800 dark:text-neutral-100"
+              className="w-full rounded-lg border border-border-base bg-surface-elevated px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="描述一下这个相册"
               rows={3}
             />
@@ -111,12 +109,12 @@ function AlbumDetailView({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="cursor-pointer text-sm text-fg-muted hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            className="cursor-pointer text-sm text-fg-muted hover:text-fg-secondary"
             onClick={onBack}
           >
             ← 返回
           </button>
-          <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          <h3 className="text-lg font-semibold text-fg-primary">
             {album.name}
           </h3>
           <span className="text-sm text-fg-muted">{total} 张</span>
@@ -284,7 +282,7 @@ export function PhotoAlbumsView({
                 )}
               </div>
               <div className="p-3">
-                <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                <p className="truncate text-sm font-medium text-fg-primary">
                   {album.name}
                 </p>
                 <p className="mt-0.5 text-xs text-fg-muted">

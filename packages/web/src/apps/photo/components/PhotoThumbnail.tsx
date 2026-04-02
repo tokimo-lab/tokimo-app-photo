@@ -76,7 +76,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
         !loaded && !errored && src ? "skeleton-shimmer" : ""
       } ${fillContainer ? "h-full w-full" : "aspect-square"} ${
         isSelected
-          ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900"
+          ? "ring-2 ring-orange-500 ring-offset-1 ring-offset-[var(--bg-base)]"
           : ""
       }`}
       onMouseEnter={isLive ? handleMouseEnter : undefined}

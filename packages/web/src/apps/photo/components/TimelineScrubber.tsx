@@ -435,7 +435,7 @@ export function TimelineScrubber({
           // Month label with tick
           <span
             key={`m-${m.label}-${m.position.toFixed(4)}`}
-            className="absolute right-1 text-[9px] text-fg-muted/60 dark:text-neutral-500/60"
+            className="absolute right-1 text-[9px] text-fg-muted/60"
             style={{
               top: `${m.position * 100}%`,
               transform: "translateY(-50%)",

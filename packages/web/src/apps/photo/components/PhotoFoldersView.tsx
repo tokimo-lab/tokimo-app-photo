@@ -60,9 +60,9 @@ export function PhotoFoldersView({
             {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
             <button
               type="button"
-              className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+              className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-fill-tertiary ${
                 i === breadcrumbs.length - 1
-                  ? "font-medium text-neutral-900 dark:text-neutral-100"
+                  ? "font-medium text-fg-primary"
                   : "text-fg-muted"
               }`}
               onClick={() => setCurrentPath(crumb.path)}
@@ -80,7 +80,7 @@ export function PhotoFoldersView({
             <button
               key={folder.path}
               type="button"
-              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--glass-border)] bg-white/50 p-3 text-left transition-colors hover:bg-neutral-50 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--glass-border)] bg-white/50 p-3 text-left transition-colors hover:bg-fill-tertiary dark:bg-white/[0.03]"
               onClick={() => setCurrentPath(folder.path)}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
@@ -97,7 +97,7 @@ export function PhotoFoldersView({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                <p className="truncate text-sm font-medium text-fg-primary">
                   {folder.name}
                 </p>
                 <p className="text-xs text-fg-muted">{folder.photoCount} 张</p>

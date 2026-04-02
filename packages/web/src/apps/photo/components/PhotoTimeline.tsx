@@ -411,8 +411,8 @@ function DateHeader({
           allSelected
             ? "border-orange-500 bg-orange-500 opacity-100"
             : isSelecting
-              ? "border-border-base bg-neutral-200/50 opacity-80 hover:opacity-100  dark:bg-neutral-700/50"
-              : "border-border-base bg-neutral-200/50 opacity-0 group-hover/date:opacity-80  dark:bg-neutral-700/50"
+              ? "border-border-base bg-fill-tertiary/50 opacity-80 hover:opacity-100  "
+              : "border-border-base bg-fill-tertiary/50 opacity-0 group-hover/date:opacity-80  "
         }`}
         style={{
           transition:
@@ -430,9 +430,7 @@ function DateHeader({
           <Check className="h-3 w-3 text-white" strokeWidth={3} />
         )}
       </button>
-      <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-        {group.label}
-      </h3>
+      <h3 className="text-sm font-semibold text-fg-secondary">{group.label}</h3>
       <span className="ml-2 text-xs text-fg-muted">
         {group.photos.length} 张
       </span>
