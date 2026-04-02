@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
   CornerDownLeft,
-  ExternalLink,
   FileText,
   MapPin,
   Pencil,
@@ -28,9 +27,11 @@ import type {
 } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
+import { useWindowActions } from "@/system";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { OcrDebugModal } from "./OcrDebugModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
+import { PhotoMiniMap } from "./PhotoMiniMap";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
 import { formatBytes } from "./photo-utils";
 
@@ -388,6 +389,16 @@ export function PhotoInfoPanel({
 }) {
   const [showExifModal, setShowExifModal] = useState(false);
   const [showOcrDebug, setShowOcrDebug] = useState(false);
+  const { openWindow } = useWindowActions();
+
+  const handleViewNearby = useCallback(() => {
+    // Focus the photo app's location tab — the full map view lets users explore
+    openWindow({
+      type: "page",
+      appId: detail.appId,
+      metadata: { tab: "locations" },
+    });
+  }, [openWindow, detail.appId]);
 
   const { data: ocrResults } = api.photoSettings.getPhotoOcrResults.useQuery(
     { photoId: detail.id },
@@ -613,15 +624,12 @@ export function PhotoInfoPanel({
                   .join(" / ")}
               />
             )}
-            <a
-              href={`https://uri.amap.com/marker?position=${detail.gpsLongitude},${detail.gpsLatitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              在高德地图中打开
-            </a>
+            <PhotoMiniMap
+              appId={detail.appId}
+              latitude={detail.gpsLatitude!}
+              longitude={detail.gpsLongitude!}
+              onViewNearby={handleViewNearby}
+            />
           </InfoSection>
         )}
 
