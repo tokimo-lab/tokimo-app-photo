@@ -19,6 +19,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import type { PhotoOutput } from "@/generated/rust-types";
 import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
+import { extractRawPreview, isRawFile } from "@/shared/utils/raw-decoder";
 import { useWindowActions } from "@/system";
 import type { WindowState } from "@/system/window/window-types";
 import { LivePhotoIcon } from "./LivePhotoIcon";
@@ -195,6 +196,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   }, [fullDecoded]);
 
   const isHeic = /\.heic$/i.test(photo?.filename ?? "");
+  const isRaw = isRawFile(photo?.filename);
 
   useEffect(() => {
     if (!mounted || fullLoaded) return;
@@ -232,6 +234,22 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
           });
         }
 
+        // RAW files (DNG, CR2, etc.) — extract embedded JPEG preview via WASM
+        if (isRaw) {
+          setDecoding(true);
+          const jpegBlob = await extractRawPreview(blob);
+          if (abort.signal.aborted) return;
+          if (jpegBlob) {
+            setFullBlobUrl(URL.createObjectURL(jpegBlob));
+            setLoadProgress(1);
+            setDecoding(false);
+            setFullLoaded(true);
+            return;
+          }
+          // No embedded preview — fall through to server-side conversion
+          setDecoding(false);
+        }
+
         const url = URL.createObjectURL(blob);
         setDecoding(true);
         const testImg = new Image();
@@ -242,7 +260,6 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         } catch {
           // Native decode failed — HEIC: convert in Web Worker (off main thread)
           URL.revokeObjectURL(url);
-          // Check blob content-type (reliable) rather than filename (may not be loaded yet)
           const blobIsHeic =
             blob.type === "image/heic" || blob.type === "image/heif" || isHeic;
           if (blobIsHeic) {
@@ -251,7 +268,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             const jpegUrl = URL.createObjectURL(jpegBlob);
             setFullBlobUrl(jpegUrl);
           } else {
-            // Non-HEIC decode failure: server fallback
+            // Other unsupported formats: server fallback via FFmpeg
             const jpegRes = await fetch(`${fullUrl}?format=jpeg`, {
               signal: abort.signal,
             });
@@ -277,7 +294,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       abort.abort();
       abortRef.current = null;
     };
-  }, [fullUrl, fullLoaded, mounted, isHeic]);
+  }, [fullUrl, fullLoaded, mounted, isHeic, isRaw]);
 
   // Clean up blob URL on unmount
   useEffect(() => {
