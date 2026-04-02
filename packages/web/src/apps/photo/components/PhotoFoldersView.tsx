@@ -86,7 +86,7 @@ export function PhotoFoldersView({
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
                 {folder.coverPhotoId ? (
                   <img
-                    src={`/api/photos/${folder.coverPhotoId}/thumbnail?w=80`}
+                    src={`/api/apps/photo/${folder.coverPhotoId}/thumbnail?w=80`}
                     alt=""
                     className="h-full w-full rounded-lg object-cover"
                     loading="lazy"

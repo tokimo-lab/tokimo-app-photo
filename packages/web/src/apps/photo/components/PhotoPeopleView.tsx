@@ -223,7 +223,7 @@ export function PhotoPeopleView({
               <div className="relative h-20 w-20 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-700">
                 {person.avatarPhotoId ? (
                   <img
-                    src={`/api/photos/${person.avatarPhotoId}/thumbnail`}
+                    src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
                     alt={person.name ?? "未命名"}
                     className="h-full w-full object-cover"
                   />

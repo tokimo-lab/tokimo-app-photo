@@ -132,7 +132,7 @@ function PersonPickerModal({
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-600">
                   {person.avatarPhotoId ? (
                     <img
-                      src={`/api/photos/${person.avatarPhotoId}/thumbnail`}
+                      src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
                       alt={person.name ?? "未命名"}
                       className="h-full w-full object-cover"
                     />
@@ -179,7 +179,7 @@ function FaceChip({
   onNavigateToPerson?: (personId: string) => void;
 }) {
   const chipSize = 56;
-  const thumbnailSrc = `/api/photos/${photoId}/thumbnail?w=${THUMB_WIDTH}`;
+  const thumbnailSrc = `/api/apps/photo/${photoId}/thumbnail?w=${THUMB_WIDTH}`;
   const canCrop = photoWidth != null && photoHeight != null && photoWidth > 0;
   const queryClient = useQueryClient();
 
@@ -191,7 +191,7 @@ function FaceChip({
   const assignMutation = api.photoSettings.assignFaceToPerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/photos/{id}/faces"],
+        queryKey: ["/api/apps/photo/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],
@@ -203,7 +203,7 @@ function FaceChip({
     api.photoSettings.createPersonFromFace.useMutation({
       onSuccess: () => {
         void queryClient.invalidateQueries({
-          queryKey: ["/api/photos/{id}/faces"],
+          queryKey: ["/api/apps/photo/{id}/faces"],
         });
         void queryClient.invalidateQueries({
           queryKey: ["/api/apps/{id}/persons"],
@@ -214,7 +214,7 @@ function FaceChip({
   const renameMutation = api.photoSettings.renamePerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/photos/{id}/faces"],
+        queryKey: ["/api/apps/photo/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],

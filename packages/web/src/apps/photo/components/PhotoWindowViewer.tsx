@@ -145,7 +145,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         h,
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/photos/{id}/ocr-results"],
+        queryKey: ["/api/apps/photo/{id}/ocr-results"],
       });
       // Enter edit mode for the newly created result
       setEditingOcrId(result.id);
@@ -159,8 +159,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   >(new Map());
 
   // ── Image loading with progress + HEIC fallback ────────────────
-  const thumbUrl = `/api/photos/${currentPhotoId}/thumbnail?w=${THUMB_WIDTH}`;
-  const fullUrl = `/api/photos/${currentPhotoId}/image`;
+  const thumbUrl = `/api/apps/photo/${currentPhotoId}/thumbnail?w=${THUMB_WIDTH}`;
+  const fullUrl = `/api/apps/photo/${currentPhotoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullDecoded, setFullDecoded] = useState(false);
@@ -636,10 +636,10 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   ]);
 
   const invalidateAllQueries = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["/api/photos/{id}"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/photos/{id}/faces"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/{id}"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/{id}/faces"] });
     queryClient.invalidateQueries({
-      queryKey: ["/api/photos/{id}/ocr-results"],
+      queryKey: ["/api/apps/photo/{id}/ocr-results"],
     });
   }, [queryClient]);
 
@@ -775,7 +775,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             {isLive && showLiveVideo && (
               <video
                 ref={liveVideoRef}
-                src={`/api/photos/${currentPhotoId}/live-video`}
+                src={`/api/apps/photo/${currentPhotoId}/live-video`}
                 className="absolute inset-0 h-full w-full object-contain"
                 muted
                 playsInline

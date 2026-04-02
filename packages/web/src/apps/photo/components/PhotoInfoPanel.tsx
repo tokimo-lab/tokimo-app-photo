@@ -174,7 +174,7 @@ function OcrResultRow({
 
   const invalidateOcr = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["/api/photos/{id}/ocr-results"],
+      queryKey: ["/api/apps/photo/{id}/ocr-results"],
     });
   }, [queryClient]);
 

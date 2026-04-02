@@ -645,7 +645,7 @@ export default function PhotoAppPage() {
                     className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-800"
                   >
                     <img
-                      src={`/api/photos/${result.photoId}/thumbnail`}
+                      src={`/api/apps/photo/${result.photoId}/thumbnail`}
                       alt={result.filename}
                       loading="lazy"
                       className="h-full w-full object-cover transition-transform group-hover:scale-105"

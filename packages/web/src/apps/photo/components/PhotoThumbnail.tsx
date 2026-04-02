@@ -23,7 +23,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   fillContainer?: boolean;
 }) {
   const src = photo.sourceId
-    ? `/api/photos/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
+    ? `/api/apps/photo/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
     : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -110,7 +110,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
       {showLiveVideo && (
         <video
           ref={liveVideoRefCb}
-          src={`/api/photos/${photo.id}/live-video`}
+          src={`/api/apps/photo/${photo.id}/live-video`}
           className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           muted
           playsInline

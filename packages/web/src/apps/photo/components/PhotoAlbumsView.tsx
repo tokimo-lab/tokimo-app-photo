@@ -271,7 +271,7 @@ export function PhotoAlbumsView({
               <div className="aspect-[4/3] bg-neutral-100 dark:bg-neutral-800">
                 {album.coverPhotoId ? (
                   <img
-                    src={`/api/photos/${album.coverPhotoId}/thumbnail?w=400`}
+                    src={`/api/apps/photo/${album.coverPhotoId}/thumbnail?w=400`}
                     alt={album.name}
                     className="h-full w-full object-cover"
                     loading="lazy"

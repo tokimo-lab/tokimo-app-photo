@@ -259,7 +259,7 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
         : cluster.properties.id;
 
       const thumbUrl = photoId
-        ? `/api/photos/${photoId}/thumbnail?w=${THUMB_SIZE * 2}`
+        ? `/api/apps/photo/${photoId}/thumbnail?w=${THUMB_SIZE * 2}`
         : "";
 
       const iconContent = document.createElement("div");
