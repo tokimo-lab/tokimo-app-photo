@@ -16,6 +16,7 @@ import { AlbumPickerDialog } from "@/apps/photo/components/AlbumPickerDialog";
 import { PhotoAlbumsView } from "@/apps/photo/components/PhotoAlbumsView";
 import { PhotoFoldersView } from "@/apps/photo/components/PhotoFoldersView";
 import { PhotoLocationTab } from "@/apps/photo/components/PhotoLocationTab";
+import type { MapClusterSelection } from "@/apps/photo/components/PhotoMapView";
 import { usePhotoMenuBarState } from "@/apps/photo/components/PhotoMenuBar";
 import { PhotoPeopleView } from "@/apps/photo/components/PhotoPeopleView";
 import { PhotoSelectionBar } from "@/apps/photo/components/PhotoSelectionBar";
@@ -723,6 +724,9 @@ export default function PhotoAppPage() {
             selectedIds={selectedIds}
             onSelect={handleSelect}
             targetRowHeight={targetRowHeight}
+            initialBbox={
+              metadata.locationBbox as MapClusterSelection | undefined
+            }
           />
         ) : tab === "people" ? (
           <PhotoPeopleView

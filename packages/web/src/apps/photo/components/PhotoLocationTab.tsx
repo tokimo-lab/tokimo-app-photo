@@ -3,6 +3,7 @@ import { ChevronLeft, MapPin } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { useWindowActions } from "@/system";
 import type { MapClusterSelection } from "./PhotoMapView";
 import { PhotoMapView } from "./PhotoMapView";
 import { PhotoTimeline } from "./PhotoTimeline";
@@ -15,6 +16,8 @@ interface PhotoLocationTabProps {
   selectedIds: Set<string>;
   onSelect: (photo: PhotoOutput) => void;
   targetRowHeight: number;
+  /** When provided, start directly in timeline mode for this bbox */
+  initialBbox?: MapClusterSelection;
 }
 
 type ViewLevel = "map" | "timeline";
@@ -31,8 +34,14 @@ export function PhotoLocationTab({
   selectedIds,
   onSelect,
   targetRowHeight,
+  initialBbox,
 }: PhotoLocationTabProps) {
-  const [view, setView] = useState<ViewState>({ level: "map" });
+  const { openWindow } = useWindowActions();
+  const [view, setView] = useState<ViewState>(
+    initialBbox
+      ? { level: "timeline", selection: initialBbox }
+      : { level: "map" },
+  );
   const [photosPage, setPhotosPage] = useState(1);
   const photosAccumRef = useRef<PhotoOutput[]>([]);
 
@@ -72,11 +81,21 @@ export function PhotoLocationTab({
   const photosTotal = (photosQuery.data as { total: number })?.total ?? 0;
   const photosHasMore = allPhotos.length < photosTotal;
 
-  const handleClusterClick = useCallback((selection: MapClusterSelection) => {
-    photosAccumRef.current = [];
-    setPhotosPage(1);
-    setView({ level: "timeline", selection });
-  }, []);
+  const handleClusterClick = useCallback(
+    (selection: MapClusterSelection) => {
+      openWindow({
+        type: "page",
+        appId,
+        title: selection.label,
+        metadata: {
+          tab: "locations",
+          locationBbox: selection,
+        },
+        forceNew: true,
+      });
+    },
+    [openWindow, appId],
+  );
 
   const handleBack = useCallback(() => {
     setView({ level: "map" });

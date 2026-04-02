@@ -391,14 +391,21 @@ export function PhotoInfoPanel({
   const [showOcrDebug, setShowOcrDebug] = useState(false);
   const { openWindow } = useWindowActions();
 
-  const handleViewNearby = useCallback(() => {
-    // Focus the photo app's location tab — the full map view lets users explore
-    openWindow({
-      type: "page",
-      appId: detail.appId,
-      metadata: { tab: "locations" },
-    });
-  }, [openWindow, detail.appId]);
+  const handleViewNearby = useCallback(
+    (selection: import("./PhotoMapView").MapClusterSelection) => {
+      openWindow({
+        type: "page",
+        appId: detail.appId,
+        title: selection.label,
+        metadata: {
+          tab: "locations",
+          locationBbox: selection,
+        },
+        forceNew: true,
+      });
+    },
+    [openWindow, detail.appId],
+  );
 
   const { data: ocrResults } = api.photoSettings.getPhotoOcrResults.useQuery(
     { photoId: detail.id },

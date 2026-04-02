@@ -4,6 +4,7 @@ import AMapLoader from "@amap/amap-jsapi-loader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { api } from "@/generated/rust-api";
+import type { MapClusterSelection } from "./PhotoMapView";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,10 +41,63 @@ interface PhotoMiniMapProps {
   latitude: number;
   longitude: number;
   /** Called when user clicks a cluster to view nearby photos */
-  onViewNearby?: () => void;
+  onViewNearby?: (selection: MapClusterSelection) => void;
 }
 
 const THUMB_SIZE = 40;
+
+/** Build a MapClusterSelection from a supercluster feature. */
+function buildClusterSelection(
+  sc: Supercluster,
+  feature:
+    | Supercluster.ClusterFeature<Supercluster.AnyProps>
+    | Supercluster.PointFeature<Supercluster.AnyProps>,
+): MapClusterSelection | null {
+  const [lng, lat] = feature.geometry.coordinates;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+
+  if (!feature.properties.cluster) {
+    const PAD = 0.001;
+    const city = feature.properties.city as string | null;
+    return {
+      label: city || `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`,
+      count: 1,
+      bbox: {
+        minLat: lat - PAD,
+        maxLat: lat + PAD,
+        minLng: lng - PAD,
+        maxLng: lng + PAD,
+      },
+    };
+  }
+
+  const count = feature.properties.point_count as number;
+  const leaves = sc.getLeaves(feature.id as number, Infinity);
+  let minLat = 90;
+  let maxLat = -90;
+  let minLng = 180;
+  let maxLng = -180;
+  const cities = new Set<string>();
+  for (const leaf of leaves) {
+    const [lLng, lLat] = leaf.geometry.coordinates;
+    if (lLat < minLat) minLat = lLat;
+    if (lLat > maxLat) maxLat = lLat;
+    if (lLng < minLng) minLng = lLng;
+    if (lLng > maxLng) maxLng = lLng;
+    if (leaf.properties.city) cities.add(leaf.properties.city as string);
+  }
+  const PAD = 0.002;
+  return {
+    label: cities.size === 1 ? [...cities][0] : `${count} 张照片`,
+    count,
+    bbox: {
+      minLat: minLat - PAD,
+      maxLat: maxLat + PAD,
+      minLng: minLng - PAD,
+      maxLng: maxLng + PAD,
+    },
+  };
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -123,8 +177,10 @@ export function PhotoMiniMap({
       });
 
       if (onViewNearbyRef.current) {
+        const clusterRef = cluster;
         marker.on("click", () => {
-          onViewNearbyRef.current?.();
+          const sel = buildClusterSelection(sc, clusterRef);
+          if (sel) onViewNearbyRef.current?.(sel);
         });
       }
 
