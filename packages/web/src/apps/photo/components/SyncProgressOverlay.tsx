@@ -1,5 +1,5 @@
 import { LoadingOutlined } from "@tokiomo/components";
-import { CheckCircle, X } from "lucide-react";
+import { AlertCircle, CheckCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import { useJobEvents } from "@/system/events/useJobEvents";
@@ -8,6 +8,20 @@ interface SyncProgressOverlayProps {
   appId: string;
   /** Called when a file_scrape job completes, so the gallery can refresh */
   onJobCompleted?: () => void;
+}
+
+const TASK_LABELS: Record<string, string> = {
+  file_scrape: "文件扫描",
+  photo_ocr: "文字识别",
+  photo_clip: "图像识别",
+  photo_face_detect: "人脸识别",
+  photo_reverse_geocode: "地理位置",
+};
+
+function formatCount(n: number): string {
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`;
+  if (n >= 1_000) return n.toLocaleString();
+  return String(n);
 }
 
 /**
@@ -24,13 +38,13 @@ export function SyncProgressOverlay({
   const onJobCompletedRef = useRef(onJobCompleted);
   onJobCompletedRef.current = onJobCompleted;
 
-  // Only poll while there's active work; otherwise rely on SSE job events
+  // Only poll while there's active work; otherwise rely on WS job events
   const progressQuery = api.app.getSyncProgress.useQuery(
     { id: appId },
     {
       refetchInterval: (query) => {
         const d = query.state.data;
-        if (!d) return 3000; // Initial fetch
+        if (!d) return 3000;
         const active =
           d.status === "syncing" ||
           (d.running ?? 0) > 0 ||
@@ -51,14 +65,13 @@ export function SyncProgressOverlay({
     }, 2000);
   }, []);
 
-  // Listen for job_update SSE events to trigger refetch
+  // Listen for job_update WS events to trigger refetch
   useJobEvents({
     onEvent: (event) => {
       if (event.type === "job_update") {
         const payload = event.job.payload as Record<string, unknown>;
         if (payload?.appId === appId) {
           void progressQuery.refetch();
-          // When a file_scrape job completes, schedule gallery refresh
           if (
             event.job.type === "file_scrape" &&
             event.job.status === "completed"
@@ -70,15 +83,16 @@ export function SyncProgressOverlay({
     },
   });
 
-  const {
-    total = 0,
-    completed = 0,
-    running = 0,
-    pending = 0,
-    failed = 0,
-  } = data ?? {};
-  const active = total > 0 && (running > 0 || pending > 0);
+  const { running = 0, pending = 0 } = data ?? {};
+  const tasks = data?.tasks ?? [];
+  const active = running > 0 || pending > 0;
   const isSyncing = data?.status === "syncing";
+
+  // Filter tasks to show: running/pending tasks, or recently failed
+  const activeTasks = tasks.filter(
+    (t) => t.status === "running" || t.status === "pending",
+  );
+  const failedTasks = tasks.filter((t) => t.status === "failed");
 
   // Show overlay when work begins, auto-hide 3s after completion
   useEffect(() => {
@@ -86,7 +100,7 @@ export function SyncProgressOverlay({
       setDismissed(false);
       setCompletedRecently(false);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    } else if (total > 0 && !active && !isSyncing && !dismissed) {
+    } else if (tasks.length > 0 && !active && !isSyncing && !dismissed) {
       setCompletedRecently(true);
       hideTimerRef.current = setTimeout(() => {
         setDismissed(true);
@@ -96,9 +110,8 @@ export function SyncProgressOverlay({
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [active, isSyncing, total, dismissed]);
+  }, [active, isSyncing, tasks.length, dismissed]);
 
-  // Cleanup debounce timer
   useEffect(() => {
     return () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -110,52 +123,81 @@ export function SyncProgressOverlay({
   if (!data || dismissed) return null;
   if (!active && !isSyncing && !completedRecently) return null;
 
-  const processed = completed + failed;
-  const percent = total > 0 ? Math.round((processed / total) * 100) : 0;
   const isDone = !active && !isSyncing && completedRecently;
 
   return (
     <div className="pointer-events-none sticky bottom-4 z-50 flex justify-end px-4">
-      <div className="pointer-events-auto flex min-w-[240px] items-center gap-3 rounded-xl border border-white/10 bg-black/70 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-neutral-900/80">
-        {isDone ? (
-          <CheckCircle size={16} className="shrink-0 text-green-400" />
-        ) : (
-          <LoadingOutlined size={16} className="shrink-0 text-orange-400" />
-        )}
-
-        <div className="flex flex-1 flex-col gap-1.5">
-          <div className="flex items-center justify-between">
+      <div className="pointer-events-auto flex min-w-[260px] max-w-[340px] flex-col gap-2 rounded-xl border border-white/10 bg-black/70 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-neutral-900/80">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isDone ? (
+              <CheckCircle size={14} className="shrink-0 text-green-400" />
+            ) : (
+              <LoadingOutlined size={14} className="shrink-0 text-orange-400" />
+            )}
             <span className="font-medium">
               {isDone
-                ? `已完成 ${processed} 项`
-                : isSyncing && total === 0
+                ? "处理完成"
+                : isSyncing && activeTasks.length === 0
                   ? "正在扫描文件…"
-                  : `处理中 ${processed}/${total}`}
+                  : "处理中"}
             </span>
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="ml-2 rounded p-0.5 text-white/40 hover:text-white/80"
-            >
-              <X size={14} />
-            </button>
           </div>
-
-          {/* Progress bar */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${isDone ? "bg-green-500" : "bg-orange-500"}`}
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-
-          {!isDone && running > 0 && (
-            <span className="text-[11px] text-white/40">
-              {running} 个任务运行中
-              {pending > 0 && `，${pending} 个排队中`}
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="rounded p-0.5 text-white/40 hover:text-white/80"
+          >
+            <X size={14} />
+          </button>
         </div>
+
+        {/* Per-task progress */}
+        {!isDone &&
+          activeTasks.map((task) => {
+            const label = TASK_LABELS[task.taskType] ?? task.taskType;
+            const pct =
+              task.totalItems > 0
+                ? Math.round((task.processedItems / task.totalItems) * 100)
+                : 0;
+            const isPending = task.status === "pending";
+            return (
+              <div key={task.taskType} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/70">{label}</span>
+                  <span className="tabular-nums text-white/50">
+                    {isPending
+                      ? "等待中"
+                      : task.totalItems > 0
+                        ? `${formatCount(task.processedItems)}/${formatCount(task.totalItems)}`
+                        : "处理中…"}
+                  </span>
+                </div>
+                {!isPending && task.totalItems > 0 && (
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+        {/* Failed tasks summary */}
+        {!isDone && failedTasks.length > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-red-400/80">
+            <AlertCircle size={12} className="shrink-0" />
+            <span>
+              {failedTasks
+                .map((t) => TASK_LABELS[t.taskType] ?? t.taskType)
+                .join("、")}
+              {" 失败"}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
