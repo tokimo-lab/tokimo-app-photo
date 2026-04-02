@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   ScanText,
+  Search,
   SearchCode,
   Sparkles,
   Trash2,
@@ -392,6 +393,11 @@ export function PhotoInfoPanel({
     { enabled: !!detail.id },
   );
 
+  const { data: similarData } = api.photoSettings.similarPhotos.useQuery(
+    { photoId: detail.id },
+    { enabled: !!detail.id },
+  );
+
   const hasCameraData =
     detail.cameraMake ||
     detail.cameraModel ||
@@ -483,6 +489,32 @@ export function PhotoInfoPanel({
           onHoverFace={onHoverFace}
           onNavigateToPerson={onNavigateToPerson}
         />
+
+        {/* ── Similar photos (CLIP) section ────────────────────────── */}
+        {similarData?.indexed && similarData.items.length > 0 && (
+          <InfoSection icon={<Search className="h-3 w-3" />} title="相似照片">
+            <div className="grid grid-cols-3 gap-1.5">
+              {similarData.items.map((item) => (
+                <div
+                  key={item.photoId}
+                  className="group relative aspect-square overflow-hidden rounded"
+                >
+                  <img
+                    src={`/api/apps/photo/${item.photoId}/thumbnail?w=160`}
+                    alt={item.filename}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1 pb-0.5 pt-3 text-right">
+                    <span className="text-[10px] font-medium text-white/80 tabular-nums">
+                      {Math.round(item.similarity * 100)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </InfoSection>
+        )}
 
         {/* ── Camera section ──────────────────────────────────────── */}
         {hasCameraData && (
