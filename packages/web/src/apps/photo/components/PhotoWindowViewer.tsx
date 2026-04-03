@@ -31,7 +31,12 @@ import {
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
-import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
+import {
+  getDisplayDimensions,
+  photoImageUrl,
+  photoLiveVideoUrl,
+  photoThumbUrl,
+} from "./photo-utils";
 import { getViewerPhotos } from "./photo-viewer-store";
 
 const MAX_SCALE = 20;
@@ -160,8 +165,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   >(new Map());
 
   // ── Image loading with progress + HEIC fallback ────────────────
-  const thumbUrl = `/api/apps/photo/${currentPhotoId}/thumbnail?w=${THUMB_WIDTH}`;
-  const fullUrl = `/api/apps/photo/${currentPhotoId}/image`;
+  const thumbUrl = photo ? photoThumbUrl(photo) : undefined;
+  const fullUrl = photoImageUrl(currentPhotoId);
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullDecoded, setFullDecoded] = useState(false);
@@ -792,7 +797,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
             {isLive && showLiveVideo && (
               <video
                 ref={liveVideoRef}
-                src={`/api/apps/photo/${currentPhotoId}/live-video`}
+                src={photoLiveVideoUrl(currentPhotoId)}
                 className="absolute inset-0 h-full w-full object-contain"
                 muted
                 playsInline

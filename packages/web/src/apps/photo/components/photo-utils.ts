@@ -1,7 +1,37 @@
 import type { PhotoOutput } from "@/generated/rust-api";
+import { rustUrl } from "@/lib/rust-api-runtime";
+import { storageUrl } from "@/lib/storage-url";
 
 export const PAGE_SIZE = 80;
 export const THUMB_WIDTH = 320;
+
+/**
+ * Build thumbnail URL for a photo.
+ * If the photo already has a cached thumbnail in storage, return the direct
+ * storage URL (bypasses backend). Otherwise fall back to the backend endpoint
+ * which will generate the thumbnail on first access.
+ */
+export function photoThumbUrl(photo: {
+  id: string;
+  thumbnailPath?: string | null;
+  sourceId?: string | null;
+}): string | undefined {
+  if (!photo.sourceId) return undefined;
+  if (photo.thumbnailPath) {
+    return storageUrl(photo.thumbnailPath);
+  }
+  return rustUrl(`/api/apps/photo/${photo.id}/thumbnail?w=${THUMB_WIDTH}`);
+}
+
+/** Full-resolution original image URL (direct to Rust backend). */
+export function photoImageUrl(photoId: string): string {
+  return rustUrl(`/api/apps/photo/${photoId}/image`);
+}
+
+/** Live Photo companion video URL (direct to Rust backend). */
+export function photoLiveVideoUrl(photoId: string): string {
+  return rustUrl(`/api/apps/photo/${photoId}/live-video`);
+}
 
 export type DateGroup = {
   date: string;

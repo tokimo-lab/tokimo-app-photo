@@ -12,7 +12,12 @@ import {
   OcrBlockSelectLayer,
   OcrHighlightOverlay,
 } from "./photo-overlays";
-import { getDisplayDimensions, THUMB_WIDTH } from "./photo-utils";
+import {
+  getDisplayDimensions,
+  photoImageUrl,
+  photoLiveVideoUrl,
+  photoThumbUrl,
+} from "./photo-utils";
 
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
@@ -246,9 +251,7 @@ export function PhotoLightbox({
   const [showLiveVideo, setShowLiveVideo] = useState(false);
 
   // Thumbnails are always WebP (server-side conversion)
-  const thumbSrc = photo.sourceId
-    ? `/api/apps/photo/${photo.id}/thumbnail?w=${THUMB_WIDTH}`
-    : undefined;
+  const thumbSrc = photoThumbUrl(photo);
 
   // Reset state when navigating to a different photo
   if (prevPhotoId.current !== photo.id) {
@@ -634,9 +637,7 @@ export function PhotoLightbox({
   }, [isZoomed, initialScaleValue]);
 
   // Server serves raw image; browser decode test determines if fallback JPEG conversion is needed
-  const fullSrc = photo.sourceId
-    ? `/api/apps/photo/${photo.id}/image`
-    : undefined;
+  const fullSrc = photo.sourceId ? photoImageUrl(photo.id) : undefined;
 
   // Don't start loading full-res until enter animation finishes
   const shouldLoadFull = animState !== "entering";
@@ -1065,7 +1066,7 @@ export function PhotoLightbox({
                 {isLive && showLiveVideo && (
                   <video
                     ref={liveVideoRef}
-                    src={`/api/apps/photo/${photo.id}/live-video`}
+                    src={photoLiveVideoUrl(photo.id)}
                     className="absolute inset-0 h-full w-full object-contain"
                     muted
                     playsInline
