@@ -111,7 +111,7 @@ export default function PhotoAppPage() {
       cameraModel: null,
       orientation: null,
       liveVideoPath: null,
-      sourceId: null,
+      sourceId: item.appId,
     }));
   }, [similarQuery.data]);
 

@@ -34,7 +34,7 @@ import { OcrDebugModal } from "./OcrDebugModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoMiniMap } from "./PhotoMiniMap";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
-import { formatBytes } from "./photo-utils";
+import { formatBytes, photoThumbUrl } from "./photo-utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -562,7 +562,11 @@ export function PhotoInfoPanel({
                   }}
                 >
                   <img
-                    src={`/api/apps/photo/${item.photoId}/thumbnail?w=160`}
+                    src={photoThumbUrl({
+                      id: item.photoId,
+                      thumbnailPath: item.thumbnailPath,
+                      sourceId: item.appId,
+                    })}
                     alt={item.filename}
                     className="h-full w-full object-cover transition-transform group-hover:scale-105"
                     loading="lazy"
