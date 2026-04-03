@@ -8,6 +8,7 @@ import {
   Search,
   Sparkles,
   Star,
+  Tag as TagIcon,
   Trash2,
   Users,
   X,
@@ -115,6 +116,37 @@ export default function PhotoAppPage() {
       sourceId: item.appId,
     }));
   }, [similarQuery.data]);
+
+  // ── Tag filter (from info panel tag click) ─────────────────────────
+  const [tagFilter, setTagFilter] = useState(metadata.tagFilter ?? null);
+
+  const tagClipQuery = api.photoSettings.clipSearch.useQuery(
+    { appId: id!, q: tagFilter?.subcategory ?? "" },
+    { enabled: !!id && !!tagFilter && tab === "timeline" },
+  );
+
+  const tagPhotos: PhotoOutput[] = useMemo(() => {
+    if (!tagClipQuery.data) return [];
+    return tagClipQuery.data.map((item) => ({
+      id: item.photoId,
+      appId: item.appId,
+      filename: item.filename,
+      path: item.path,
+      title: item.title ?? null,
+      width: item.width ?? null,
+      height: item.height ?? null,
+      fileSize: item.fileSize ?? null,
+      mimeType: item.mimeType ?? null,
+      takenAt: item.takenAt ?? null,
+      thumbnailPath: item.thumbnailPath ?? null,
+      isFavorite: item.isFavorite,
+      cameraMake: null,
+      cameraModel: null,
+      orientation: null,
+      liveVideoPath: null,
+      sourceId: item.appId,
+    }));
+  }, [tagClipQuery.data]);
 
   const handleNavigateToPerson = useCallback(
     (personId: string) => {
@@ -745,6 +777,46 @@ export default function PhotoAppPage() {
               />
             ) : (
               <Empty description="未找到相似照片" />
+            )}
+          </>
+        ) : tab === "timeline" && tagFilter ? (
+          /* ── Tag filtered view ──────────────────────────────────────── */
+          <>
+            <div className="flex items-center gap-1 pl-1 pr-14 text-sm">
+              <button
+                type="button"
+                onClick={() => setTagFilter(null)}
+                className="cursor-pointer text-blue-500 transition-colors hover:text-blue-600 hover:underline dark:text-blue-400"
+              >
+                时间线
+              </button>
+              <span className="text-fg-muted">/</span>
+              <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
+                <TagIcon className="h-3.5 w-3.5" />
+                {tagFilter.icon} {tagFilter.subcategory}
+                {tagPhotos.length > 0 && ` · ${tagPhotos.length} 张照片`}
+              </span>
+            </div>
+            {tagClipQuery.isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Spin />
+              </div>
+            ) : tagPhotos.length > 0 ? (
+              <PhotoTimeline
+                photos={tagPhotos}
+                appId={id!}
+                total={tagPhotos.length}
+                hasMore={false}
+                onLoadMore={() => {}}
+                isLoadingMore={false}
+                onToggleFavorite={handleToggleFavorite}
+                isSelecting={isSelecting}
+                selectedIds={selectedIds}
+                onSelect={handleSelect}
+                targetRowHeight={targetRowHeight}
+              />
+            ) : (
+              <Empty description="未找到匹配该标签的照片" />
             )}
           </>
         ) : tab === "timeline" ? (
