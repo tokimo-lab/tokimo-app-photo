@@ -277,9 +277,26 @@ export function PhotoTimeline({
   useEffect(() => {
     if (!pendingSeekRef.current) return;
     const target = pendingSeekRef.current;
-    const idx = flatItems.findIndex(
+    let idx = flatItems.findIndex(
       (item) => item.type === "header" && item.group.date.startsWith(target),
     );
+    // Full-date target with no exact match → find nearest in same month
+    if (idx < 0 && target.length === 10) {
+      const monthPrefix = target.slice(0, 7);
+      const targetDay = Number.parseInt(target.slice(8, 10), 10);
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < flatItems.length; i++) {
+        const item = flatItems[i];
+        if (item.type === "header" && item.group.date.startsWith(monthPrefix)) {
+          const day = Number.parseInt(item.group.date.slice(8, 10), 10);
+          const dist = Math.abs(day - targetDay);
+          if (dist < bestDist) {
+            bestDist = dist;
+            idx = i;
+          }
+        }
+      }
+    }
     if (idx >= 0) {
       pendingSeekRef.current = null;
       virtualizer.scrollToIndex(idx, { align: "start", behavior: "auto" });
@@ -289,11 +306,36 @@ export function PhotoTimeline({
   // ── Scroll to date (for timeline scrubber) ──────────────────
   const scrollToDate = useCallback(
     (datePrefix: string, smooth: boolean) => {
-      // Find the first flat item whose date starts with the prefix
-      const idx = flatItems.findIndex(
+      // Find exact or nearest header matching the date prefix.
+      // datePrefix can be "YYYY-MM-DD" (scrubber full date) or "YYYY-MM" (legacy).
+      let idx = flatItems.findIndex(
         (item) =>
           item.type === "header" && item.group.date.startsWith(datePrefix),
       );
+
+      // Full-date prefix with no exact match → find nearest date in same month
+      if (idx < 0 && datePrefix.length === 10) {
+        const monthPrefix = datePrefix.slice(0, 7);
+        const targetDay = Number.parseInt(datePrefix.slice(8, 10), 10);
+        let bestIdx = -1;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < flatItems.length; i++) {
+          const item = flatItems[i];
+          if (
+            item.type === "header" &&
+            item.group.date.startsWith(monthPrefix)
+          ) {
+            const day = Number.parseInt(item.group.date.slice(8, 10), 10);
+            const dist = Math.abs(day - targetDay);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = i;
+            }
+          }
+        }
+        idx = bestIdx;
+      }
+
       if (idx >= 0) {
         pendingSeekRef.current = null;
         virtualizer.scrollToIndex(idx, {

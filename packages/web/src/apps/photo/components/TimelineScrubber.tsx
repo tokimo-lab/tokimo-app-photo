@@ -295,14 +295,14 @@ export function TimelineScrubber({
   // ── Position → year-month from interpolated label ────────────
   const nearestDate = useCallback(
     (pos: number) => {
-      // Use the same interpolation as posToDateLabel to derive year-month,
-      // ensuring the selected month matches the tooltip shown to the user.
+      // Return full YYYY-MM-DD so seekToDate navigates to exact day
       const label = posToDateLabel(pos);
-      const match = label.match(/^(\d{4})年(\d{1,2})月/);
+      const match = label.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
       if (match) {
         const year = match[1];
         const month = match[2].padStart(2, "0");
-        return `${year}-${month}`;
+        const day = match[3].padStart(2, "0");
+        return `${year}-${month}-${day}`;
       }
       // Fallback: nearest datePosition key
       let best: string | null = null;
