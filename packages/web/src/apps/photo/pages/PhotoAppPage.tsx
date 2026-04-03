@@ -658,13 +658,15 @@ export default function PhotoAppPage() {
 
   // Seek to a specific date — resets pagination with beforeDate filter
   const seekToDate = useCallback((datePrefix: string) => {
-    // Convert year-month prefix like "2022-06" to end-of-month date
     const parts = datePrefix.split("-");
     let beforeDate: string;
-    if (parts.length >= 2) {
+    if (parts.length >= 3) {
+      // Full date like "2025-10-21" — use as-is
+      beforeDate = datePrefix;
+    } else if (parts.length === 2) {
+      // Year-month like "2025-10" — use last day of month
       const y = Number.parseInt(parts[0], 10);
       const m = Number.parseInt(parts[1], 10);
-      // Last day of the month
       const lastDay = new Date(y, m, 0).getDate();
       beforeDate = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
     } else {
@@ -672,6 +674,9 @@ export default function PhotoAppPage() {
       beforeDate = `${parts[0]}-12-31`;
     }
     accTimelineRef.current = [];
+    accUpwardRef.current = [];
+    setUpwardEnabled(false);
+    setUpwardPage(1);
     setTimelinePage(1);
     setTimelineBeforeDate(beforeDate);
   }, []);
