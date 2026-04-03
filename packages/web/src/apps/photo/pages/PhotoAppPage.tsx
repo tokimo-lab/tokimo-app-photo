@@ -57,6 +57,7 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
 export default function PhotoAppPage() {
   const { metadata } = useWindowNav();
   const id = metadata.appId as string | undefined;
+  const initialDate = metadata.initialDate as string | undefined;
   const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -224,7 +225,7 @@ export default function PhotoAppPage() {
   const [timelinePage, setTimelinePage] = useState(1);
   const [timelineBeforeDate, setTimelineBeforeDate] = useState<
     string | undefined
-  >();
+  >(initialDate);
   const [favPage, setFavPage] = useState(1);
   const [trashPage, setTrashPage] = useState(1);
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
@@ -234,6 +235,11 @@ export default function PhotoAppPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
   const accTimelineRef = useRef<PhotoOutput[]>([]);
+  const accUpwardRef = useRef<PhotoOutput[]>([]);
+  const [upwardPage, setUpwardPage] = useState(1);
+  const [upwardLoadingMore, setUpwardLoadingMore] = useState(false);
+  // Upward loading is lazy — only activates when user scrolls near the top
+  const [upwardEnabled, setUpwardEnabled] = useState(false);
   const accFavRef = useRef<PhotoOutput[]>([]);
   const accTrashRef = useRef<PhotoOutput[]>([]);
 
@@ -252,6 +258,30 @@ export default function PhotoAppPage() {
       beforeDate: timelineBeforeDate,
     },
     { enabled: !!id && tab === "timeline" },
+  );
+
+  // Upward query: load photos newer than initialDate (sorted asc, reversed for display)
+  const upwardAfterDate = useMemo(() => {
+    if (!initialDate) return undefined;
+    // Day after initialDate to avoid overlap
+    const d = new Date(initialDate);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, [initialDate]);
+
+  const upwardQuery = api.app.listPhotos.useQuery(
+    {
+      appId: id!,
+      page: upwardPage,
+      pageSize: PAGE_SIZE,
+      sortBy: "takenAt",
+      sortDir: "asc",
+      search: debouncedSearch || undefined,
+      afterDate: upwardAfterDate,
+    },
+    {
+      enabled: !!id && !!upwardAfterDate && upwardEnabled && tab === "timeline",
+    },
   );
 
   const favoritesQuery = api.app.listPhotos.useQuery(
@@ -318,7 +348,7 @@ export default function PhotoAppPage() {
     [ocrResults],
   );
 
-  // Accumulate timeline photos across pages
+  // Accumulate timeline photos across pages (downward = older)
   const timelineTotal = photosQuery.data?.total ?? 0;
   useEffect(() => {
     if (!photosQuery.data?.items) return;
@@ -332,13 +362,38 @@ export default function PhotoAppPage() {
     }
   }, [photosQuery.data, timelinePage]);
 
-  const allTimelinePhotosRaw = useMemo(
-    () =>
+  // Accumulate upward photos (newer than initialDate, sorted asc → reversed for display)
+  const upwardTotal = upwardQuery.data?.total ?? 0;
+  useEffect(() => {
+    if (!upwardQuery.data?.items) return;
+    setUpwardLoadingMore(false);
+    if (upwardPage === 1) {
+      accUpwardRef.current = upwardQuery.data.items;
+    } else {
+      const ids = new Set(accUpwardRef.current.map((p) => p.id));
+      const newItems = upwardQuery.data.items.filter((p) => !ids.has(p.id));
+      accUpwardRef.current = [...accUpwardRef.current, ...newItems];
+    }
+  }, [upwardQuery.data, upwardPage]);
+
+  // Merge upward (reversed to desc) + downward into a single timeline
+  // biome-ignore lint/correctness/useExhaustiveDependencies: upwardQuery.data triggers re-merge of ref-accumulated photos
+  const allTimelinePhotosRaw = useMemo(() => {
+    const downward =
       accTimelineRef.current.length > 0
         ? accTimelineRef.current
-        : (photosQuery.data?.items ?? []),
-    [photosQuery.data?.items],
-  );
+        : (photosQuery.data?.items ?? []);
+    if (accUpwardRef.current.length === 0) return downward;
+    // Upward was loaded asc (oldest near anchor first), reverse to desc (newest first)
+    const upwardReversed = [...accUpwardRef.current].reverse();
+    // Deduplicate
+    const downIds = new Set(downward.map((p) => p.id));
+    const uniqueUp = upwardReversed.filter((p) => !downIds.has(p.id));
+    return [...uniqueUp, ...downward];
+  }, [photosQuery.data?.items, upwardQuery.data?.items]);
+
+  const upwardHasMore =
+    !!upwardAfterDate && accUpwardRef.current.length < upwardTotal;
 
   const allTimelinePhotos = useMemo(
     () =>
@@ -590,6 +645,17 @@ export default function PhotoAppPage() {
     setTimelinePage((p) => p + 1);
   }, []);
 
+  const loadMoreUpward = useCallback(() => {
+    if (!upwardAfterDate) return;
+    if (!upwardEnabled) {
+      // First time: enable the upward query (page 1 will load)
+      setUpwardEnabled(true);
+      return;
+    }
+    setUpwardLoadingMore(true);
+    setUpwardPage((p) => p + 1);
+  }, [upwardAfterDate, upwardEnabled]);
+
   // Seek to a specific date — resets pagination with beforeDate filter
   const seekToDate = useCallback((datePrefix: string) => {
     // Convert year-month prefix like "2022-06" to end-of-month date
@@ -828,6 +894,9 @@ export default function PhotoAppPage() {
               hasMore={timelineHasMore}
               onLoadMore={loadMoreTimeline}
               isLoadingMore={timelineLoadingMore}
+              hasNewer={upwardHasMore}
+              onLoadNewer={loadMoreUpward}
+              isLoadingNewer={upwardLoadingMore}
               onToggleFavorite={handleToggleFavorite}
               isSelecting={isSelecting}
               selectedIds={selectedIds}

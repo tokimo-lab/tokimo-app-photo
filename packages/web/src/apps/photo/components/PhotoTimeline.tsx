@@ -30,6 +30,9 @@ export function PhotoTimeline({
   hasMore,
   onLoadMore,
   isLoadingMore,
+  hasNewer,
+  onLoadNewer,
+  isLoadingNewer,
   onToggleFavorite,
   isSelecting,
   selectedIds,
@@ -43,6 +46,9 @@ export function PhotoTimeline({
   hasMore?: boolean;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  hasNewer?: boolean;
+  onLoadNewer?: () => void;
+  isLoadingNewer?: boolean;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   isSelecting?: boolean;
   selectedIds?: Set<string>;
@@ -187,6 +193,38 @@ export function PhotoTimeline({
     return { flatItems: items, dateOffsets: offsets, itemHeights: heights };
   }, [groups, layoutWidth, targetRowHeight]);
 
+  // ── Maintain scroll position when upward items are prepended ──
+  const prevFirstDateRef = useRef<string | null>(null);
+  const prevFirstDateOffsetRef = useRef(0);
+  useEffect(() => {
+    if (flatItems.length === 0) return;
+    const firstHeader = flatItems.find((item) => item.type === "header");
+    const firstDate =
+      firstHeader?.type === "header" ? firstHeader.group.date : null;
+    const prevFirst = prevFirstDateRef.current;
+    const prevOffset = prevFirstDateOffsetRef.current;
+
+    if (
+      prevFirst &&
+      firstDate &&
+      firstDate !== prevFirst &&
+      scrollElRef.current
+    ) {
+      // Items were prepended — adjust scroll to maintain visual position
+      const newOffset = dateOffsets.get(prevFirst) ?? 0;
+      const delta = newOffset - prevOffset;
+      if (delta > 0) {
+        scrollElRef.current.scrollTop += delta;
+      }
+    }
+
+    // Update tracking refs
+    prevFirstDateRef.current = firstDate;
+    prevFirstDateOffsetRef.current = firstDate
+      ? (dateOffsets.get(firstDate) ?? 0)
+      : 0;
+  }, [flatItems, dateOffsets]);
+
   // ── Scroll element (find nearest scrollable ancestor) ────────
   const scrollElRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -222,6 +260,16 @@ export function PhotoTimeline({
       onLoadMore();
     }
   }, [virtualItems, flatItems.length, hasMore, onLoadMore, isLoadingMore]);
+
+  // ── Upward infinite scroll: load newer photos when near top ──
+  useEffect(() => {
+    if (!hasNewer || !onLoadNewer || isLoadingNewer) return;
+    const firstItem = virtualItems[0];
+    if (!firstItem) return;
+    if (firstItem.index <= 10) {
+      onLoadNewer();
+    }
+  }, [virtualItems, hasNewer, onLoadNewer, isLoadingNewer]);
 
   // ── Pending seek: scroll after backend data arrives ──────────
   const pendingSeekRef = useRef<string | null>(null);
@@ -278,6 +326,12 @@ export function PhotoTimeline({
   return (
     <>
       <div ref={measureRef} className="pr-14 lg:pr-14">
+        {/* Upward loading indicator */}
+        {hasNewer && isLoadingNewer && (
+          <div className="flex justify-center py-4">
+            <Spin size="small" />
+          </div>
+        )}
         {/* Virtual scroll container with total height */}
         <div
           style={{
@@ -313,6 +367,7 @@ export function PhotoTimeline({
                   >
                     <DateHeader
                       group={item.group}
+                      appId={appId}
                       isSelecting={isSelecting}
                       selectedIds={selectedIds}
                       onSelect={onSelect}
@@ -384,17 +439,38 @@ export function PhotoTimeline({
 // ── Date header (extracted for virtual rendering) ──────────────
 function DateHeader({
   group,
+  appId,
   isSelecting,
   selectedIds,
   onSelect,
 }: {
   group: DateGroup;
+  appId: string;
   isSelecting?: boolean;
   selectedIds?: Set<string>;
   onSelect?: (photo: PhotoOutput) => void;
 }) {
+  const { openWindow } = useWindowActions();
   const allSelected =
     isSelecting && group.photos.every((p) => selectedIds?.has(p.id));
+
+  const handleDateClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      openWindow({
+        type: "page",
+        appId,
+        title: group.label,
+        metadata: {
+          appId,
+          tab: "timeline",
+          initialDate: group.date,
+        },
+        forceNew: true,
+      });
+    },
+    [openWindow, appId, group.label, group.date],
+  );
 
   return (
     <div
@@ -430,7 +506,13 @@ function DateHeader({
           <Check className="h-3 w-3 text-white" strokeWidth={3} />
         )}
       </button>
-      <h3 className="text-sm font-semibold text-fg-secondary">{group.label}</h3>
+      <button
+        type="button"
+        className="cursor-pointer text-sm font-semibold text-fg-secondary hover:text-fg-primary hover:underline"
+        onClick={handleDateClick}
+      >
+        {group.label}
+      </button>
       <span className="ml-2 text-xs text-fg-muted">
         {group.photos.length} 张
       </span>
