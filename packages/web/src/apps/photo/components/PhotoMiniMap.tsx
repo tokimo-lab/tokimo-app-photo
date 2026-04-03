@@ -4,6 +4,7 @@ import AMapLoader from "@amap/amap-jsapi-loader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { api } from "@/generated/rust-api";
+import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import type { MapClusterSelection } from "./PhotoMapView";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ export function PhotoMiniMap({
         : cluster.properties.id;
 
       const thumbUrl = photoId
-        ? `/api/apps/photo/${photoId}/thumbnail?w=${THUMB_SIZE * 2}`
+        ? photoThumbUrl("photo", photoId, THUMB_SIZE * 2)
         : "";
 
       const el = document.createElement("div");

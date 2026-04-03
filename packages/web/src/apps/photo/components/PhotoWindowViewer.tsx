@@ -18,6 +18,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import type { PhotoOutput } from "@/generated/rust-types";
+import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
 import { extractRawPreview, isRawFile } from "@/shared/utils/raw-decoder";
 import { useWindowActions } from "@/system";
@@ -165,8 +166,8 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   >(new Map());
 
   // ── Image loading with progress + HEIC fallback ────────────────
-  const thumbUrl = photo ? photoThumbUrl(photo) : undefined;
-  const fullUrl = photoImageUrl(currentPhotoId);
+  const thumbUrl = photoThumbUrl("photo", currentPhotoId, THUMB_WIDTH);
+  const fullUrl = `/api/apps/photo/${currentPhotoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullDecoded, setFullDecoded] = useState(false);

@@ -3,6 +3,7 @@ import { Grid3x3, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { PhotoAlbumOutput, PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { PAGE_SIZE } from "./photo-utils";
@@ -269,7 +270,7 @@ export function PhotoAlbumsView({
               <div className="aspect-[4/3] bg-fill-tertiary">
                 {album.coverPhotoId ? (
                   <img
-                    src={`/api/apps/photo/${album.coverPhotoId}/thumbnail?w=400`}
+                    src={thumbUrl("photo", album.coverPhotoId, 400)}
                     alt={album.name}
                     className="h-full w-full object-cover"
                     loading="lazy"

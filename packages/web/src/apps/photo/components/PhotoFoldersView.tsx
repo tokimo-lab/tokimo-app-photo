@@ -3,6 +3,7 @@ import { ChevronRight, FolderOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 
@@ -86,7 +87,7 @@ export function PhotoFoldersView({
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
                 {folder.coverPhotoId ? (
                   <img
-                    src={`/api/apps/photo/${folder.coverPhotoId}/thumbnail?w=80`}
+                    src={thumbUrl("photo", folder.coverPhotoId, 80)}
                     alt=""
                     className="h-full w-full rounded-lg object-cover"
                     loading="lazy"

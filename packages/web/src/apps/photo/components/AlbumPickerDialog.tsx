@@ -3,6 +3,7 @@ import { Grid3x3, Plus } from "lucide-react";
 import { useState } from "react";
 import type { PhotoAlbumOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 
 export function AlbumPickerDialog({
   appId,
@@ -76,7 +77,7 @@ export function AlbumPickerDialog({
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
                 {album.coverPhotoId ? (
                   <img
-                    src={`/api/apps/photo/${album.coverPhotoId}/thumbnail?w=80`}
+                    src={thumbUrl("photo", album.coverPhotoId, 80)}
                     alt=""
                     className="h-full w-full rounded-lg object-cover"
                   />

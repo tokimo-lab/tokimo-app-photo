@@ -31,6 +31,7 @@ import {
 import { SyncProgressOverlay } from "@/apps/photo/components/SyncProgressOverlay";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 import { useMessage, useWindowNav } from "@/system";
 
 type TabKey =
@@ -683,7 +684,7 @@ export default function PhotoAppPage() {
                     className="group relative aspect-square overflow-hidden rounded-lg bg-fill-tertiary"
                   >
                     <img
-                      src={`/api/apps/photo/${result.photoId}/thumbnail`}
+                      src={thumbUrl("photo", result.photoId, 160)}
                       alt={result.filename}
                       loading="lazy"
                       className="h-full w-full object-cover transition-transform group-hover:scale-105"

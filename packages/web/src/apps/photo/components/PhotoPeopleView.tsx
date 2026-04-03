@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import type { PersonOutput } from "@/generated/rust-types/index";
+import { thumbUrl } from "@/lib/thumb";
 import { PhotoTimeline } from "./PhotoTimeline";
 import { PAGE_SIZE } from "./photo-utils";
 
@@ -223,7 +224,7 @@ export function PhotoPeopleView({
               <div className="relative h-20 w-20 overflow-hidden rounded-full bg-fill-tertiary dark:bg-white/[0.10]">
                 {person.avatarPhotoId ? (
                   <img
-                    src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
+                    src={thumbUrl("photo", person.avatarPhotoId, 160)}
                     alt={person.name ?? "未命名"}
                     className="h-full w-full object-cover"
                   />

@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { PersonOutput, PhotoFaceOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 
 const THUMB_WIDTH = 800;
 
@@ -132,7 +133,7 @@ function PersonPickerModal({
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-fill-tertiary">
                   {person.avatarPhotoId ? (
                     <img
-                      src={`/api/apps/photo/${person.avatarPhotoId}/thumbnail`}
+                      src={thumbUrl("photo", person.avatarPhotoId, 160)}
                       alt={person.name ?? "未命名"}
                       className="h-full w-full object-cover"
                     />
@@ -179,7 +180,7 @@ function FaceChip({
   onNavigateToPerson?: (personId: string) => void;
 }) {
   const chipSize = 56;
-  const thumbnailSrc = `/api/apps/photo/${photoId}/thumbnail?w=${THUMB_WIDTH}`;
+  const thumbnailSrc = thumbUrl("photo", photoId, THUMB_WIDTH);
   const canCrop = photoWidth != null && photoHeight != null && photoWidth > 0;
   const queryClient = useQueryClient();
 

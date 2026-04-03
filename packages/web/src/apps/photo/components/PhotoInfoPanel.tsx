@@ -28,6 +28,7 @@ import type {
 } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
+import { thumbUrl } from "@/lib/thumb";
 import { useWindowActions } from "@/system";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import { OcrDebugModal } from "./OcrDebugModal";
@@ -562,11 +563,7 @@ export function PhotoInfoPanel({
                   }}
                 >
                   <img
-                    src={photoThumbUrl({
-                      id: item.photoId,
-                      thumbnailPath: item.thumbnailPath,
-                      sourceId: item.appId,
-                    })}
+                    src={thumbUrl("photo", item.photoId, 160)}
                     alt={item.filename}
                     className="h-full w-full object-cover transition-transform group-hover:scale-105"
                     loading="lazy"

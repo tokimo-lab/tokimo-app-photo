@@ -5,6 +5,7 @@ import { Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { api } from "@/generated/rust-api";
+import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import { useWindowNav } from "@/system";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -259,7 +260,7 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
         : cluster.properties.id;
 
       const thumbUrl = photoId
-        ? `/api/apps/photo/${photoId}/thumbnail?w=${THUMB_SIZE * 2}`
+        ? photoThumbUrl("photo", photoId, THUMB_SIZE * 2)
         : "";
 
       const iconContent = document.createElement("div");

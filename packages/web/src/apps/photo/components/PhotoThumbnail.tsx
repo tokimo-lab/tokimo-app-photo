@@ -1,6 +1,7 @@
 import { Check, Heart, ImageIcon } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { photoLiveVideoUrl, photoThumbUrl } from "./photo-utils";
 
@@ -22,7 +23,9 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
   /** When true, fills parent dimensions instead of forcing aspect-square */
   fillContainer?: boolean;
 }) {
-  const src = photoThumbUrl(photo);
+  const src = photo.sourceId
+    ? thumbUrl("photo", photo.id, THUMB_WIDTH)
+    : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [loaded, setLoaded] = useState(false);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { thumbUrl } from "@/lib/thumb";
 import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
@@ -22,7 +23,7 @@ import {
 const ANIM_DURATION = 300;
 const ANIM_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 /** Opacity fade duration for clipped-source animations. */
-const FADE_DURATION = 200;
+const _FADE_DURATION = 200;
 // Slow start near 0, accelerates through mid, reaches 1 smoothly.
 // Gives the "emerging from nothing" feel — lingers transparent, then snaps in.
 const FADE_IN_EASING = "cubic-bezier(0.7, 0, 0.3, 1)";
@@ -251,7 +252,9 @@ export function PhotoLightbox({
   const [showLiveVideo, setShowLiveVideo] = useState(false);
 
   // Thumbnails are always WebP (server-side conversion)
-  const thumbSrc = photoThumbUrl(photo);
+  const thumbSrc = photo.sourceId
+    ? thumbUrl("photo", photo.id, THUMB_WIDTH)
+    : undefined;
 
   // Reset state when navigating to a different photo
   if (prevPhotoId.current !== photo.id) {
