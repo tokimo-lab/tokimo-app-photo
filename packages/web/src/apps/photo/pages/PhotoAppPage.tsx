@@ -260,14 +260,16 @@ export default function PhotoAppPage() {
     { enabled: !!id && tab === "timeline" },
   );
 
-  // Upward query: load photos newer than initialDate (sorted asc, reversed for display)
+  // Upward query: load photos newer than current seek position
+  // Works both when opened via date header (initialDate) and scrubber seek (timelineBeforeDate)
   const upwardAfterDate = useMemo(() => {
-    if (!initialDate) return undefined;
-    // Day after initialDate to avoid overlap
-    const d = new Date(initialDate);
+    const anchor = timelineBeforeDate ?? initialDate;
+    if (!anchor) return undefined;
+    // Day after the anchor to avoid overlap with downward query
+    const d = new Date(anchor);
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
-  }, [initialDate]);
+  }, [timelineBeforeDate, initialDate]);
 
   const upwardQuery = api.app.listPhotos.useQuery(
     {
@@ -393,7 +395,8 @@ export default function PhotoAppPage() {
   }, [photosQuery.data?.items, upwardQuery.data?.items]);
 
   const upwardHasMore =
-    !!upwardAfterDate && accUpwardRef.current.length < upwardTotal;
+    !!upwardAfterDate &&
+    (!upwardEnabled || accUpwardRef.current.length < upwardTotal);
 
   const allTimelinePhotos = useMemo(
     () =>
