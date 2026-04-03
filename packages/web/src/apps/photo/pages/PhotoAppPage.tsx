@@ -591,7 +591,7 @@ export default function PhotoAppPage() {
   if (!id) return null;
 
   return (
-    <div ref={rootRef} className="relative space-y-3">
+    <div ref={rootRef} className="relative flex flex-col gap-3 lg:gap-4">
       <PillTabBar
         tabs={tabs}
         activeTab={tab}
