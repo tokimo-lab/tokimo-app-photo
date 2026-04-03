@@ -259,7 +259,7 @@ export function PhotoLocationsView({
   return (
     <div className="flex flex-col gap-4">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 px-4 text-sm">
+      <div className="flex items-center gap-1 pl-1 pr-14 text-sm">
         {breadcrumb.map((item, i) => (
           <span key={item.label} className="flex items-center gap-1">
             {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}

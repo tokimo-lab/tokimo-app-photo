@@ -1,5 +1,5 @@
 import { Spin } from "@tokiomo/components";
-import { ChevronLeft, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
@@ -115,13 +115,12 @@ export function PhotoLocationTab({
   return (
     <div className="flex flex-col gap-3">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 px-4 text-sm">
+      <div className="flex items-center gap-2 pl-1 pr-14 text-sm">
         <button
           type="button"
-          className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-blue-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:text-blue-400 dark:hover:bg-blue-950/30"
+          className="cursor-pointer text-blue-500 transition-colors hover:text-blue-600 hover:underline dark:text-blue-400"
           onClick={handleBack}
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
           全部地点
         </button>
         <span className="text-fg-muted">/</span>

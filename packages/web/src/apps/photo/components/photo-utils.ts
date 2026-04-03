@@ -16,10 +16,10 @@ export function photoThumbUrl(photo: {
   thumbnailPath?: string | null;
   sourceId?: string | null;
 }): string | undefined {
-  if (!photo.sourceId) return undefined;
   if (photo.thumbnailPath) {
     return storageUrl(photo.thumbnailPath);
   }
+  if (!photo.sourceId) return undefined;
   return rustUrl(`/api/apps/photo/${photo.id}/thumbnail?w=${THUMB_WIDTH}`);
 }
 

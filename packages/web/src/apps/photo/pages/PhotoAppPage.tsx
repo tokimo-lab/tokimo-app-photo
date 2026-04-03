@@ -708,20 +708,21 @@ export default function PhotoAppPage() {
         ) : tab === "timeline" && similarSourceId ? (
           /* ── Similar photos filtered view ─────────────────────────── */
           <>
-            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 dark:border-purple-800 dark:bg-purple-950/50">
-              <Search className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
-              <span className="flex-1 text-sm text-purple-700 dark:text-purple-300">
+            <div className="flex items-center gap-1 pl-1 pr-14 text-sm">
+              <button
+                type="button"
+                onClick={() => setSimilarSourceId(null)}
+                className="cursor-pointer text-blue-500 transition-colors hover:text-blue-600 hover:underline dark:text-blue-400"
+              >
+                时间线
+              </button>
+              <span className="text-fg-muted">/</span>
+              <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
+                <Search className="h-3.5 w-3.5" />
                 {similarPhotos.length > 0
                   ? `${similarPhotos.length} 张相似照片`
                   : "正在搜索相似照片…"}
               </span>
-              <button
-                type="button"
-                onClick={() => setSimilarSourceId(null)}
-                className="rounded p-0.5 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/50"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
             {similarQuery.isLoading ? (
               <div className="flex items-center justify-center py-20">
