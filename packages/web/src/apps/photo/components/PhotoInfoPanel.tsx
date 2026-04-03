@@ -35,7 +35,7 @@ import { OcrDebugModal } from "./OcrDebugModal";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoMiniMap } from "./PhotoMiniMap";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
-import { formatBytes, photoThumbUrl } from "./photo-utils";
+import { formatBytes } from "./photo-utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

@@ -34,9 +34,8 @@ import {
 } from "./photo-overlays";
 import {
   getDisplayDimensions,
-  photoImageUrl,
   photoLiveVideoUrl,
-  photoThumbUrl,
+  THUMB_WIDTH,
 } from "./photo-utils";
 import { getViewerPhotos } from "./photo-viewer-store";
 

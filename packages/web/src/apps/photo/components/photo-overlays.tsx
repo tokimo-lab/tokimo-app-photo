@@ -520,7 +520,6 @@ export function OcrBboxEditOverlay({
   const armAngleDeg = Math.atan2(normalY, normalX) * (180 / Math.PI) + 90;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: drag overlay
     <div
       ref={overlayRef}
       className="absolute"
@@ -592,7 +591,6 @@ export function OcrBboxEditOverlay({
       {pts.map(([px, py], idx) => {
         const cornerKey = (["tl", "tr", "br", "bl"] as const)[idx];
         return (
-          // biome-ignore lint/a11y/noStaticElementInteractions: drag handle
           <div
             key={cornerKey}
             className="absolute z-10 rounded-full border-2 border-amber-400 bg-white shadow-md"
@@ -608,7 +606,6 @@ export function OcrBboxEditOverlay({
         );
       })}
       {/* Rotation handle */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: rotation handle */}
       <div
         className="absolute z-10 rounded-full border-2 border-amber-400 bg-amber-400 shadow-md"
         style={{

@@ -17,7 +17,7 @@ import {
   getDisplayDimensions,
   photoImageUrl,
   photoLiveVideoUrl,
-  photoThumbUrl,
+  THUMB_WIDTH,
 } from "./photo-utils";
 
 const ANIM_DURATION = 300;

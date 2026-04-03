@@ -3,7 +3,7 @@ import { memo, useCallback, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { thumbUrl } from "@/lib/thumb";
 import { LivePhotoIcon } from "./LivePhotoIcon";
-import { photoLiveVideoUrl, photoThumbUrl } from "./photo-utils";
+import { photoLiveVideoUrl, THUMB_WIDTH } from "./photo-utils";
 
 export const PhotoThumbnail = memo(function PhotoThumbnail({
   photo,
