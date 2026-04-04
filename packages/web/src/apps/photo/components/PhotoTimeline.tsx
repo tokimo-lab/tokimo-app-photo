@@ -352,15 +352,29 @@ export function PhotoTimeline({
   );
 
   // ── Current visible date (for scroll spy) ───────────────────
+  // We need the LAST header at-or-above the scroll position, not merely the
+  // first header in virtualItems (which includes overscan items above viewport).
   const currentVisibleDate = useMemo(() => {
     if (virtualItems.length === 0) return null;
-    // Find the first visible header
+    const scrollTop = scrollElRef.current?.scrollTop ?? 0;
+
+    // Find the last header whose top is at or above the current scroll position.
+    // vItem.start is the item's absolute offset from the scroll container top.
+    let current: string | null = null;
     for (const vItem of virtualItems) {
+      // Stop scanning once we've passed the scroll position (+ one header height)
+      if (vItem.start > scrollTop + HEADER_HEIGHT) break;
       const item = flatItems[vItem.index];
-      if (item?.type === "header") return item.group.date;
+      if (item?.type === "header") current = item.group.date;
+      else if (item?.type === "row" && current === null)
+        current = item.groupDate;
     }
-    // Fallback: find the group date from the first visible row
+
+    if (current !== null) return current;
+
+    // Fallback: nothing found above scroll position (near top) — use first item
     const first = flatItems[virtualItems[0].index];
+    if (first?.type === "header") return first.group.date;
     if (first?.type === "row") return first.groupDate;
     return null;
   }, [virtualItems, flatItems]);

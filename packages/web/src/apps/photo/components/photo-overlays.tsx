@@ -7,9 +7,10 @@
  * Canvas.measureText (browser API) stays in JS.
  */
 
+import { useContextMenu } from "@tokiomo/components";
 import type { OcrEngine } from "@tokiomo/tokimo-wasm";
+import { Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { PhotoFaceOutput, PhotoOcrResultItem } from "@/generated/rust-api";
 import {
   inverseTransformCornersForOrientation,
@@ -925,7 +926,7 @@ export function OcrBlockSelectLayer({
     anchor: OcrTextAnchor;
     focus: OcrTextAnchor;
   } | null>(null);
-  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const { open: openCtxMenu, contextMenu } = useContextMenu();
   const isDraggingRef = useRef(false);
   const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
   /** Rotation angle (degrees) of the block where drag started; 0 for empty-space drags. */
@@ -957,7 +958,6 @@ export function OcrBlockSelectLayer({
   const handleCopy = useCallback(() => {
     const text = getSelectedText();
     if (text) navigator.clipboard.writeText(text);
-    setMenuPos(null);
   }, [getSelectedText]);
 
   useEffect(() => {
@@ -970,7 +970,6 @@ export function OcrBlockSelectLayer({
       }
       if (e.key === "Escape") {
         setSelection(null);
-        setMenuPos(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1005,13 +1004,6 @@ export function OcrBlockSelectLayer({
     }
     onSelectionRanges(ranges);
   }, [selection, blockRects, onSelectionRanges, engineRef]);
-
-  useEffect(() => {
-    if (!menuPos) return;
-    const onClick = () => setMenuPos(null);
-    window.addEventListener("pointerdown", onClick);
-    return () => window.removeEventListener("pointerdown", onClick);
-  }, [menuPos]);
 
   // Compute highlights via WASM (must be before early returns)
   const highlights = useMemo(() => {
@@ -1096,7 +1088,6 @@ export function OcrBlockSelectLayer({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    setMenuPos(null);
     const { x, y } = getLayerCoords(e);
     const hit = wasmHitTest(x, y, -1);
     const idx = hitBlockIdx(x, y);
@@ -1241,7 +1232,9 @@ export function OcrBlockSelectLayer({
       if (idxRank >= sRank && idxRank <= eRank) {
         e.preventDefault();
         e.stopPropagation();
-        setMenuPos({ x: e.clientX, y: e.clientY });
+        openCtxMenu(e, [
+          { label: "复制文字", icon: <Copy size={14} />, onClick: handleCopy },
+        ]);
         return;
       }
     }
@@ -1254,7 +1247,9 @@ export function OcrBlockSelectLayer({
       });
       e.preventDefault();
       e.stopPropagation();
-      setMenuPos({ x: e.clientX, y: e.clientY });
+      openCtxMenu(e, [
+        { label: "复制文字", icon: <Copy size={14} />, onClick: handleCopy },
+      ]);
     }
   };
 
@@ -1317,24 +1312,7 @@ export function OcrBlockSelectLayer({
             />
           ))}
       </div>
-      {menuPos &&
-        selection &&
-        createPortal(
-          <div
-            className="fixed z-[99999] min-w-[120px] rounded-md border border-white/20 bg-neutral-800 py-1 shadow-xl"
-            style={{ left: menuPos.x, top: menuPos.y }}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-white hover:bg-white/10"
-              onClick={handleCopy}
-            >
-              复制文字
-            </button>
-          </div>,
-          document.body,
-        )}
+      {contextMenu}
     </>
   );
 }

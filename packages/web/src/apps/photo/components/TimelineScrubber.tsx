@@ -32,6 +32,7 @@ interface Mark {
 interface TimelineEntry {
   year: number;
   month: number;
+  day: number;
   count: number;
 }
 
@@ -54,7 +55,7 @@ function useTimelineLayout(
     };
     if (entries.length === 0) return empty;
 
-    // Only 1 month bucket — nothing to scrub through
+    // Only 1 day bucket — nothing to scrub through
     if (entries.length === 1) return empty;
 
     const years = [...new Set(entries.map((e) => e.year))].sort(
@@ -64,20 +65,56 @@ function useTimelineLayout(
     const marks: Mark[] = [];
     const datePositions = new Map<string, number>();
 
+    // ── Single month: linear by day ─────────────────────────────
+    const uniqueYearMonths = [
+      ...new Set(entries.map((e) => `${e.year}-${e.month}`)),
+    ];
+    if (uniqueYearMonths.length === 1) {
+      const year = entries[0].year;
+      const month = entries[0].month;
+      const days = entries.map((e) => e.day).sort((a, b) => b - a);
+      const maxD = Math.max(...days);
+      const minD = Math.min(...days);
+      const span = maxD - minD || 1;
+
+      // Year+month label at top
+      marks.push({ position: 0, label: `${year}/${month}`, isYear: true });
+
+      for (const e of entries) {
+        const pos = (maxD - e.day) / span;
+        const key = `${e.year}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
+        datePositions.set(key, Math.max(0, Math.min(1, pos)));
+        marks.push({ position: pos, label: `${e.day}日`, isYear: false });
+      }
+
+      return {
+        marks,
+        datePositions,
+        posToDateLabel: (pos: number) => {
+          const dayFloat = maxD - pos * span;
+          const d = Math.max(minD, Math.min(maxD, Math.round(dayFloat)));
+          return `${year}年${month}月${d}日`;
+        },
+      };
+    }
+
     // ── Single year: linear by month, no year label ─────────────
     if (years.length === 1) {
-      const months = entries.map((e) => e.month).sort((a, b) => b - a);
+      const months = [...new Set(entries.map((e) => e.month))].sort(
+        (a, b) => b - a,
+      );
       const maxM = Math.max(...months);
       const minM = Math.min(...months);
       const span = maxM - minM || 1;
 
-      for (const e of entries) {
-        const pos = (maxM - e.month) / span;
-        const key = `${e.year}-${String(e.month).padStart(2, "0")}`;
+      for (const mo of months) {
+        const pos = (maxM - mo) / span;
+        // Use first day of each month as the key
+        const key = `${years[0]}-${String(mo).padStart(2, "0")}-01`;
         datePositions.set(key, Math.max(0, Math.min(1, pos)));
         marks.push({
           position: pos,
-          label: `${e.month}月`,
+          label: `${mo}月`,
           isYear: false,
         });
       }
@@ -86,7 +123,7 @@ function useTimelineLayout(
         datePositions,
         posToDateLabel: (pos: number) => {
           const mo = Math.round(maxM - pos * span);
-          return `${Math.max(1, Math.min(12, mo))}月`;
+          return `${years[0]}年${Math.max(1, Math.min(12, mo))}月1日`;
         },
       };
     }
@@ -105,7 +142,7 @@ function useTimelineLayout(
         arr = [];
         yearMonths.set(e.year, arr);
       }
-      arr.push(e.month);
+      if (!arr.includes(e.month)) arr.push(e.month);
     }
 
     // Split into 3 tiers by distance from focus
@@ -216,7 +253,7 @@ function useTimelineLayout(
       const minMo = Math.min(...months, 12);
       const moRange = maxMo - minMo + 1;
       const pos = (m.start + ((maxMo - e.month) / moRange) * m.w) / totalW;
-      const key = `${e.year}-${String(e.month).padStart(2, "0")}`;
+      const key = `${e.year}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
       datePositions.set(key, Math.max(0, Math.min(1, pos)));
     }
 
@@ -296,8 +333,11 @@ export function TimelineScrubber({
   // ── Scroll → thumb sync (driven by virtualizer's visible date) ──
   useEffect(() => {
     if (dragging || !currentVisibleDate || datePositions.size === 0) return;
-    const ym = currentVisibleDate.slice(0, 7); // "2025-03" from "2025-03-12"
-    if (datePositions.has(ym)) {
+    const ymd = currentVisibleDate.slice(0, 10); // "2025-03-12"
+    const ym = currentVisibleDate.slice(0, 7); // "2025-03"
+    if (datePositions.has(ymd)) {
+      setThumbPos(datePositions.get(ymd)!);
+    } else if (datePositions.has(ym)) {
       setThumbPos(datePositions.get(ym)!);
     }
   }, [currentVisibleDate, datePositions, dragging]);
@@ -337,12 +377,15 @@ export function TimelineScrubber({
       const pos = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
       const nearest = nearestDate(pos);
       if (nearest) {
-        scrollToDate(nearest, !dragging);
+        // Always use instant scroll — smooth scroll creates a race condition
+        // where dragging ends before the scroll settles, causing the sync to
+        // snap the thumb back to the old visible date.
+        scrollToDate(nearest, false);
         setTooltip({ y: clientY - r.top, text: posToDateLabel(pos) });
       }
       setThumbPos(pos);
     },
-    [nearestDate, dragging, posToDateLabel, scrollToDate],
+    [nearestDate, posToDateLabel, scrollToDate],
   );
 
   // ── Mouse down on track ─────────────────────────────────────
