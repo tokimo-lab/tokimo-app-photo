@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/generated/rust-api";
 
 /**
@@ -53,6 +54,9 @@ function useTimelineLayout(
     };
     if (entries.length === 0) return empty;
 
+    // Only 1 month bucket — nothing to scrub through
+    if (entries.length === 1) return empty;
+
     const years = [...new Set(entries.map((e) => e.year))].sort(
       (a, b) => b - a,
     );
@@ -60,14 +64,12 @@ function useTimelineLayout(
     const marks: Mark[] = [];
     const datePositions = new Map<string, number>();
 
-    // ── Single year: linear by month ────────────────────────────
+    // ── Single year: linear by month, no year label ─────────────
     if (years.length === 1) {
       const months = entries.map((e) => e.month).sort((a, b) => b - a);
       const maxM = Math.max(...months);
       const minM = Math.min(...months);
       const span = maxM - minM || 1;
-
-      marks.push({ position: 0, label: String(years[0]), isYear: true });
 
       for (const e of entries) {
         const pos = (maxM - e.month) / span;
@@ -79,13 +81,12 @@ function useTimelineLayout(
           isYear: false,
         });
       }
-      const yr = years[0];
       return {
         marks,
         datePositions,
         posToDateLabel: (pos: number) => {
           const mo = Math.round(maxM - pos * span);
-          return `${yr}年${Math.max(1, Math.min(12, mo))}月`;
+          return `${Math.max(1, Math.min(12, mo))}月`;
         },
       };
     }
@@ -266,13 +267,22 @@ export function TimelineScrubber({
   scrollToDate: (datePrefix: string, smooth: boolean) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [thumbPos, setThumbPos] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [focusYear, setFocusYear] = useState<number | null>(null);
   const [tooltip, setTooltip] = useState<{
-    y: number;
+    y: number; // track-relative Y
     text: string;
   } | null>(null);
+
+  // Find window content container for portal positioning
+  const anchorCallbackRef = useCallback((el: HTMLSpanElement | null) => {
+    if (el) {
+      const target = el.closest("[data-window-content]") as HTMLElement | null;
+      setPortalTarget(target);
+    }
+  }, []);
 
   const { data: timelineEntries } = api.app.getTimelineIndex.useQuery(
     { appId },
@@ -328,7 +338,7 @@ export function TimelineScrubber({
       const nearest = nearestDate(pos);
       if (nearest) {
         scrollToDate(nearest, !dragging);
-        setTooltip({ y: clientY, text: posToDateLabel(pos) });
+        setTooltip({ y: clientY - r.top, text: posToDateLabel(pos) });
       }
       setThumbPos(pos);
     },
@@ -377,7 +387,7 @@ export function TimelineScrubber({
       const pos = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
       const label = posToDateLabel(pos);
       if (label) {
-        setTooltip({ y: e.clientY, text: label });
+        setTooltip({ y: e.clientY - r.top, text: label });
       }
     },
     [dragging, posToDateLabel],
@@ -387,9 +397,10 @@ export function TimelineScrubber({
     if (!dragging) setTooltip(null);
   }, [dragging]);
 
-  if (datePositions.size === 0) return null;
+  if (datePositions.size === 0)
+    return <span ref={anchorCallbackRef} className="hidden" />;
 
-  return (
+  const scrubber = (
     <div
       ref={trackRef}
       role="slider"
@@ -399,8 +410,8 @@ export function TimelineScrubber({
       aria-valuemax={100}
       aria-orientation="vertical"
       tabIndex={0}
-      className="fixed right-0 z-30 hidden w-12 cursor-pointer select-none lg:block"
-      style={{ top: "80px", bottom: "12px" }}
+      className="absolute right-0 z-30 hidden w-12 cursor-pointer select-none lg:block"
+      style={{ top: "48px", bottom: "8px" }}
       onMouseDown={onDown}
       onMouseMove={onHover}
       onMouseLeave={onLeave}
@@ -453,15 +464,27 @@ export function TimelineScrubber({
         ),
       )}
 
-      {/* Tooltip (during hover/drag) */}
+      {/* Tooltip (during hover/drag) — positioned relative to track */}
       {tooltip && (
         <div
-          className="pointer-events-none fixed right-14 z-40 rounded-md bg-neutral-800/90 px-2 py-1 text-xs whitespace-nowrap text-white shadow-lg dark:bg-neutral-700/95"
-          style={{ top: tooltip.y, transform: "translateY(-50%)" }}
+          className="pointer-events-none absolute z-40 rounded-md bg-neutral-800/90 px-2 py-1 text-xs whitespace-nowrap text-white shadow-lg dark:bg-neutral-700/95"
+          style={{
+            top: tooltip.y,
+            right: "100%",
+            marginRight: "8px",
+            transform: "translateY(-50%)",
+          }}
         >
           {tooltip.text}
         </div>
       )}
     </div>
+  );
+
+  return (
+    <>
+      <span ref={anchorCallbackRef} className="hidden" />
+      {portalTarget ? createPortal(scrubber, portalTarget) : null}
+    </>
   );
 }
