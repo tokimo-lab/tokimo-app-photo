@@ -4,16 +4,13 @@ import {
   FolderOpen,
   Grid3x3,
   MapPin,
-  ScanText,
   Search,
-  Sparkles,
   Star,
   Tag as TagIcon,
   Trash2,
   Users,
-  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlbumPickerDialog } from "@/apps/photo/components/AlbumPickerDialog";
 import { PhotoAlbumsView } from "@/apps/photo/components/PhotoAlbumsView";
 import { PhotoFoldersView } from "@/apps/photo/components/PhotoFoldersView";
@@ -24,25 +21,18 @@ import { PhotoPeopleView } from "@/apps/photo/components/PhotoPeopleView";
 import { PhotoSelectionBar } from "@/apps/photo/components/PhotoSelectionBar";
 import { PHOTO_SIZE_LEVELS } from "@/apps/photo/components/PhotoSizeSlider";
 import { PhotoTimeline } from "@/apps/photo/components/PhotoTimeline";
-import { PAGE_SIZE } from "@/apps/photo/components/photo-utils";
-import {
-  clearViewerPhotos,
-  setViewerPhotos,
-} from "@/apps/photo/components/photo-viewer-store";
 import { SyncProgressOverlay } from "@/apps/photo/components/SyncProgressOverlay";
 import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
 import { thumbUrl } from "@/lib/thumb";
 import { useMessage, useWindowNav } from "@/system";
+import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
+import { type TabKey, usePhotoData } from "./use-photo-data";
+import { usePhotoMutations } from "./use-photo-mutations";
 
-type TabKey =
-  | "timeline"
-  | "folders"
-  | "favorites"
-  | "locations"
-  | "people"
-  | "albums"
-  | "trash";
+interface TagFilter {
+  subcategory: string;
+  icon?: string;
+}
 
 const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "timeline", label: "时间线", icon: Calendar },
@@ -69,17 +59,17 @@ export default function PhotoAppPage({
   const menuBarState = usePhotoMenuBarState();
   const { sizeIndex, isSelecting, setIsSelecting } = menuBarState;
   const targetRowHeight = PHOTO_SIZE_LEVELS[sizeIndex].height;
-
   const [tab, setTabRaw] = useState<TabKey>(
     (metadata.tab as TabKey) || "timeline",
   );
+  const [searchQuery, setSearchQuery] = useState("");
+
   const setTab = useCallback(
     (t: TabKey) => {
       setTabRaw(t);
       setSelectedIds(new Set());
       menuBarState.setIsSelecting(false);
       setSearchQuery("");
-      // Don't reset pagination — each tab keeps its scroll position & loaded pages
     },
     [menuBarState.setIsSelecting],
   );
@@ -88,70 +78,12 @@ export default function PhotoAppPage({
   const [navigateToPersonId, setNavigateToPersonId] = useState<string | null>(
     null,
   );
-
-  // ── Similar photos filter (from info panel "more" button) ──────────
   const [similarSourceId, setSimilarSourceId] = useState<string | null>(
     (metadata.similarSourceId as string) || null,
   );
-
-  const similarQuery = api.photo.similarPhotos.useQuery(
-    { photoId: similarSourceId!, limit: 50 },
-    { enabled: !!similarSourceId && tab === "timeline" },
+  const [tagFilter, setTagFilter] = useState<TagFilter | null>(
+    (metadata.tagFilter as TagFilter) ?? null,
   );
-
-  const similarPhotos: PhotoOutput[] = useMemo(() => {
-    if (!similarQuery.data?.items) return [];
-    return similarQuery.data.items.map((item) => ({
-      id: item.photoId,
-      appId: item.appId,
-      filename: item.filename,
-      path: item.path,
-      title: item.title ?? null,
-      width: item.width ?? null,
-      height: item.height ?? null,
-      fileSize: item.fileSize ?? null,
-      mimeType: item.mimeType ?? null,
-      takenAt: item.takenAt ?? null,
-      thumbnailPath: item.thumbnailPath ?? null,
-      isFavorite: item.isFavorite,
-      cameraMake: null,
-      cameraModel: null,
-      orientation: null,
-      liveVideoPath: null,
-      sourceId: item.appId,
-    }));
-  }, [similarQuery.data]);
-
-  // ── Tag filter (from info panel tag click) ─────────────────────────
-  const [tagFilter, setTagFilter] = useState(metadata.tagFilter ?? null);
-
-  const tagClipQuery = api.photo.clipSearch.useQuery(
-    { id: id!, q: tagFilter?.subcategory ?? "" },
-    { enabled: !!id && !!tagFilter && tab === "timeline" },
-  );
-
-  const tagPhotos: PhotoOutput[] = useMemo(() => {
-    if (!tagClipQuery.data) return [];
-    return tagClipQuery.data.map((item) => ({
-      id: item.photoId,
-      appId: item.appId,
-      filename: item.filename,
-      path: item.path,
-      title: item.title ?? null,
-      width: item.width ?? null,
-      height: item.height ?? null,
-      fileSize: item.fileSize ?? null,
-      mimeType: item.mimeType ?? null,
-      takenAt: item.takenAt ?? null,
-      thumbnailPath: item.thumbnailPath ?? null,
-      isFavorite: item.isFavorite,
-      cameraMake: null,
-      cameraModel: null,
-      orientation: null,
-      liveVideoPath: null,
-      sourceId: item.appId,
-    }));
-  }, [tagClipQuery.data]);
 
   const handleNavigateToPerson = useCallback(
     (personId: string) => {
@@ -164,7 +96,6 @@ export default function PhotoAppPage({
   const handleNavigateToPersonHandled = useCallback(() => {
     setNavigateToPersonId(null);
   }, []);
-
   // Hide scrollbar on the scroll parent (photo uses timeline scrubber instead)
   useEffect(() => {
     let el = rootRef.current?.parentElement ?? null;
@@ -179,28 +110,8 @@ export default function PhotoAppPage({
     }
   }, []);
 
-  // ── Search state ─────────────────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [searchMode] = useState<"filename" | "clip">("filename");
-
-  useEffect(() => {
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-      // Reset pagination when search changes
-      setTimelinePage(1);
-      accTimelineRef.current = [];
-    }, 300);
-    return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    };
-  }, [searchQuery]);
-
   // ── Selection state ────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showAlbumPicker, setShowAlbumPicker] = useState(false);
 
   const handleSelect = useCallback(
     (photo: PhotoOutput) => {
@@ -225,478 +136,82 @@ export default function PhotoAppPage({
     setIsSelecting(false);
   }, [setIsSelecting]);
 
-  // ── Infinite scroll pagination ─────────────────────────────────────────
-  const [timelinePage, setTimelinePage] = useState(1);
-  const [timelineBeforeDate, setTimelineBeforeDate] = useState<
-    string | undefined
-  >(initialDate);
-  const [favPage, setFavPage] = useState(1);
-  const [trashPage, setTrashPage] = useState(1);
-  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
-  const [favLoadingMore, setFavLoadingMore] = useState(false);
-  const [trashLoadingMore, setTrashLoadingMore] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
-  const accTimelineRef = useRef<PhotoOutput[]>([]);
-  const accUpwardRef = useRef<PhotoOutput[]>([]);
-  const [upwardPage, setUpwardPage] = useState(1);
-  const [upwardLoadingMore, setUpwardLoadingMore] = useState(false);
-  // Upward loading is lazy — only activates when user scrolls near the top
-  const [upwardEnabled, setUpwardEnabled] = useState(false);
-  const accFavRef = useRef<PhotoOutput[]>([]);
-  const accTrashRef = useRef<PhotoOutput[]>([]);
-
-  // ── Queries ────────────────────────────────────────────────────────────
-  // NOTE: libraryQuery was removed — it was defined but never consumed,
-  // causing unnecessary re-renders from query state transitions.
-
-  const photosQuery = api.photo.listPhotos.useQuery(
-    {
-      id: id!,
-      page: timelinePage,
-      pageSize: PAGE_SIZE,
-      sortBy: "takenAt",
-      sortDir: "desc",
-      search: debouncedSearch || undefined,
-      beforeDate: timelineBeforeDate,
-    },
-    { enabled: !!id && tab === "timeline" },
-  );
-
-  // Upward query: load photos newer than current seek position
-  // Works both when opened via date header (initialDate) and scrubber seek (timelineBeforeDate)
-  const upwardAfterDate = useMemo(() => {
-    const anchor = timelineBeforeDate ?? initialDate;
-    if (!anchor) return undefined;
-    // Day after the anchor to avoid overlap with downward query
-    const d = new Date(anchor);
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }, [timelineBeforeDate, initialDate]);
-
-  const upwardQuery = api.photo.listPhotos.useQuery(
-    {
-      id: id!,
-      page: upwardPage,
-      pageSize: PAGE_SIZE,
-      sortBy: "takenAt",
-      sortDir: "asc",
-      search: debouncedSearch || undefined,
-      afterDate: upwardAfterDate,
-    },
-    {
-      enabled: !!id && !!upwardAfterDate && upwardEnabled && tab === "timeline",
-    },
-  );
-
-  const favoritesQuery = api.photo.listPhotos.useQuery(
-    {
-      id: id!,
-      page: favPage,
-      pageSize: PAGE_SIZE,
-      sortBy: "takenAt",
-      sortDir: "desc",
-      favoritesOnly: true,
-    },
-    { enabled: !!id && tab === "favorites" },
-  );
-
-  const albumsQuery = api.photo.listPhotoAlbums.useQuery(
-    { id: id! },
-    { enabled: !!id && tab === "albums" },
-  );
-
-  const trashedQuery = api.photo.listTrashedPhotos.useQuery(
-    { id: id!, page: trashPage, pageSize: PAGE_SIZE },
-    { enabled: !!id && tab === "trash" },
-  );
-
-  // ── OCR text search ──────────────────────────────────────────────────
-  const ocrQuery = api.photo.ocrSearch.useQuery(
-    { id: id!, q: debouncedSearch! },
-    {
-      enabled:
-        !!id &&
-        !!debouncedSearch &&
-        debouncedSearch.length >= 2 &&
-        tab === "timeline",
-    },
-  );
-
-  const ocrResults = ocrQuery.data ?? [];
-  const [ocrFilterActive, setOcrFilterActive] = useState(false);
-  const [ocrDismissed, setOcrDismissed] = useState(false);
-
-  // ── CLIP text-to-image search ─────────────────────────────────────────
-  const clipQuery = api.photo.clipSearch.useQuery(
-    { id: id!, q: debouncedSearch },
-    {
-      enabled:
-        !!id &&
-        searchMode === "clip" &&
-        !!debouncedSearch &&
-        debouncedSearch.length >= 2 &&
-        tab === "timeline",
-    },
-  );
-  const clipResults = clipQuery.data ?? [];
-
-  // Reset OCR filter state when search changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger on search change
-  useEffect(() => {
-    setOcrFilterActive(false);
-    setOcrDismissed(false);
-  }, [debouncedSearch]);
-
-  const ocrPhotoIds = useMemo(
-    () => new Set(ocrResults.map((r) => r.photoId)),
-    [ocrResults],
-  );
-
-  // Accumulate timeline photos across pages (downward = older)
-  const timelineTotal = photosQuery.data?.total ?? 0;
-  useEffect(() => {
-    if (!photosQuery.data?.items) return;
-    setTimelineLoadingMore(false);
-    if (timelinePage === 1) {
-      accTimelineRef.current = photosQuery.data.items;
-    } else {
-      const ids = new Set(accTimelineRef.current.map((p) => p.id));
-      const newItems = photosQuery.data.items.filter((p) => !ids.has(p.id));
-      accTimelineRef.current = [...accTimelineRef.current, ...newItems];
-    }
-  }, [photosQuery.data, timelinePage]);
-
-  // Accumulate upward photos (newer than initialDate, sorted asc → reversed for display)
-  const upwardTotal = upwardQuery.data?.total ?? 0;
-  useEffect(() => {
-    if (!upwardQuery.data?.items) return;
-    setUpwardLoadingMore(false);
-    if (upwardPage === 1) {
-      accUpwardRef.current = upwardQuery.data.items;
-    } else {
-      const ids = new Set(accUpwardRef.current.map((p) => p.id));
-      const newItems = upwardQuery.data.items.filter((p) => !ids.has(p.id));
-      accUpwardRef.current = [...accUpwardRef.current, ...newItems];
-    }
-  }, [upwardQuery.data, upwardPage]);
-
-  // Merge upward (reversed to desc) + downward into a single timeline
-  // biome-ignore lint/correctness/useExhaustiveDependencies: upwardQuery.data triggers re-merge of ref-accumulated photos
-  const allTimelinePhotosRaw = useMemo(() => {
-    const downward =
-      accTimelineRef.current.length > 0
-        ? accTimelineRef.current
-        : (photosQuery.data?.items ?? []);
-    if (accUpwardRef.current.length === 0) return downward;
-    // Upward was loaded asc (oldest near anchor first), reverse to desc (newest first)
-    const upwardReversed = [...accUpwardRef.current].reverse();
-    // Deduplicate
-    const downIds = new Set(downward.map((p) => p.id));
-    const uniqueUp = upwardReversed.filter((p) => !downIds.has(p.id));
-    return [...uniqueUp, ...downward];
-  }, [photosQuery.data?.items, upwardQuery.data?.items]);
-
-  const upwardHasMore =
-    !!upwardAfterDate &&
-    (!upwardEnabled || accUpwardRef.current.length < upwardTotal);
-
-  const allTimelinePhotos = useMemo(
-    () =>
-      ocrFilterActive
-        ? allTimelinePhotosRaw.filter((p) => ocrPhotoIds.has(p.id))
-        : allTimelinePhotosRaw,
-    [ocrFilterActive, allTimelinePhotosRaw, ocrPhotoIds],
-  );
-  const timelineHasMore =
-    !ocrFilterActive && allTimelinePhotos.length < timelineTotal;
-
-  // Sync photo list to viewer store for windowed photo viewer navigation
-  useEffect(() => {
-    if (id) setViewerPhotos(id, allTimelinePhotos);
-    return () => {
-      if (id) clearViewerPhotos(id);
-    };
-  }, [id, allTimelinePhotos]);
-
-  // Accumulate favorites across pages
-  const favTotal = favoritesQuery.data?.total ?? 0;
-  useEffect(() => {
-    if (!favoritesQuery.data?.items) return;
-    setFavLoadingMore(false);
-    if (favPage === 1) {
-      accFavRef.current = favoritesQuery.data.items;
-    } else {
-      const ids = new Set(accFavRef.current.map((p) => p.id));
-      const newItems = favoritesQuery.data.items.filter((p) => !ids.has(p.id));
-      accFavRef.current = [...accFavRef.current, ...newItems];
-    }
-  }, [favoritesQuery.data, favPage]);
-
-  const allFavPhotos = useMemo(
-    () =>
-      accFavRef.current.length > 0
-        ? accFavRef.current
-        : (favoritesQuery.data?.items ?? []),
-    [favoritesQuery.data?.items],
-  );
-  const favHasMore = allFavPhotos.length < favTotal;
-
-  // Accumulate trash photos across pages
-  const trashTotal = trashedQuery.data?.total ?? 0;
-  useEffect(() => {
-    if (!trashedQuery.data?.items) return;
-    setTrashLoadingMore(false);
-    if (trashPage === 1) {
-      accTrashRef.current = trashedQuery.data.items;
-    } else {
-      const ids = new Set(accTrashRef.current.map((p) => p.id));
-      const newItems = trashedQuery.data.items.filter((p) => !ids.has(p.id));
-      accTrashRef.current = [...accTrashRef.current, ...newItems];
-    }
-  }, [trashedQuery.data, trashPage]);
-
-  const allTrashPhotos = useMemo(
-    () =>
-      accTrashRef.current.length > 0
-        ? accTrashRef.current
-        : (trashedQuery.data?.items ?? []),
-    [trashedQuery.data?.items],
-  );
-  const trashHasMore = allTrashPhotos.length < trashTotal;
-
-  const albums = albumsQuery.data ?? [];
-
-  const isLoading =
-    tab === "timeline"
-      ? !photosQuery.data && timelinePage === 1
-      : tab === "favorites"
-        ? !favoritesQuery.data && favPage === 1
-        : tab === "albums"
-          ? !albumsQuery.data
-          : tab === "trash"
-            ? !trashedQuery.data && trashPage === 1
-            : false;
-
-  // CLIP mode is active when we have a valid search in clip mode on timeline tab
-  const isClipActive =
-    searchMode === "clip" && debouncedSearch.length >= 2 && tab === "timeline";
-
-  // Stable refs to avoid re-render cascades from useCallback deps
-  const photosRefetchRef = useRef(photosQuery.refetch);
-  photosRefetchRef.current = photosQuery.refetch;
-  const favRefetchRef = useRef(favoritesQuery.refetch);
-  favRefetchRef.current = favoritesQuery.refetch;
-  const trashedRefetchRef = useRef(trashedQuery.refetch);
-  trashedRefetchRef.current = trashedQuery.refetch;
-  const messageRef = useRef(message);
-  messageRef.current = message;
-
-  // ── Favorite toggle ─────────────────────────────────────────────────────
-  const toggleFavMutation = api.photo.togglePhotoFavorite.useMutation({
-    onSuccess: () => {
-      void photosQuery.refetch();
-      void favoritesQuery.refetch();
-    },
-  });
-  const toggleFavRef = useRef(toggleFavMutation.mutate);
-  toggleFavRef.current = toggleFavMutation.mutate;
-
-  const handleToggleFavorite = useCallback((photo: PhotoOutput) => {
-    toggleFavRef.current({ photoId: photo.id });
-  }, []);
-
-  // ── Batch operations ──────────────────────────────────────────────────
-  const batchFavMutation = api.photo.batchFavorite.useMutation({
-    onSuccess: (data) => {
-      message.success(`已更新 ${data.updated} 张照片`);
-      clearSelection();
-      void photosQuery.refetch();
-      void favoritesQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "操作失败"),
+  // ── Data hook (queries, accumulation, pagination) ──────────────────────
+  const {
+    debouncedSearch,
+    ocrFilterActive,
+    setOcrFilterActive,
+    ocrDismissed,
+    setOcrDismissed,
+    photosQuery,
+    favoritesQuery,
+    trashedQuery,
+    albumsQuery,
+    similarPhotos,
+    similarQuery,
+    tagPhotos,
+    tagClipQuery,
+    allTimelinePhotos,
+    timelineTotal,
+    timelineHasMore,
+    loadMoreTimeline,
+    timelineLoadingMore,
+    upwardHasMore,
+    loadMoreUpward,
+    upwardLoadingMore,
+    allFavPhotos,
+    favTotal,
+    favHasMore,
+    loadMoreFav,
+    favLoadingMore,
+    allTrashPhotos,
+    trashTotal,
+    trashHasMore,
+    loadMoreTrash,
+    trashLoadingMore,
+    albums,
+    ocrResults,
+    clipResults,
+    clipQuery,
+    isLoading,
+    isClipActive,
+    seekToDate,
+    resetTrash,
+  } = usePhotoData({
+    id,
+    tab,
+    similarSourceId,
+    tagFilter,
+    searchQuery,
+    initialDate,
   });
 
-  const addToAlbumMutation = api.photo.addPhotosToAlbum.useMutation({
-    onMutate: () => setIsAddingToAlbum(true),
-    onSettled: () => setIsAddingToAlbum(false),
-    onSuccess: () => {
-      message.success("已添加到相册");
-      clearSelection();
-      setShowAlbumPicker(false);
-      void albumsQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "操作失败"),
+  // ── Mutations hook ─────────────────────────────────────────────────────
+  const {
+    handleToggleFavorite,
+    handleBatchFavorite,
+    handleBatchUnfavorite,
+    handleAddToAlbum,
+    handleBatchHide,
+    handleTrash,
+    handleRestore,
+    handlePermanentDelete,
+    isRestoring,
+    isDeleting,
+    isAddingToAlbum,
+    showAlbumPicker,
+    setShowAlbumPicker,
+  } = usePhotoMutations({
+    id,
+    selectedIds,
+    clearSelection,
+    message,
+    refetchPhotos: () => void photosQuery.refetch(),
+    refetchFavorites: () => void favoritesQuery.refetch(),
+    refetchTrashed: () => void trashedQuery.refetch(),
+    refetchAlbums: () => void albumsQuery.refetch(),
+    resetTrash,
   });
-
-  const handleBatchFavorite = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    batchFavMutation.mutate({
-      id: id,
-      photoIds: [...selectedIds],
-      favorite: true,
-    });
-  }, [id, selectedIds, batchFavMutation.mutate]);
-
-  const handleBatchUnfavorite = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    batchFavMutation.mutate({
-      id: id,
-      photoIds: [...selectedIds],
-      favorite: false,
-    });
-  }, [id, selectedIds, batchFavMutation.mutate]);
-
-  const handleAddToAlbum = useCallback(
-    (albumId: string) => {
-      addToAlbumMutation.mutate({
-        albumId,
-        photoIds: [...selectedIds],
-      });
-    },
-    [selectedIds, addToAlbumMutation.mutate],
-  );
-
-  // ── Batch hide mutation ────────────────────────────────────────
-  const batchHideMutation = api.photo.batchHide.useMutation();
-  const batchHideMutateRef = useRef(batchHideMutation.mutate);
-  batchHideMutateRef.current = batchHideMutation.mutate;
-
-  const handleBatchHide = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    batchHideMutateRef.current(
-      { id: id, photoIds: [...selectedIds], hidden: true },
-      {
-        onSuccess: () => {
-          messageRef.current.success(`已隐藏 ${selectedIds.size} 张照片`);
-          setSelectedIds(new Set());
-          setIsSelecting(false);
-          photosRefetchRef.current();
-          favRefetchRef.current();
-        },
-      },
-    );
-  }, [id, selectedIds, setIsSelecting]);
-
-  // ── Trash mutation ────────────────────────────────────────────
-  const trashMutation = api.photo.trashPhotos.useMutation();
-  const trashMutateRef = useRef(trashMutation.mutate);
-  trashMutateRef.current = trashMutation.mutate;
-
-  const handleTrash = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
-      return;
-    trashMutateRef.current(
-      { id: id, photoIds: [...selectedIds] },
-      {
-        onSuccess: () => {
-          messageRef.current.success(
-            `已将 ${selectedIds.size} 张照片移到回收站`,
-          );
-          setSelectedIds(new Set());
-          setIsSelecting(false);
-          photosRefetchRef.current();
-          favRefetchRef.current();
-        },
-      },
-    );
-  }, [id, selectedIds, setIsSelecting]);
-
-  // ── Trash operations ──────────────────────────────────────────────────
-  const restoreMutation = api.photo.restorePhotos.useMutation({
-    onMutate: () => setIsRestoring(true),
-    onSettled: () => setIsRestoring(false),
-    onSuccess: (data) => {
-      message.success(`已恢复 ${data.restored} 张照片`);
-      clearSelection();
-      setTrashPage(1);
-      accTrashRef.current = [];
-      void trashedQuery.refetch();
-      void photosQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "恢复失败"),
-  });
-
-  const permanentDeleteMutation = api.photo.permanentDelete.useMutation({
-    onMutate: () => setIsDeleting(true),
-    onSettled: () => setIsDeleting(false),
-    onSuccess: (data) => {
-      message.success(`已永久删除 ${data.deleted} 张照片`);
-      clearSelection();
-      setTrashPage(1);
-      accTrashRef.current = [];
-      void trashedQuery.refetch();
-    },
-    onError: (e) => message.error(e.message || "删除失败"),
-  });
-
-  const handleRestore = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    restoreMutation.mutate({ id: id, photoIds: [...selectedIds] });
-  }, [id, selectedIds, restoreMutation.mutate]);
-
-  const handlePermanentDelete = useCallback(() => {
-    if (!id || selectedIds.size === 0) return;
-    if (!window.confirm("永久删除选中的照片？此操作不可恢复！")) return;
-    permanentDeleteMutation.mutate({
-      id: id,
-      photoIds: [...selectedIds],
-    });
-  }, [id, selectedIds, permanentDeleteMutation.mutate]);
-
-  // ── Infinite scroll callbacks ─────────────────────────────────────────
-  const loadMoreTimeline = useCallback(() => {
-    setTimelineLoadingMore(true);
-    setTimelinePage((p) => p + 1);
-  }, []);
-
-  const loadMoreUpward = useCallback(() => {
-    if (!upwardAfterDate) return;
-    if (!upwardEnabled) {
-      // First time: enable the upward query (page 1 will load)
-      setUpwardEnabled(true);
-      return;
-    }
-    setUpwardLoadingMore(true);
-    setUpwardPage((p) => p + 1);
-  }, [upwardAfterDate, upwardEnabled]);
-
-  // Seek to a specific date — resets pagination with beforeDate filter
-  const seekToDate = useCallback((datePrefix: string) => {
-    const parts = datePrefix.split("-");
-    let beforeDate: string;
-    if (parts.length >= 3) {
-      // Full date like "2025-10-21" — use as-is
-      beforeDate = datePrefix;
-    } else if (parts.length === 2) {
-      // Year-month like "2025-10" — use last day of month
-      const y = Number.parseInt(parts[0], 10);
-      const m = Number.parseInt(parts[1], 10);
-      const lastDay = new Date(y, m, 0).getDate();
-      beforeDate = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-    } else {
-      // Year only — use Dec 31
-      beforeDate = `${parts[0]}-12-31`;
-    }
-    accTimelineRef.current = [];
-    accUpwardRef.current = [];
-    setUpwardEnabled(false);
-    setUpwardPage(1);
-    setTimelinePage(1);
-    setTimelineBeforeDate(beforeDate);
-  }, []);
-
-  const loadMoreFav = useCallback(() => {
-    setFavLoadingMore(true);
-    setFavPage((p) => p + 1);
-  }, []);
-
-  const loadMoreTrash = useCallback(() => {
-    setTrashLoadingMore(true);
-    setTrashPage((p) => p + 1);
-  }, []);
 
   if (!id) return null;
 
@@ -728,45 +243,13 @@ export default function PhotoAppPage({
           debouncedSearch.length >= 2 &&
           !ocrDismissed &&
           ocrResults.length > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/50">
-              <ScanText className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-              {ocrFilterActive ? (
-                <span className="text-sm text-blue-700 dark:text-blue-300">
-                  正在显示 {ocrResults.length} 张 OCR 匹配照片（包含「
-                  {debouncedSearch}」的文字）
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="cursor-pointer text-sm text-blue-700 hover:underline dark:text-blue-300"
-                  onClick={() => setOcrFilterActive(true)}
-                >
-                  还找到 {ocrResults.length} 张包含「{debouncedSearch}
-                  」文字的照片，点击查看
-                </button>
-              )}
-              <div className="ml-auto flex items-center gap-1">
-                {ocrFilterActive && (
-                  <button
-                    type="button"
-                    className="cursor-pointer rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
-                    onClick={() => setOcrFilterActive(false)}
-                  >
-                    显示全部
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="cursor-pointer rounded p-0.5 text-blue-400 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900 dark:hover:text-blue-300"
-                  onClick={() => {
-                    setOcrDismissed(true);
-                    setOcrFilterActive(false);
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+            <OcrSearchBanner
+              debouncedSearch={debouncedSearch}
+              ocrResults={ocrResults}
+              ocrFilterActive={ocrFilterActive}
+              setOcrFilterActive={setOcrFilterActive}
+              setOcrDismissed={setOcrDismissed}
+            />
           )}
 
         {/* Content */}
@@ -775,47 +258,10 @@ export default function PhotoAppPage({
             <Spin />
           </div>
         ) : isClipActive ? (
-          !clipQuery.data ? (
-            <div className="flex h-64 items-center justify-center">
-              <Spin />
-            </div>
-          ) : clipResults.length > 0 ? (
-            <div>
-              <div className="mb-3 flex items-center gap-2 px-1">
-                <Sparkles className="h-4 w-4 text-purple-500" />
-                <span className="text-sm text-fg-muted">
-                  找到 {clipResults.length} 张相似照片
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {clipResults.map((result) => (
-                  <div
-                    key={result.photoId}
-                    className="group relative aspect-square overflow-hidden rounded-lg bg-fill-tertiary"
-                  >
-                    <img
-                      src={thumbUrl("photo", result.photoId, 160)}
-                      alt={result.filename}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                    />
-                    {/* Similarity badge */}
-                    <div className="absolute top-1.5 right-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
-                      {Math.round(result.similarity * 100)}%
-                    </div>
-                    {/* Filename on hover */}
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span className="truncate text-xs text-white">
-                        {result.filename}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Empty description="未找到匹配的照片，试试换个描述" />
-          )
+          <ClipSearchGrid
+            isQueryLoaded={!!clipQuery.data}
+            results={clipResults}
+          />
         ) : tab === "timeline" && similarSourceId ? (
           /* ── Similar photos filtered view ─────────────────────────── */
           <>

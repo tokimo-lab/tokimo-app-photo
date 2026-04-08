@@ -1,353 +1,37 @@
-import { useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
   ChevronRight,
-  CornerDownLeft,
   FileText,
   MapPin,
-  Pencil,
   Plus,
   ScanText,
   Search,
   SearchCode,
   Sparkles,
   Tag,
-  Trash2,
-  X,
 } from "lucide-react";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import type {
-  PhotoDetailOutput,
-  PhotoOcrResultItem,
-} from "@/generated/rust-api";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type { PhotoDetailOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
 import { thumbUrl } from "@/lib/thumb";
 import { useWindowActions } from "@/system";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
+import {
+  EXTRA_EXIF_FIELDS,
+  formatCameraSettings,
+  formatDateLines,
+  formatMegapixels,
+  getDirectoryPath,
+  InfoRow,
+  InfoSection,
+} from "./info-panel-helpers";
 import { OcrDebugModal } from "./OcrDebugModal";
+import { OcrResultRow } from "./OcrResultRow";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoMiniMap } from "./PhotoMiniMap";
 import { PhotoToolsPanel } from "./PhotoToolsPanel";
 import { formatBytes } from "./photo-utils";
-
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatMegapixels(w: number, h: number): string {
-  const mp = (w * h) / 1_000_000;
-  return mp >= 1 ? `${Math.round(mp)}MP` : `${mp.toFixed(1)}MP`;
-}
-
-function formatNum(n: number): string {
-  const rounded = Math.round(n * 100) / 100;
-  return rounded % 1 === 0 ? String(rounded) : String(rounded);
-}
-
-function formatCameraSettings(detail: PhotoDetailOutput): string | null {
-  const parts: string[] = [];
-  if (detail.aperture) parts.push(`ƒ/${formatNum(detail.aperture)}`);
-  if (detail.shutterSpeed) parts.push(detail.shutterSpeed);
-  if (detail.focalLength) parts.push(`${formatNum(detail.focalLength)}mm`);
-  if (detail.iso) parts.push(`ISO${detail.iso}`);
-  return parts.length > 0 ? parts.join("  ") : null;
-}
-
-function getDirectoryPath(fullPath: string): string {
-  const lastSlash = fullPath.lastIndexOf("/");
-  return lastSlash >= 0 ? fullPath.substring(0, lastSlash) : fullPath;
-}
-
-function formatDateLines(
-  iso: string,
-): { dateLine: string; timeLine: string } | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  const wd = WEEKDAYS[d.getDay()];
-  const h = d.getHours().toString().padStart(2, "0");
-  const min = d.getMinutes().toString().padStart(2, "0");
-  return { dateLine: `${m}月${day}日`, timeLine: `${wd}, ${h}:${min}` };
-}
-
-// ── Sub-components ───────────────────────────────────────────────────────────
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="text-white/50">{label}</span>
-      <p className="break-all text-white/90">{value}</p>
-    </div>
-  );
-}
-
-function InfoSection({
-  icon,
-  title,
-  actions,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-t border-white/10 pt-3">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">
-        {icon}
-        <span className="flex-1">{title}</span>
-        {actions}
-      </div>
-      <div className="space-y-2">{children}</div>
-    </div>
-  );
-}
-
-// ── Extra EXIF field mapping ─────────────────────────────────────────────────
-
-const EXTRA_EXIF_FIELDS: [string, string][] = [
-  ["ExposureMode", "曝光模式"],
-  ["WhiteBalance", "白平衡"],
-  ["Flash", "闪光灯"],
-  ["MeteringMode", "测光模式"],
-  ["Software", "软件"],
-  ["ExposureBiasValue", "曝光补偿"],
-  ["ColorSpace", "色彩空间"],
-  ["ExposureProgram", "曝光程序"],
-  ["SceneCaptureType", "场景类型"],
-  ["FocalLengthIn35mmFilm", "等效焦距"],
-  ["PhotographicSensitivity", "感光度"],
-  ["CompositeImage", "合成图像"],
-  ["SensingMethod", "感光方式"],
-];
-
-// ── OCR result row with inline edit ──────────────────────────────────────────
-
-function OcrResultRow({
-  r,
-  isHovered,
-  isEditing,
-  range,
-  pendingBbox,
-  onHover,
-  onStartEdit,
-  onFinishEdit,
-  onDelete,
-}: {
-  r: PhotoOcrResultItem;
-  isHovered: boolean;
-  isEditing: boolean;
-  range?: { start: number; end: number };
-  pendingBbox?: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    angle?: number;
-    corners?: [number, number][];
-  } | null;
-  onHover: (id: string | null) => void;
-  onStartEdit: () => void;
-  onFinishEdit: () => void;
-  onDelete: () => void;
-}) {
-  const [editText, setEditText] = useState(r.text);
-  const [itemHovered, setItemHovered] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const queryClient = useQueryClient();
-  const updateMutation = api.photo.updateOcrResult.useMutation();
-  const deleteMutation = api.photo.deleteOcrResult.useMutation();
-
-  // Focus input when entering edit mode
-  useEffect(() => {
-    if (isEditing) {
-      setEditText(r.text);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [isEditing, r.text]);
-
-  const invalidateOcr = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/ocr-results"],
-    });
-  }, [queryClient]);
-
-  const handleSubmit = useCallback(() => {
-    const trimmed = editText.trim();
-    const textChanged = trimmed && trimmed !== r.text;
-    const bboxChanged = pendingBbox != null;
-    if (!textChanged && !bboxChanged) {
-      onFinishEdit();
-      return;
-    }
-    const payload: {
-      ocrResultId: number;
-      text?: string;
-      x?: number;
-      y?: number;
-      w?: number;
-      h?: number;
-      angle?: number;
-      corners?: [number, number][];
-    } = { ocrResultId: Number(r.id) };
-    if (textChanged) payload.text = trimmed;
-    if (bboxChanged) {
-      const { angle: bboxAngle, corners: bboxCorners, ...coords } = pendingBbox;
-      Object.assign(payload, coords);
-      if (bboxAngle != null) payload.angle = bboxAngle;
-      if (bboxCorners) payload.corners = bboxCorners;
-    }
-    updateMutation.mutate(payload, {
-      onSuccess: invalidateOcr,
-      onSettled: onFinishEdit,
-    });
-  }, [
-    editText,
-    r.id,
-    r.text,
-    pendingBbox,
-    updateMutation,
-    onFinishEdit,
-    invalidateOcr,
-  ]);
-
-  const handleDelete = useCallback(() => {
-    deleteMutation.mutate(
-      { ocrResultId: Number(r.id) },
-      {
-        onSuccess: () => {
-          invalidateOcr();
-          onDelete();
-        },
-      },
-    );
-  }, [deleteMutation, r.id, invalidateOcr, onDelete]);
-
-  const textChars = Array.from(r.text);
-  const hasRange = range && range.start < range.end;
-
-  // Shared min-height to prevent visual jump between display / edit modes
-  const rowClass = "rounded px-2 py-1 text-sm leading-relaxed min-h-[1.875rem]";
-
-  if (isEditing) {
-    return (
-      // biome-ignore lint/a11y/noStaticElementInteractions: editable OCR row
-      <div
-        className={`${rowClass} flex items-center gap-1 bg-white/10`}
-        onMouseEnter={() => onHover(r.id)}
-        onMouseLeave={() => onHover(null)}
-      >
-        <input
-          ref={inputRef}
-          type="text"
-          value={editText}
-          onChange={(e) => setEditText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSubmit();
-            else if (e.key === "Escape") onFinishEdit();
-          }}
-          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
-          placeholder={r.text}
-        />
-        <button
-          type="button"
-          onClick={handleSubmit}
-          className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
-          title="确认 (Enter)"
-        >
-          <CornerDownLeft className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="shrink-0 rounded p-0.5 text-red-400/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
-          title="删除此识别区域"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          onClick={onFinishEdit}
-          className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
-          title="取消 (Esc)"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: OCR row with hover tracking
-    <div
-      className={`${rowClass} flex cursor-default transition-colors ${
-        isHovered
-          ? "bg-emerald-400/15 text-white"
-          : hasRange
-            ? "bg-white/5 text-white"
-            : "bg-white/5 text-white/80 hover:bg-white/10"
-      }`}
-      onMouseEnter={() => {
-        setItemHovered(true);
-        onHover(r.id);
-      }}
-      onMouseLeave={() => {
-        setItemHovered(false);
-        onHover(null);
-      }}
-    >
-      <span className="min-w-0 flex-1 break-all">
-        {hasRange ? (
-          <>
-            {textChars.slice(0, range.start).join("")}
-            <mark className="rounded-sm bg-blue-400/30 text-white">
-              {textChars.slice(range.start, range.end).join("")}
-            </mark>
-            {textChars.slice(range.end).join("")}
-          </>
-        ) : (
-          r.text
-        )}
-      </span>
-      {/* Right-aligned: confidence or manual indicator + edit icon */}
-      <span className="ml-1 inline-flex shrink-0 items-center gap-1 self-center">
-        {r.score != null ? (
-          <span className="text-xs text-white/30">
-            {Math.round(r.score * 100)}%
-          </span>
-        ) : (
-          <span className="text-xs text-white/20" title="手动编辑">
-            ✎
-          </span>
-        )}
-        {itemHovered && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartEdit();
-            }}
-            className="inline-flex items-center rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
-            title="编辑识别文字"
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-        )}
-      </span>
-    </div>
-  );
-}
 
 // ── Main component ───────────────────────────────────────────────────────────
 
