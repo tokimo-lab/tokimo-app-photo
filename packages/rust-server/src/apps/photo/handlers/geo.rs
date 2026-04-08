@@ -19,7 +19,7 @@ pub async fn reverse_geocode(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    use crate::services::photo_geo::PhotoGeoService;
+    use crate::apps::photo::services::photo_geo::PhotoGeoService;
 
     let app_id = parse_uuid(&id)?;
     let http = state.http_client.clone();
@@ -50,7 +50,7 @@ pub async fn location_stats(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    use crate::services::photo_geo::PhotoGeoService;
+    use crate::apps::photo::services::photo_geo::PhotoGeoService;
 
     let app_id = parse_uuid(&id)?;
     let groups = PhotoGeoService::location_stats(&state.db, app_id).await?;
@@ -141,7 +141,7 @@ pub async fn test_photo_geo_connection(
 ) -> impl IntoResponse {
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
-    use crate::services::photo_geo::reverse_geocode_dispatch;
+    use crate::apps::photo::services::photo_geo::reverse_geocode_dispatch;
 
     let settings: PhotoGeoSettings = match SystemConfigRepo::get(&state.db).await {
         Ok(s) => s,
