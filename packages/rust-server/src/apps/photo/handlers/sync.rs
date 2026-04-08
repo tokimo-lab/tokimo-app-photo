@@ -5,7 +5,7 @@ use axum::{
 use std::sync::Arc;
 
 use crate::db::repos::job_repo::JobRepo;
-use crate::db::repos::photo_repo::PhotoLibraryRepo;
+use crate::apps::photo::repos::PhotoLibraryRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ok, ApiResponse};

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::pagination::PageInput;
-use crate::db::repos::photo_repo::PhotoRepo;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::error::AppError;
 use crate::handlers::{ok, ApiResponse};
 use crate::AppState;

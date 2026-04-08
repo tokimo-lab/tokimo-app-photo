@@ -8,7 +8,7 @@ use std::{path::Path as StdPath, sync::Arc};
 use uuid::Uuid;
 
 use crate::db::pagination::PageInput;
-use crate::db::repos::photo_repo::PhotoRepo;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ok, ApiResponse};

@@ -10,7 +10,7 @@ use std::{path::Path as StdPath, sync::Arc};
 use tower::util::ServiceExt;
 use tower_http::services::ServeFile;
 
-use crate::db::repos::photo_repo::PhotoRepo;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::handlers::media::utils::resolve_local_path;
 use crate::handlers::media::stream::mime_for;
 use crate::handlers::{err404, err500};
@@ -83,7 +83,7 @@ pub async fn serve_live_video(
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
 async fn load_photo_bytes(
     state: &Arc<AppState>,
-    target: &crate::db::models::photo::PhotoStreamTarget,
+    target: &crate::apps::photo::models::PhotoStreamTarget,
 ) -> Result<Vec<u8>, String> {
     if target.source_type.as_deref() == Some("local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
@@ -159,7 +159,7 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
 /// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
 async fn serve_raw_as_jpeg(
     state: Arc<AppState>,
-    target: &crate::db::models::photo::PhotoStreamTarget,
+    target: &crate::apps::photo::models::PhotoStreamTarget,
 ) -> Response {
     let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
         use std::hash::{Hash, Hasher};

@@ -6,7 +6,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::db::repos::photo_repo::PhotoRepo;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::error::AppError;
 use crate::handlers::{ok, ApiResponse};
 use crate::AppState;
@@ -174,7 +174,7 @@ pub async fn ocr_scan(
     let st = state.clone();
 
     tokio::spawn(async move {
-        match crate::services::photo_ocr::PhotoOcrService::ocr_app(&db, &st, app_id).await {
+        match crate::apps::photo::services::ocr::PhotoOcrService::ocr_app(&db, &st, app_id).await {
             Ok(count) => tracing::info!("OCR scanned {count} photos for app {app_id}"),
             Err(e) => tracing::error!("OCR scan failed for app {app_id}: {e}"),
         }
@@ -196,7 +196,7 @@ pub async fn ocr_search(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
     let results =
-        crate::services::photo_ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q)
+        crate::apps::photo::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q)
             .await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
@@ -358,7 +358,7 @@ pub async fn clip_embed(
     let st = state.clone();
 
     tokio::spawn(async move {
-        match crate::services::photo_clip::PhotoClipService::embed_app(&db, &st, app_id, None)
+        match crate::apps::photo::services::clip::PhotoClipService::embed_app(&db, &st, app_id, None)
             .await
         {
             Ok(count) => tracing::info!("CLIP embedded {count} photos for app {app_id}"),
@@ -382,7 +382,7 @@ pub async fn clip_search(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
     let results =
-        crate::services::photo_clip::PhotoClipService::search(&state.db, &state, app_id, &q.q)
+        crate::apps::photo::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q)
             .await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
@@ -393,7 +393,7 @@ pub async fn refresh_clip(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    crate::services::photo_clip::PhotoClipService::embed_photo(
+    crate::apps::photo::services::clip::PhotoClipService::embed_photo(
         &state.db,
         &state,
         photo_id,
@@ -408,7 +408,7 @@ pub async fn refresh_faces(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let count = crate::services::photo_face::PhotoFaceService::detect_faces(
+    let count = crate::apps::photo::services::face::PhotoFaceService::detect_faces(
         &state.db,
         &state.ai,
         &state.sources,
@@ -424,7 +424,7 @@ pub async fn refresh_ocr(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let count = crate::services::photo_ocr::PhotoOcrService::ocr_photo(
+    let count = crate::apps::photo::services::ocr::PhotoOcrService::ocr_photo(
         &state.db,
         &state,
         photo_id,
@@ -485,7 +485,7 @@ pub async fn update_ocr_result(
     Path(ocr_id): Path<i32>,
     Json(input): Json<UpdateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let updated = crate::services::photo_ocr::PhotoOcrService::update_ocr_result(
+    let updated = crate::apps::photo::services::ocr::PhotoOcrService::update_ocr_result(
         &state.db, ocr_id, input,
     )
     .await?;
@@ -512,7 +512,7 @@ pub async fn delete_ocr_result(
     State(state): State<Arc<AppState>>,
     Path(ocr_id): Path<i32>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    crate::services::photo_ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
+    crate::apps::photo::services::ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
     Ok(ok(serde_json::json!({ "deleted": true })))
 }
 
@@ -534,7 +534,7 @@ pub async fn create_ocr_result(
     Json(input): Json<CreateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&photo_id)?;
-    let created = crate::services::photo_ocr::PhotoOcrService::create_ocr_result(
+    let created = crate::apps::photo::services::ocr::PhotoOcrService::create_ocr_result(
         &state.db, photo_id, input,
     )
     .await?;

@@ -12,8 +12,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::db::entities::vfs;
-use crate::db::models::photo::PhotoLibraryOutput;
-use crate::db::repos::photo_repo::PhotoLibraryRepo;
+use crate::apps::photo::models::PhotoLibraryOutput;
+use crate::apps::photo::repos::PhotoLibraryRepo;
 use crate::db::{ApiDateTimeExt, OptionalApiDateTimeExt};
 use crate::error::AppError;
 
@@ -118,7 +118,7 @@ pub(crate) async fn to_photo_library_output(
     let mut sources = Vec::with_capacity(source_tuples.len());
     for (source_id, root_path, is_default_download) in &source_tuples {
         let fs = vfs::Entity::find_by_id(*source_id).one(db).await?;
-        sources.push(crate::db::models::photo::PhotoLibrarySourceOutput {
+        sources.push(crate::apps::photo::models::PhotoLibrarySourceOutput {
             source_id: source_id.to_string(),
             root_path: root_path.clone(),
             sort_order: sources.len() as i32,

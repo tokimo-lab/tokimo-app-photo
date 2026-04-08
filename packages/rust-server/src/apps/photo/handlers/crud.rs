@@ -5,8 +5,8 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::models::photo::PhotoLibraryOutput;
-use crate::db::repos::photo_repo::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
+use crate::apps::photo::models::PhotoLibraryOutput;
+use crate::apps::photo::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ok, ok_empty, ApiResponse};
