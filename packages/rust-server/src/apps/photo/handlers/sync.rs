@@ -9,10 +9,33 @@ use crate::apps::photo::repos::PhotoLibraryRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ok, ApiResponse};
-use crate::handlers::app::{SyncProgressOutput, TaskProgress};
 use crate::AppState;
 
 use super::parse_uuid;
+
+// ── DTOs ──
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncProgressOutput {
+    pub app_id: String,
+    pub status: String,
+    pub total: i64,
+    pub completed: i64,
+    pub running: i64,
+    pub pending: i64,
+    pub failed: i64,
+    pub tasks: Vec<TaskProgress>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskProgress {
+    pub task_type: String,
+    pub status: String,
+    pub total_items: i64,
+    pub processed_items: i64,
+}
 
 /// GET /api/apps/photo/{id}/sync-progress
 ///

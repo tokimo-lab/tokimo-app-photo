@@ -89,7 +89,7 @@ impl PhotoAiSettings {
         use crate::db::repos::system_config_repo::SystemConfigRepo;
         let global: Self = SystemConfigRepo::get(db).await?;
 
-        let app = crate::db::entities::apps::Entity::find_by_id(app_id)
+        let app = crate::db::entities::photo_libraries::Entity::find_by_id(app_id)
             .one(db)
             .await?;
         let app_settings = app
