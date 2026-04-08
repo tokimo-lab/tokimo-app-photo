@@ -54,9 +54,13 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "trash", label: "回收站", icon: Trash2 },
 ];
 
-export default function PhotoAppPage() {
+export default function PhotoAppPage({
+  photoLibraryId,
+}: {
+  photoLibraryId?: string;
+}) {
   const { metadata } = useWindowNav();
-  const id = metadata.appId as string | undefined;
+  const id = photoLibraryId ?? (metadata.appId as string | undefined);
   const initialDate = metadata.initialDate as string | undefined;
   const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -90,7 +94,7 @@ export default function PhotoAppPage() {
     (metadata.similarSourceId as string) || null,
   );
 
-  const similarQuery = api.photoSettings.similarPhotos.useQuery(
+  const similarQuery = api.photo.similarPhotos.useQuery(
     { photoId: similarSourceId!, limit: 50 },
     { enabled: !!similarSourceId && tab === "timeline" },
   );
@@ -121,8 +125,8 @@ export default function PhotoAppPage() {
   // ── Tag filter (from info panel tag click) ─────────────────────────
   const [tagFilter, setTagFilter] = useState(metadata.tagFilter ?? null);
 
-  const tagClipQuery = api.photoSettings.clipSearch.useQuery(
-    { appId: id!, q: tagFilter?.subcategory ?? "" },
+  const tagClipQuery = api.photo.clipSearch.useQuery(
+    { id: id!, q: tagFilter?.subcategory ?? "" },
     { enabled: !!id && !!tagFilter && tab === "timeline" },
   );
 
@@ -247,9 +251,9 @@ export default function PhotoAppPage() {
   // NOTE: libraryQuery was removed — it was defined but never consumed,
   // causing unnecessary re-renders from query state transitions.
 
-  const photosQuery = api.app.listPhotos.useQuery(
+  const photosQuery = api.photo.listPhotos.useQuery(
     {
-      appId: id!,
+      id: id!,
       page: timelinePage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
@@ -271,9 +275,9 @@ export default function PhotoAppPage() {
     return d.toISOString().slice(0, 10);
   }, [timelineBeforeDate, initialDate]);
 
-  const upwardQuery = api.app.listPhotos.useQuery(
+  const upwardQuery = api.photo.listPhotos.useQuery(
     {
-      appId: id!,
+      id: id!,
       page: upwardPage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
@@ -286,9 +290,9 @@ export default function PhotoAppPage() {
     },
   );
 
-  const favoritesQuery = api.app.listPhotos.useQuery(
+  const favoritesQuery = api.photo.listPhotos.useQuery(
     {
-      appId: id!,
+      id: id!,
       page: favPage,
       pageSize: PAGE_SIZE,
       sortBy: "takenAt",
@@ -298,19 +302,19 @@ export default function PhotoAppPage() {
     { enabled: !!id && tab === "favorites" },
   );
 
-  const albumsQuery = api.app.listPhotoAlbums.useQuery(
-    { appId: id! },
+  const albumsQuery = api.photo.listPhotoAlbums.useQuery(
+    { id: id! },
     { enabled: !!id && tab === "albums" },
   );
 
-  const trashedQuery = api.app.listTrashedPhotos.useQuery(
-    { appId: id!, page: trashPage, pageSize: PAGE_SIZE },
+  const trashedQuery = api.photo.listTrashedPhotos.useQuery(
+    { id: id!, page: trashPage, pageSize: PAGE_SIZE },
     { enabled: !!id && tab === "trash" },
   );
 
   // ── OCR text search ──────────────────────────────────────────────────
-  const ocrQuery = api.photoSettings.ocrSearch.useQuery(
-    { appId: id!, q: debouncedSearch! },
+  const ocrQuery = api.photo.ocrSearch.useQuery(
+    { id: id!, q: debouncedSearch! },
     {
       enabled:
         !!id &&
@@ -325,8 +329,8 @@ export default function PhotoAppPage() {
   const [ocrDismissed, setOcrDismissed] = useState(false);
 
   // ── CLIP text-to-image search ─────────────────────────────────────────
-  const clipQuery = api.photoSettings.clipSearch.useQuery(
-    { appId: id!, q: debouncedSearch },
+  const clipQuery = api.photo.clipSearch.useQuery(
+    { id: id!, q: debouncedSearch },
     {
       enabled:
         !!id &&
@@ -490,7 +494,7 @@ export default function PhotoAppPage() {
   messageRef.current = message;
 
   // ── Favorite toggle ─────────────────────────────────────────────────────
-  const toggleFavMutation = api.app.togglePhotoFavorite.useMutation({
+  const toggleFavMutation = api.photo.togglePhotoFavorite.useMutation({
     onSuccess: () => {
       void photosQuery.refetch();
       void favoritesQuery.refetch();
@@ -504,7 +508,7 @@ export default function PhotoAppPage() {
   }, []);
 
   // ── Batch operations ──────────────────────────────────────────────────
-  const batchFavMutation = api.app.batchFavorite.useMutation({
+  const batchFavMutation = api.photo.batchFavorite.useMutation({
     onSuccess: (data) => {
       message.success(`已更新 ${data.updated} 张照片`);
       clearSelection();
@@ -514,7 +518,7 @@ export default function PhotoAppPage() {
     onError: (e) => message.error(e.message || "操作失败"),
   });
 
-  const addToAlbumMutation = api.app.addPhotosToAlbum.useMutation({
+  const addToAlbumMutation = api.photo.addPhotosToAlbum.useMutation({
     onMutate: () => setIsAddingToAlbum(true),
     onSettled: () => setIsAddingToAlbum(false),
     onSuccess: () => {
@@ -529,7 +533,7 @@ export default function PhotoAppPage() {
   const handleBatchFavorite = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchFavMutation.mutate({
-      appId: id,
+      id: id,
       photoIds: [...selectedIds],
       favorite: true,
     });
@@ -538,7 +542,7 @@ export default function PhotoAppPage() {
   const handleBatchUnfavorite = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchFavMutation.mutate({
-      appId: id,
+      id: id,
       photoIds: [...selectedIds],
       favorite: false,
     });
@@ -555,14 +559,14 @@ export default function PhotoAppPage() {
   );
 
   // ── Batch hide mutation ────────────────────────────────────────
-  const batchHideMutation = api.app.batchHide.useMutation();
+  const batchHideMutation = api.photo.batchHide.useMutation();
   const batchHideMutateRef = useRef(batchHideMutation.mutate);
   batchHideMutateRef.current = batchHideMutation.mutate;
 
   const handleBatchHide = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     batchHideMutateRef.current(
-      { appId: id, photoIds: [...selectedIds], hidden: true },
+      { id: id, photoIds: [...selectedIds], hidden: true },
       {
         onSuccess: () => {
           messageRef.current.success(`已隐藏 ${selectedIds.size} 张照片`);
@@ -576,7 +580,7 @@ export default function PhotoAppPage() {
   }, [id, selectedIds, setIsSelecting]);
 
   // ── Trash mutation ────────────────────────────────────────────
-  const trashMutation = api.app.trashPhotos.useMutation();
+  const trashMutation = api.photo.trashPhotos.useMutation();
   const trashMutateRef = useRef(trashMutation.mutate);
   trashMutateRef.current = trashMutation.mutate;
 
@@ -585,7 +589,7 @@ export default function PhotoAppPage() {
     if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
       return;
     trashMutateRef.current(
-      { appId: id, photoIds: [...selectedIds] },
+      { id: id, photoIds: [...selectedIds] },
       {
         onSuccess: () => {
           messageRef.current.success(
@@ -601,7 +605,7 @@ export default function PhotoAppPage() {
   }, [id, selectedIds, setIsSelecting]);
 
   // ── Trash operations ──────────────────────────────────────────────────
-  const restoreMutation = api.app.restorePhotos.useMutation({
+  const restoreMutation = api.photo.restorePhotos.useMutation({
     onMutate: () => setIsRestoring(true),
     onSettled: () => setIsRestoring(false),
     onSuccess: (data) => {
@@ -615,7 +619,7 @@ export default function PhotoAppPage() {
     onError: (e) => message.error(e.message || "恢复失败"),
   });
 
-  const permanentDeleteMutation = api.app.permanentDelete.useMutation({
+  const permanentDeleteMutation = api.photo.permanentDelete.useMutation({
     onMutate: () => setIsDeleting(true),
     onSettled: () => setIsDeleting(false),
     onSuccess: (data) => {
@@ -630,14 +634,14 @@ export default function PhotoAppPage() {
 
   const handleRestore = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    restoreMutation.mutate({ appId: id, photoIds: [...selectedIds] });
+    restoreMutation.mutate({ id: id, photoIds: [...selectedIds] });
   }, [id, selectedIds, restoreMutation.mutate]);
 
   const handlePermanentDelete = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
     if (!window.confirm("永久删除选中的照片？此操作不可恢复！")) return;
     permanentDeleteMutation.mutate({
-      appId: id,
+      id: id,
       photoIds: [...selectedIds],
     });
   }, [id, selectedIds, permanentDeleteMutation.mutate]);

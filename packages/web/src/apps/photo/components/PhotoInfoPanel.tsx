@@ -166,8 +166,8 @@ function OcrResultRow({
   const [itemHovered, setItemHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const updateMutation = api.photoSettings.updateOcrResult.useMutation();
-  const deleteMutation = api.photoSettings.deleteOcrResult.useMutation();
+  const updateMutation = api.photo.updateOcrResult.useMutation();
+  const deleteMutation = api.photo.deleteOcrResult.useMutation();
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -410,17 +410,17 @@ export function PhotoInfoPanel({
     [openWindow, detail.appId],
   );
 
-  const { data: ocrResults } = api.photoSettings.getPhotoOcrResults.useQuery(
+  const { data: ocrResults } = api.photo.getPhotoOcrResults.useQuery(
     { photoId: detail.id },
     { enabled: !!detail.id },
   );
 
-  const { data: similarData } = api.photoSettings.similarPhotos.useQuery(
+  const { data: similarData } = api.photo.similarPhotos.useQuery(
     { photoId: detail.id },
     { enabled: !!detail.id },
   );
 
-  const { data: tagsData } = api.photoSettings.photoTags.useQuery(
+  const { data: tagsData } = api.photo.photoTags.useQuery(
     { photoId: detail.id },
     { enabled: !!detail.id },
   );

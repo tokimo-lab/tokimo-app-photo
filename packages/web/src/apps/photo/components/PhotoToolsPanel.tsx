@@ -44,11 +44,11 @@ export function PhotoToolsPanel({
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, string>>({});
 
-  const refreshFaces = api.photoSettings.refreshFaces.useMutation();
-  const refreshExif = api.photoSettings.refreshExif.useMutation();
-  const refreshThumbnail = api.photoSettings.refreshThumbnail.useMutation();
-  const refreshClip = api.photoSettings.refreshClip.useMutation();
-  const refreshOcr = api.photoSettings.refreshOcr.useMutation();
+  const refreshFaces = api.photo.refreshFaces.useMutation();
+  const refreshExif = api.photo.refreshExif.useMutation();
+  const refreshThumbnail = api.photo.refreshThumbnail.useMutation();
+  const refreshClip = api.photo.refreshClip.useMutation();
+  const refreshOcr = api.photo.refreshOcr.useMutation();
 
   const handleRefresh = useCallback(
     (key: ToolKey) => {

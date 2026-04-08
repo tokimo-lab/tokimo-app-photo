@@ -1,0 +1,177 @@
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use serde::Deserialize;
+use std::sync::Arc;
+
+use crate::db::pagination::PageInput;
+use crate::error::AppError;
+use crate::handlers::{ok, ApiResponse};
+use crate::AppState;
+
+use super::parse_uuid;
+
+/// POST /api/apps/photo/{id}/photos/face-detect
+pub async fn face_detect(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let app_id = parse_uuid(&id)?;
+    let db = state.db.clone();
+    let st = state.clone();
+
+    tokio::spawn(async move {
+        match crate::services::photo_face::PhotoFaceService::detect_app(&db, &st.ai, &st.sources, app_id)
+            .await
+        {
+            Ok(count) => tracing::info!("Face detection: {count} photos for app {app_id}"),
+            Err(e) => tracing::error!("Face detection failed for app {app_id}: {e}"),
+        }
+    });
+
+    Ok(ok(serde_json::json!({"status": "started"})))
+}
+
+/// GET /api/apps/photo/{id}/persons
+pub async fn list_persons(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let app_id = parse_uuid(&id)?;
+    let persons =
+        crate::services::photo_face::PhotoFaceService::list_persons(&state.db, app_id).await?;
+    Ok(ok(serde_json::to_value(persons).unwrap()))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonPhotosQuery {
+    pub page: Option<u64>,
+    pub page_size: Option<u64>,
+}
+
+/// GET /api/apps/photo/{id}/persons/{personId}/photos
+pub async fn person_photos(
+    State(state): State<Arc<AppState>>,
+    Path((id, person_id)): Path<(String, String)>,
+    Query(q): Query<PersonPhotosQuery>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let _app_id = parse_uuid(&id)?;
+    let pid = parse_uuid(&person_id)?;
+    let page = PageInput {
+        page: q.page.unwrap_or(1),
+        page_size: q.page_size.unwrap_or(80),
+    };
+    let result =
+        crate::services::photo_face::PhotoFaceService::photos_by_person(&state.db, pid, &page)
+            .await?;
+    Ok(ok(serde_json::to_value(result).unwrap()))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePersonsBody {
+    pub target_id: String,
+    pub source_id: String,
+}
+
+/// POST /api/apps/photo/{id}/persons/merge
+pub async fn merge_persons(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<MergePersonsBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let _app_id = parse_uuid(&id)?;
+    let target_id = parse_uuid(&body.target_id)?;
+    let source_id = parse_uuid(&body.source_id)?;
+
+    crate::services::photo_face::PhotoFaceService::merge_persons(
+        &state.db, target_id, source_id,
+    )
+    .await?;
+
+    Ok(ok(serde_json::json!({"success": true})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RenamePersonBody {
+    pub name: String,
+}
+
+/// PATCH /api/apps/photo/{id}/persons/{personId}
+pub async fn rename_person(
+    State(state): State<Arc<AppState>>,
+    Path((id, person_id)): Path<(String, String)>,
+    Json(body): Json<RenamePersonBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let _app_id = parse_uuid(&id)?;
+    let pid = parse_uuid(&person_id)?;
+
+    crate::services::photo_face::PhotoFaceService::rename_person(&state.db, pid, &body.name)
+        .await?;
+
+    Ok(ok(serde_json::json!({"success": true})))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignFaceBody {
+    pub person_id: String,
+}
+
+/// PATCH /api/photos/{id}/faces/{faceId}/assign
+pub async fn assign_face_to_person(
+    State(state): State<Arc<AppState>>,
+    Path((photo_id, face_id)): Path<(String, String)>,
+    Json(body): Json<AssignFaceBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let _photo_id = parse_uuid(&photo_id)?;
+    let fid: i32 = face_id
+        .parse()
+        .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
+    let person_id = parse_uuid(&body.person_id)?;
+
+    crate::services::photo_face::PhotoFaceService::assign_face_to_person(&state.db, fid, person_id)
+        .await?;
+
+    Ok(ok(serde_json::json!({"success": true})))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePersonFromFaceBody {
+    pub name: Option<String>,
+}
+
+/// POST /api/photos/{id}/faces/{faceId}/create-person
+pub async fn create_person_from_face(
+    State(state): State<Arc<AppState>>,
+    Path((photo_id, face_id)): Path<(String, String)>,
+    Json(body): Json<CreatePersonFromFaceBody>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let _photo_id = parse_uuid(&photo_id)?;
+    let fid: i32 = face_id
+        .parse()
+        .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
+
+    let person = crate::services::photo_face::PhotoFaceService::create_person_from_face(
+        &state.db,
+        fid,
+        body.name,
+    )
+    .await?;
+
+    Ok(ok(serde_json::to_value(person).unwrap()))
+}
+
+/// GET /api/photos/{id}/faces
+pub async fn get_photo_faces(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let photo_id = parse_uuid(&id)?;
+    let faces =
+        crate::services::photo_face::PhotoFaceService::get_photo_faces(&state.db, photo_id)
+            .await?;
+    Ok(ok(serde_json::to_value(faces).unwrap()))
+}

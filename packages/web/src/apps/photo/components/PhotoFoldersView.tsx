@@ -25,8 +25,8 @@ export function PhotoFoldersView({
   const [currentPath, setCurrentPath] = useState("/");
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
 
-  const foldersQuery = api.app.listPhotoFolders.useQuery(
-    { appId, path: currentPath },
+  const foldersQuery = api.photo.listPhotoFolders.useQuery(
+    { id: appId, path: currentPath },
     { enabled: !!appId },
   );
 

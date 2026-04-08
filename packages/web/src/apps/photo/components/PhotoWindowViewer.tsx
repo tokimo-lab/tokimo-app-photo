@@ -90,7 +90,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
 
   // ── Detail query (always fetch for overlays) ───────────────────
   const queryClient = useQueryClient();
-  const detailQuery = api.app.getPhoto.useQuery(
+  const detailQuery = api.photo.getPhoto.useQuery(
     { photoId: currentPhotoId },
     { enabled: !!currentPhotoId },
   );
@@ -102,13 +102,13 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     storePhoto ?? (detail as PhotoOutput | undefined) ?? null;
 
   // ── Face/OCR queries (deferred until info panel is open) ───────
-  const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
+  const facesQuery = api.photo.getPhotoFaces.useQuery(
     { photoId: currentPhotoId },
     { enabled: !!currentPhotoId && showInfo },
   );
   const faces = facesQuery.data ?? [];
 
-  const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
+  const ocrQuery = api.photo.getPhotoOcrResults.useQuery(
     { photoId: currentPhotoId },
     { enabled: !!currentPhotoId && showInfo },
   );
@@ -131,7 +131,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     setPendingBbox(null);
   }, []);
 
-  const createOcrMut = api.photoSettings.createOcrResult.useMutation();
+  const createOcrMut = api.photo.createOcrResult.useMutation();
   const handleAddOcr = useCallback(async () => {
     if (!detail) return;
     const pw = detail.width || 1000;
@@ -558,14 +558,14 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   );
 
   // ── Favorite ───────────────────────────────────────────────────
-  const favMutation = api.app.togglePhotoFavorite.useMutation();
+  const favMutation = api.photo.togglePhotoFavorite.useMutation();
   const handleFavorite = useCallback(() => {
     if (!photo) return;
     favMutation.mutate(
       { photoId: photo.id },
       {
         onSuccess: () => {
-          api.app.getPhoto.invalidate(queryClient, { photoId: photo.id });
+          api.photo.getPhoto.invalidate(queryClient, { photoId: photo.id });
         },
       },
     );
@@ -585,7 +585,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
     setEditing(true);
   }, [detail]);
 
-  const updatePhotoMutation = api.app.updatePhoto.useMutation();
+  const updatePhotoMutation = api.photo.updatePhoto.useMutation();
   const saveEdit = useCallback(() => {
     if (!detail) return;
     updatePhotoMutation.mutate(
@@ -598,7 +598,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
       {
         onSuccess: () => {
           setEditing(false);
-          api.app.getPhoto.invalidate(queryClient, { photoId: detail.id });
+          api.photo.getPhoto.invalidate(queryClient, { photoId: detail.id });
         },
       },
     );

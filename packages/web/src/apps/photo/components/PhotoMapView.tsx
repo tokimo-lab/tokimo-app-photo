@@ -118,11 +118,11 @@ export function PhotoMapView({ appId, onClusterClick }: PhotoMapViewProps) {
   const { openWindow } = useWindowNav();
 
   // ── Data queries ─────────────────────────────────────────────────────
-  const geoSettings = api.photoSettings.getGeoSettings.useQuery({
+  const geoSettings = api.photo.getGeoSettings.useQuery({
     staleTime: 300_000,
   });
-  const pointsQuery = api.app.getMapPoints.useQuery(
-    { appId: appId! },
+  const pointsQuery = api.photo.getMapPoints.useQuery(
+    { id: appId! },
     { enabled: !!appId },
   );
 

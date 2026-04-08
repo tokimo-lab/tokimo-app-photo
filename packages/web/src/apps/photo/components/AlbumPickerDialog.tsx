@@ -18,8 +18,8 @@ export function AlbumPickerDialog({
   onClose: () => void;
   isPending: boolean;
 }) {
-  const albumsQuery = api.app.listPhotoAlbums.useQuery(
-    { appId },
+  const albumsQuery = api.photo.listPhotoAlbums.useQuery(
+    { id: appId },
     { enabled: true },
   );
   const albums = albumsQuery.data ?? [];
@@ -27,7 +27,7 @@ export function AlbumPickerDialog({
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const createMutation = api.app.createPhotoAlbum.useMutation({
+  const createMutation = api.photo.createPhotoAlbum.useMutation({
     onSuccess: (album: PhotoAlbumOutput) => {
       void albumsQuery.refetch();
       onPick(album.id);
@@ -36,7 +36,7 @@ export function AlbumPickerDialog({
 
   const handleCreate = () => {
     if (!newName.trim()) return;
-    createMutation.mutate({ appId, name: newName.trim() });
+    createMutation.mutate({ id: appId, name: newName.trim() });
   };
 
   return (

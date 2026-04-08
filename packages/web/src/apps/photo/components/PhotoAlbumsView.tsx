@@ -95,7 +95,7 @@ function AlbumDetailView({
   const [page, setPage] = useState(1);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoOutput | null>(null);
 
-  const photosQuery = api.app.listAlbumPhotos.useQuery(
+  const photosQuery = api.photo.listAlbumPhotos.useQuery(
     { albumId: album.id, page, pageSize: PAGE_SIZE },
     { enabled: true },
   );
@@ -193,14 +193,14 @@ export function PhotoAlbumsView({
   const [showCreate, setShowCreate] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<PhotoAlbumOutput | null>(null);
 
-  const createMutation = api.app.createPhotoAlbum.useMutation({
+  const createMutation = api.photo.createPhotoAlbum.useMutation({
     onSuccess: () => {
       setShowCreate(false);
       onRefresh();
     },
   });
 
-  const deleteMutation = api.app.deletePhotoAlbum.useMutation({
+  const deleteMutation = api.photo.deletePhotoAlbum.useMutation({
     onSuccess: () => {
       setActiveAlbum(null);
       onRefresh();
@@ -210,7 +210,7 @@ export function PhotoAlbumsView({
   const handleCreate = useCallback(
     (name: string, description: string) => {
       createMutation.mutate({
-        appId,
+        id: appId,
         name,
         description: description || undefined,
       });

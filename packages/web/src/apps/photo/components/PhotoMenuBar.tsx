@@ -16,7 +16,7 @@ import {
 } from "react";
 import { api } from "@/generated/rust-api";
 import type { MenuBarConfig } from "@/system";
-import { useMenuBar, useMessage, useWindowNav } from "@/system";
+import { useMenuBar, useMessage } from "@/system";
 import {
   loadSavedSizeIndex,
   PHOTO_SIZE_LEVELS,
@@ -47,8 +47,7 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
-  const { metadata } = useWindowNav();
-  const id = metadata.appId as string | undefined;
+  const id = localStorage.getItem("photo-active-library") ?? undefined;
   const message = useMessage();
   const qc = useQueryClient();
 
@@ -71,17 +70,17 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
     }
   }, [isSelecting, clearSelection]);
 
-  const syncMutation = api.app.sync.useMutation({
+  const syncMutation = api.photo.rescan.useMutation({
     onSuccess: () => {
       message.success("同步已开始");
-      api.app.listPhotos.invalidate(qc);
+      api.photo.listPhotos.invalidate(qc);
     },
     onError: (e) => message.error(e.message || "同步失败"),
   });
 
   const handleRefresh = useCallback(() => {
-    api.app.listPhotos.invalidate(qc);
-    api.app.listTrashedPhotos.invalidate(qc);
+    api.photo.listPhotos.invalidate(qc);
+    api.photo.listTrashedPhotos.invalidate(qc);
   }, [qc]);
 
   const menuBarConfig: MenuBarConfig | null = useMemo(() => {

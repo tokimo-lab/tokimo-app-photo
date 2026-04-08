@@ -47,9 +47,9 @@ export function PhotoLocationTab({
 
   // Query photos by bounding box when in timeline view
   const bbox = view.selection?.bbox;
-  const photosQuery = api.app.getPhotosByBbox.useQuery(
+  const photosQuery = api.photo.getPhotosByBbox.useQuery(
     {
-      appId: appId!,
+      id: appId!,
       minLat: bbox?.minLat ?? 0,
       maxLat: bbox?.maxLat ?? 0,
       minLng: bbox?.minLng ?? 0,

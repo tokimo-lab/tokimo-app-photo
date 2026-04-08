@@ -44,14 +44,14 @@ export function PhotoPeopleView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  const personsQuery = api.photoSettings.listPersons.useQuery(
-    { appId: appId! },
+  const personsQuery = api.photo.listPersons.useQuery(
+    { id: appId! },
     { enabled: !!appId },
   );
 
-  const photosQuery = api.photoSettings.personPhotos.useQuery(
+  const photosQuery = api.photo.personPhotos.useQuery(
     {
-      appId: appId!,
+      id: appId!,
       personId: view.person?.id ?? "",
       page: photosPage,
       pageSize: PAGE_SIZE,
@@ -59,7 +59,7 @@ export function PhotoPeopleView({
     { enabled: !!appId && view.level === "detail" && !!view.person },
   );
 
-  const renameMutation = api.photoSettings.renamePerson.useMutation({
+  const renameMutation = api.photo.renamePerson.useMutation({
     onSuccess: () => {
       void personsQuery.refetch();
       // Update local view state name
@@ -138,7 +138,7 @@ export function PhotoPeopleView({
     (personId: string) => {
       if (!appId) return;
       renameMutation.mutate({
-        appId,
+        id: appId,
         personId,
         name: editName.trim(),
       });

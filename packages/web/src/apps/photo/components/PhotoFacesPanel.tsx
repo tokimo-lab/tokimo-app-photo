@@ -34,7 +34,7 @@ export function PhotoFacesPanel({
   onHoverFace,
   onNavigateToPerson,
 }: PhotoFacesPanelProps) {
-  const { data: faces } = api.photoSettings.getPhotoFaces.useQuery(
+  const { data: faces } = api.photo.getPhotoFaces.useQuery(
     { photoId },
     { enabled: !!photoId },
   );
@@ -113,8 +113,8 @@ function PersonPickerModal({
   onSelect: (person: PersonOutput) => void;
   onClose: () => void;
 }) {
-  const { data: persons } = api.photoSettings.listPersons.useQuery(
-    { appId },
+  const { data: persons } = api.photo.listPersons.useQuery(
+    { id: appId },
     { enabled: !!appId },
   );
 
@@ -189,7 +189,7 @@ function FaceChip({
     : undefined;
 
   // ── Mutations ──
-  const assignMutation = api.photoSettings.assignFaceToPerson.useMutation({
+  const assignMutation = api.photo.assignFaceToPerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/photo/{id}/faces"],
@@ -200,19 +200,18 @@ function FaceChip({
     },
   });
 
-  const createPersonMutation =
-    api.photoSettings.createPersonFromFace.useMutation({
-      onSuccess: () => {
-        void queryClient.invalidateQueries({
-          queryKey: ["/api/apps/photo/{id}/faces"],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["/api/apps/{id}/persons"],
-        });
-      },
-    });
+  const createPersonMutation = api.photo.createPersonFromFace.useMutation({
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["/api/apps/photo/{id}/faces"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["/api/apps/{id}/persons"],
+      });
+    },
+  });
 
-  const renameMutation = api.photoSettings.renamePerson.useMutation({
+  const renameMutation = api.photo.renamePerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/photo/{id}/faces"],
@@ -259,7 +258,7 @@ function FaceChip({
   const handleSubmitRename = useCallback(() => {
     if (!face.personId || !renameValue.trim()) return;
     renameMutation.mutate({
-      appId,
+      id: appId,
       personId: face.personId,
       name: renameValue.trim(),
     });

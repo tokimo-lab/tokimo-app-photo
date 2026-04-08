@@ -130,11 +130,11 @@ export function PhotoMiniMap({
   onViewNearbyRef.current = onViewNearby;
 
   // ── Data ────────────────────────────────────────────────────────────────
-  const geoSettings = api.photoSettings.getGeoSettings.useQuery({
+  const geoSettings = api.photo.getGeoSettings.useQuery({
     staleTime: 300_000,
   });
-  const pointsQuery = api.app.getMapPoints.useQuery(
-    { appId },
+  const pointsQuery = api.photo.getMapPoints.useQuery(
+    { id: appId },
     { enabled: !!appId },
   );
 

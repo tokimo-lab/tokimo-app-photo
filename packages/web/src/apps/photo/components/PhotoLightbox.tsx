@@ -277,19 +277,19 @@ export function PhotoLightbox({
     setShowLiveVideo(false);
   }
 
-  const detailQuery = api.app.getPhoto.useQuery(
+  const detailQuery = api.photo.getPhoto.useQuery(
     { photoId: photo.id },
     { enabled: true },
   );
   const detail = detailQuery.data;
 
-  const facesQuery = api.photoSettings.getPhotoFaces.useQuery(
+  const facesQuery = api.photo.getPhotoFaces.useQuery(
     { photoId: photo.id },
     { enabled: showInfo },
   );
   const faces = facesQuery.data;
 
-  const ocrQuery = api.photoSettings.getPhotoOcrResults.useQuery(
+  const ocrQuery = api.photo.getPhotoOcrResults.useQuery(
     { photoId: photo.id },
     { enabled: true },
   );
@@ -302,7 +302,7 @@ export function PhotoLightbox({
   const [editDate, setEditDate] = useState("");
   const queryClient = useQueryClient();
 
-  const updateMutation = api.app.updatePhoto.useMutation();
+  const updateMutation = api.photo.updatePhoto.useMutation();
 
   const startEdit = useCallback(() => {
     setEditTitle(detail?.title || photo.title || "");

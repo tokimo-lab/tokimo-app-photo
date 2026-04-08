@@ -321,8 +321,8 @@ export function TimelineScrubber({
     }
   }, []);
 
-  const { data: timelineEntries } = api.app.getTimelineIndex.useQuery(
-    { appId },
+  const { data: timelineEntries } = api.photo.getTimelineIndex.useQuery(
+    { id: appId },
     { enabled: !!appId },
   );
   const { marks, datePositions, posToDateLabel } = useTimelineLayout(
