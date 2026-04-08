@@ -54,6 +54,7 @@ export default function PhotoAppPage({
   const initialDate = metadata.initialDate as string | undefined;
   const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
+  const [windowContent, setWindowContent] = useState<HTMLElement | null>(null);
 
   // ── Grid size state (from menubar context) ───────────────────────────
   const menuBarState = usePhotoMenuBarState();
@@ -96,6 +97,15 @@ export default function PhotoAppPage({
   const handleNavigateToPersonHandled = useCallback(() => {
     setNavigateToPersonId(null);
   }, []);
+  // Locate the window content area for portalling overlays into it
+  useEffect(() => {
+    if (rootRef.current) {
+      setWindowContent(
+        rootRef.current.closest("[data-window-content]") as HTMLElement | null,
+      );
+    }
+  }, []);
+
   // Hide scrollbar on the scroll parent (photo uses timeline scrubber instead)
   useEffect(() => {
     let el = rootRef.current?.parentElement ?? null;
@@ -470,6 +480,7 @@ export default function PhotoAppPage({
 
       {/* Selection bar (floating bottom) */}
       <PhotoSelectionBar
+        container={windowContent}
         count={selectedIds.size}
         onAddToAlbum={() => setShowAlbumPicker(true)}
         onBatchFavorite={handleBatchFavorite}
