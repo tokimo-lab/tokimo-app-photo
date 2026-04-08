@@ -39,7 +39,7 @@ export function SyncProgressOverlay({
   onJobCompletedRef.current = onJobCompleted;
 
   // Only poll while there's active work; otherwise rely on WS job events
-  const progressQuery = api.app.getSyncProgress.useQuery(
+  const progressQuery = api.photo.getSyncProgress.useQuery(
     { id: appId },
     {
       refetchInterval: (query) => {

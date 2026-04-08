@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::AppState;
 
-use super::handlers::{ai, album, batch, browse, crud, geo, person, stream};
+use super::handlers::{ai, album, batch, browse, crud, geo, person, stream, sync};
 
 #[allow(clippy::too_many_lines)]
 pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
@@ -272,5 +272,9 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             get(crud::get_photo_library)
                 .patch(crud::update_photo_library)
                 .delete(crud::delete_photo_library),
+        )
+        .route(
+            "/api/apps/photo/{id}/sync-progress",
+            get(sync::get_photo_sync_progress),
         )
 }

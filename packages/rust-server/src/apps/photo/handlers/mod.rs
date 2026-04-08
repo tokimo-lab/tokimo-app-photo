@@ -6,6 +6,7 @@ pub mod crud;
 pub mod geo;
 pub mod person;
 pub mod stream;
+pub mod sync;
 
 use serde::Deserialize;
 use uuid::Uuid;
@@ -24,6 +25,7 @@ pub use crud::*;
 pub use geo::*;
 pub use person::*;
 pub use stream::*;
+pub use sync::*;
 
 // ── Input DTOs ──
 
