@@ -23,7 +23,6 @@ import { PHOTO_SIZE_LEVELS } from "@/apps/photo/components/PhotoSizeSlider";
 import { PhotoTimeline } from "@/apps/photo/components/PhotoTimeline";
 import { SyncProgressOverlay } from "@/apps/photo/components/SyncProgressOverlay";
 import type { PhotoOutput } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
 import { useMessage, useWindowNav } from "@/system";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
 import { type TabKey, usePhotoData } from "./use-photo-data";

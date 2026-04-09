@@ -24,7 +24,7 @@ function CreateAlbumDialog({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-[var(--glass-border)] bg-surface-elevated p-6 shadow-2xl ">
+      <div className="w-full max-w-md rounded-xl border border-border-base bg-surface-elevated p-6 shadow-2xl ">
         <h3 className="mb-4 text-lg font-semibold text-fg-primary">新建相册</h3>
         <div className="space-y-4">
           <div>
@@ -264,7 +264,7 @@ export function PhotoAlbumsView({
             <button
               key={album.id}
               type="button"
-              className="group cursor-pointer overflow-hidden rounded-xl border border-[var(--glass-border)] bg-white/50 text-left transition-shadow hover:shadow-lg dark:bg-white/[0.03]"
+              className="group cursor-pointer overflow-hidden rounded-xl border border-border-base bg-white/50 text-left transition-shadow hover:shadow-lg dark:bg-white/[0.03]"
               onClick={() => setActiveAlbum(album)}
             >
               <div className="aspect-[4/3] bg-fill-tertiary">

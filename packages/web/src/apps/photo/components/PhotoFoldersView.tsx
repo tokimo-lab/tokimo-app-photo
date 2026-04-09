@@ -81,7 +81,7 @@ export function PhotoFoldersView({
             <button
               key={folder.path}
               type="button"
-              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--glass-border)] bg-white/50 p-3 text-left transition-colors hover:bg-fill-tertiary dark:bg-white/[0.03]"
+              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-white/50 p-3 text-left transition-colors hover:bg-fill-tertiary dark:bg-white/[0.03]"
               onClick={() => setCurrentPath(folder.path)}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
