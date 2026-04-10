@@ -11,7 +11,7 @@ export function useViewerImageLoader({
   photoId,
   filename,
 }: ViewerImageLoaderOptions) {
-  const fullUrl = `/api/apps/photo/${photoId}/image`;
+  const fullUrl = `/api/apps/photo/item/${photoId}/image`;
   const [fullBlobUrl, setFullBlobUrl] = useState<string | null>(null);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [fullDecoded, setFullDecoded] = useState(false);

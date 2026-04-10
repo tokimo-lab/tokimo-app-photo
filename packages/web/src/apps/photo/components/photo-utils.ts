@@ -15,12 +15,12 @@ export function photoThumbUrl(photo: { id: string }): string {
 
 /** Full-resolution original image URL (direct to Rust backend). */
 export function photoImageUrl(photoId: string): string {
-  return rustUrl(`/api/apps/photo/${photoId}/image`);
+  return rustUrl(`/api/apps/photo/item/${photoId}/image`);
 }
 
 /** Live Photo companion video URL (direct to Rust backend). */
 export function photoLiveVideoUrl(photoId: string): string {
-  return rustUrl(`/api/apps/photo/${photoId}/live-video`);
+  return rustUrl(`/api/apps/photo/item/${photoId}/live-video`);
 }
 
 export type DateGroup = {
