@@ -12,7 +12,7 @@ use crate::apps::photo::repos::PhotoRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ok, ApiResponse};
-use crate::thread_util::named_spawn_blocking;
+use crate::common::thread_util::named_spawn_blocking;
 use crate::AppState;
 
 use super::parse_uuid;
