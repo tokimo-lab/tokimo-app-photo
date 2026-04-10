@@ -124,7 +124,7 @@ export function OcrResultRow({
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleSubmit();
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSubmit();
             else if (e.key === "Escape") onFinishEdit();
           }}
           className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"

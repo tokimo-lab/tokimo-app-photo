@@ -113,7 +113,9 @@ export function AlbumPickerDialog({
             onChange={(e) => setNewName(e.target.value)}
             className="min-w-0 flex-1 rounded-lg border border-black/[0.15] bg-transparent px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-white/[0.15]"
             placeholder="相册名称"
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            onKeyDown={(e) =>
+              e.key === "Enter" && !e.nativeEvent.isComposing && handleCreate()
+            }
           />
           <Button
             onClick={handleCreate}

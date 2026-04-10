@@ -242,7 +242,8 @@ export function PhotoPeopleView({
                     className="flex items-center gap-1 border-0 p-0"
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") submitRename(person.id);
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                        submitRename(person.id);
                       if (e.key === "Escape") cancelRename();
                     }}
                   >
