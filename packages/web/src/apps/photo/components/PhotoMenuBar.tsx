@@ -73,6 +73,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
   const syncMutation = api.photo.rescan.useMutation({
     onSuccess: () => {
       message.success("同步已开始");
+      api.photo.list.invalidate(qc);
       api.photo.listPhotos.invalidate(qc);
     },
     onError: (e) => message.error(e.message || "同步失败"),

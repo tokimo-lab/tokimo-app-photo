@@ -1,6 +1,5 @@
-use md5::Digest as _;
-use std::fmt::Write as _;
 use reqwest::Client;
+use rust_client_api::geocoding::{GeocodingClient, GeoLocation};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
@@ -12,18 +11,6 @@ use crate::config::PhotoGeoSettings;
 use crate::db::repos::system_config_repo::SystemConfigRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
-
-/// Reverse-geocoded location data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeoLocation {
-    pub province: Option<String>,
-    pub city: Option<String>,
-    pub district: Option<String>,
-    pub township: Option<String>,
-    pub adcode: Option<String>,
-    pub address: Option<String>,
-    pub country: Option<String>,
-}
 
 /// Round coordinate to ~10m precision for cache key deduplication.
 fn coord_cache_key(val: f64) -> String {
@@ -58,6 +45,7 @@ pub async fn reverse_geocode_dispatch(
     lon: f64,
     lat: f64,
 ) -> Result<GeoLocation, AppError> {
+    let geo_client = GeocodingClient::new(http.clone());
     match settings.provider.as_str() {
         "amap" => {
             let key = settings
@@ -65,7 +53,10 @@ pub async fn reverse_geocode_dispatch(
                 .as_deref()
                 .internal("Amap API key not configured")?;
             let secret = settings.amap_secret.as_deref();
-            amap_reverse_geocode(http, key, secret, lon, lat).await
+            geo_client
+                .amap_reverse_geocode(key, secret, lon, lat)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))
         }
         "qqmap" => {
             let key = settings
@@ -73,471 +64,45 @@ pub async fn reverse_geocode_dispatch(
                 .as_deref()
                 .internal("QQ Map API key not configured")?;
             let secret = settings.qqmap_secret_key.as_deref();
-            qqmap_reverse_geocode(http, key, secret, lon, lat).await
+            geo_client
+                .qqmap_reverse_geocode(key, secret, lon, lat)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))
         }
         "tianditu" => {
             let key = settings
                 .tianditu_server_key
                 .as_deref()
                 .internal("Tianditu server key not configured")?;
-            tianditu_reverse_geocode(http, key, lon, lat).await
+            geo_client
+                .tianditu_reverse_geocode(key, lon, lat)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))
         }
         "mapbox" => {
             let token = settings
                 .mapbox_access_token
                 .as_deref()
                 .internal("Mapbox access token not configured")?;
-            mapbox_reverse_geocode(http, token, lon, lat).await
+            geo_client
+                .mapbox_reverse_geocode(token, lon, lat)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))
         }
         "maptiler" => {
             let key = settings
                 .maptiler_api_key
                 .as_deref()
                 .internal("MapTiler API key not configured")?;
-            maptiler_reverse_geocode(http, key, lon, lat).await
+            geo_client
+                .maptiler_reverse_geocode(key, lon, lat)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))
         }
         other => Err(AppError::Internal(format!(
             "Unknown geo provider: {other}"
         ))),
     }
-}
-
-// ── Amap (高德) reverse geocoding ────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct AmapResponse {
-    status: String,
-    info: Option<String>,
-    regeocode: Option<AmapRegeocode>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AmapRegeocode {
-    formatted_address: Option<AmapStrOrEmpty>,
-    #[serde(rename = "addressComponent")]
-    address_component: Option<AmapAddressComponent>,
-}
-
-/// Amap sometimes returns "" or [] for empty fields — handle both.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum AmapStrOrEmpty {
-    Str(String),
-    #[allow(dead_code)]
-    List(Vec<serde_json::Value>),
-}
-
-impl AmapStrOrEmpty {
-    fn as_opt_string(&self) -> Option<String> {
-        match self {
-            AmapStrOrEmpty::Str(s) if !s.is_empty() => Some(s.clone()),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct AmapAddressComponent {
-    province: Option<AmapStrOrEmpty>,
-    city: Option<AmapStrOrEmpty>,
-    district: Option<AmapStrOrEmpty>,
-    township: Option<AmapStrOrEmpty>,
-    adcode: Option<AmapStrOrEmpty>,
-    country: Option<AmapStrOrEmpty>,
-}
-
-async fn amap_reverse_geocode(
-    http: &Client,
-    api_key: &str,
-    secret: Option<&str>,
-    lon: f64,
-    lat: f64,
-) -> Result<GeoLocation, AppError> {
-    let location = format!("{lon:.6},{lat:.6}");
-    let mut url = format!(
-        "https://restapi.amap.com/v3/geocode/regeo?key={api_key}&location={location}&extensions=base"
-    );
-
-    // When secret is configured, compute digital signature
-    // Algorithm: sort params alphabetically, concat as k1=v1&k2=v2, append secret, md5
-    if let Some(sec) = secret
-        && !sec.is_empty() {
-            let mut params = [("extensions", "base".to_string()),
-                ("key", api_key.to_string()),
-                ("location", location.clone())];
-            params.sort_by(|a, b| a.0.cmp(b.0));
-            let sign_str: String = params
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join("&");
-            let sig = hex::encode(md5::Md5::digest(format!("{sign_str}{sec}").as_bytes()));
-            write!(url, "&sig={sig}").ok();
-        }
-
-    let resp: AmapResponse = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("Amap HTTP error: {e}")))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("Amap JSON parse error: {e}")))?;
-
-    if resp.status != "1" {
-        let info = resp.info.unwrap_or_default();
-        return Err(AppError::Internal(format!("Amap API error: {info}")));
-    }
-
-    let regeo = resp
-        .regeocode
-        .internal("Amap: no regeocode in response")?;
-
-    let comp = regeo.address_component;
-    Ok(GeoLocation {
-        province: comp
-            .as_ref()
-            .and_then(|c| c.province.as_ref()?.as_opt_string()),
-        city: comp
-            .as_ref()
-            .and_then(|c| c.city.as_ref()?.as_opt_string()),
-        district: comp
-            .as_ref()
-            .and_then(|c| c.district.as_ref()?.as_opt_string()),
-        township: comp
-            .as_ref()
-            .and_then(|c| c.township.as_ref()?.as_opt_string()),
-        adcode: comp
-            .as_ref()
-            .and_then(|c| c.adcode.as_ref()?.as_opt_string()),
-        address: regeo
-            .formatted_address
-            .as_ref()
-            .and_then(AmapStrOrEmpty::as_opt_string),
-        country: comp
-            .as_ref()
-            .and_then(|c| c.country.as_ref()?.as_opt_string()),
-    })
-}
-
-// ── QQ Map (腾讯) reverse geocoding ─────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct QqmapResponse {
-    status: i32,
-    message: Option<String>,
-    result: Option<QqmapResult>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QqmapResult {
-    address: Option<String>,
-    address_component: Option<QqmapAddressComponent>,
-    ad_info: Option<QqmapAdInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QqmapAddressComponent {
-    nation: Option<String>,
-    province: Option<String>,
-    city: Option<String>,
-    district: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct QqmapAdInfo {
-    adcode: Option<String>,
-}
-
-async fn qqmap_reverse_geocode(
-    http: &Client,
-    api_key: &str,
-    secret_key: Option<&str>,
-    lon: f64,
-    lat: f64,
-) -> Result<GeoLocation, AppError> {
-    let location = format!("{lat:.6},{lon:.6}");
-    let url = if let Some(secret) = secret_key {
-        // Compute MD5 signature: md5("/ws/geocoder/v1/?key={key}&location={lat},{lng}{secret}")
-        let sign_str = format!(
-            "/ws/geocoder/v1/?key={api_key}&location={location}{secret}"
-        );
-        let sig = hex::encode(md5::Md5::digest(sign_str.as_bytes()));
-        format!(
-            "https://apis.map.qq.com/ws/geocoder/v1/?key={api_key}&location={location}&sig={sig}"
-        )
-    } else {
-        format!("https://apis.map.qq.com/ws/geocoder/v1/?key={api_key}&location={location}")
-    };
-
-    let resp: QqmapResponse = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("QQ Map HTTP error: {e}")))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("QQ Map JSON parse error: {e}")))?;
-
-    if resp.status != 0 {
-        let msg = resp.message.unwrap_or_default();
-        return Err(AppError::Internal(format!("QQ Map API error: {msg}")));
-    }
-
-    let result = resp
-        .result
-        .internal("QQ Map: no result in response")?;
-
-    let comp = result.address_component.as_ref();
-    Ok(GeoLocation {
-        province: comp.and_then(|c| c.province.clone()).filter(|s| !s.is_empty()),
-        city: comp.and_then(|c| c.city.clone()).filter(|s| !s.is_empty()),
-        district: comp.and_then(|c| c.district.clone()).filter(|s| !s.is_empty()),
-        township: None,
-        adcode: result
-            .ad_info
-            .as_ref()
-            .and_then(|a| a.adcode.clone())
-            .filter(|s| !s.is_empty()),
-        address: result.address.filter(|s| !s.is_empty()),
-        country: comp.and_then(|c| c.nation.clone()).filter(|s| !s.is_empty()),
-    })
-}
-
-// ── Tianditu (天地图) reverse geocoding ──────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct TiandituResponse {
-    status: Option<String>,
-    result: Option<TiandituResult>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TiandituResult {
-    formatted_address: Option<String>,
-    address_component: Option<TiandituAddressComponent>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TiandituAddressComponent {
-    city: Option<String>,
-}
-
-async fn tianditu_reverse_geocode(
-    http: &Client,
-    server_key: &str,
-    lon: f64,
-    lat: f64,
-) -> Result<GeoLocation, AppError> {
-    let post_str =
-        format!("{{'lon':{lon:.6},'lat':{lat:.6},'ver':1}}");
-    let url = format!(
-        "http://api.tianditu.gov.cn/geocoder?postStr={post_str}&type=geocode&tk={server_key}"
-    );
-
-    let resp: TiandituResponse = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("Tianditu HTTP error: {e}")))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("Tianditu JSON parse error: {e}")))?;
-
-    if resp.status.as_deref() != Some("0") {
-        return Err(AppError::Internal(format!(
-            "Tianditu API error: status={:?}",
-            resp.status
-        )));
-    }
-
-    let result = resp
-        .result
-        .internal("Tianditu: no result in response")?;
-
-    let city = result
-        .address_component
-        .as_ref()
-        .and_then(|c| c.city.clone())
-        .filter(|s| !s.is_empty());
-
-    // Tianditu provides minimal structured data — parse province from formatted_address heuristic
-    let province = result.formatted_address.as_deref().and_then(parse_province);
-
-    Ok(GeoLocation {
-        province,
-        city,
-        district: None,
-        township: None,
-        adcode: None,
-        address: result.formatted_address.filter(|s| !s.is_empty()),
-        country: None,
-    })
-}
-
-/// Extract province from a Chinese formatted address string.
-/// Chinese addresses typically start with province name (e.g., "北京市海淀区…", "广东省深圳市…").
-fn parse_province(addr: &str) -> Option<String> {
-    // Direct municipalities
-    for m in &["北京市", "天津市", "上海市", "重庆市"] {
-        if addr.starts_with(m) {
-            return Some((*m).to_string());
-        }
-    }
-    // Province ending with 省
-    if let Some(idx) = addr.find('省') {
-        let prov = &addr[..idx + '省'.len_utf8()];
-        if prov.chars().count() <= 10 {
-            return Some(prov.to_string());
-        }
-    }
-    // Autonomous regions (自治区)
-    for suffix in &["自治区"] {
-        if let Some(idx) = addr.find(suffix) {
-            let end = idx + suffix.len();
-            let region = &addr[..end];
-            if region.chars().count() <= 20 {
-                return Some(region.to_string());
-            }
-        }
-    }
-    // Special administrative regions
-    for sar in &["香港特别行政区", "澳门特别行政区"] {
-        if addr.starts_with(sar) {
-            return Some((*sar).to_string());
-        }
-    }
-    None
-}
-
-// ── Mapbox reverse geocoding ─────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct MapboxResponse {
-    features: Option<Vec<MapboxFeature>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MapboxFeature {
-    place_name: Option<String>,
-    context: Option<Vec<MapboxContext>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MapboxContext {
-    id: Option<String>,
-    text: Option<String>,
-}
-
-async fn mapbox_reverse_geocode(
-    http: &Client,
-    access_token: &str,
-    lon: f64,
-    lat: f64,
-) -> Result<GeoLocation, AppError> {
-    let url = format!(
-        "https://api.mapbox.com/geocoding/v5/mapbox.places/{lon:.6},{lat:.6}.json\
-         ?access_token={access_token}&language=zh&types=address,place,region,country"
-    );
-
-    let resp: MapboxResponse = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("Mapbox HTTP error: {e}")))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("Mapbox JSON parse error: {e}")))?;
-
-    let feature = resp
-        .features
-        .as_ref()
-        .and_then(|f| f.first())
-        .internal("Mapbox: no features in response")?;
-
-    let (mut country, mut province, mut city, mut district) = (None, None, None, None);
-    if let Some(ctx) = &feature.context {
-        for item in ctx {
-            let id = item.id.as_deref().unwrap_or_default();
-            let text = item.text.clone().filter(|s| !s.is_empty());
-            if id.starts_with("country.") {
-                country = text;
-            } else if id.starts_with("region.") {
-                province = text;
-            } else if id.starts_with("place.") {
-                city = text;
-            } else if id.starts_with("district.") {
-                district = text;
-            }
-        }
-    }
-
-    Ok(GeoLocation {
-        province,
-        city,
-        district,
-        township: None,
-        adcode: None,
-        address: feature.place_name.clone().filter(|s| !s.is_empty()),
-        country,
-    })
-}
-
-// ── MapTiler reverse geocoding ───────────────────────────────────────────────
-
-async fn maptiler_reverse_geocode(
-    http: &Client,
-    api_key: &str,
-    lon: f64,
-    lat: f64,
-) -> Result<GeoLocation, AppError> {
-    let url = format!(
-        "https://api.maptiler.com/geocoding/{lon:.6},{lat:.6}.json?key={api_key}&language=zh"
-    );
-
-    // MapTiler uses a GeoJSON format compatible with Mapbox
-    let resp: MapboxResponse = http
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("MapTiler HTTP error: {e}")))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("MapTiler JSON parse error: {e}")))?;
-
-    let feature = resp
-        .features
-        .as_ref()
-        .and_then(|f| f.first())
-        .internal("MapTiler: no features in response")?;
-
-    let (mut country, mut province, mut city, mut district) = (None, None, None, None);
-    if let Some(ctx) = &feature.context {
-        for item in ctx {
-            let id = item.id.as_deref().unwrap_or_default();
-            let text = item.text.clone().filter(|s| !s.is_empty());
-            if id.starts_with("country.") {
-                country = text;
-            } else if id.starts_with("region.") {
-                province = text;
-            } else if id.starts_with("municipality.") {
-                city = text;
-            } else if id.starts_with("municipal_district.") {
-                district = text;
-            }
-        }
-    }
-
-    Ok(GeoLocation {
-        province,
-        city,
-        district,
-        township: None,
-        adcode: None,
-        address: feature.place_name.clone().filter(|s| !s.is_empty()),
-        country,
-    })
 }
 
 // ── PhotoGeoService ──────────────────────────────────────────────────────────

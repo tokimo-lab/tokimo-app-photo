@@ -1,8 +1,10 @@
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Spin } from "@tokiomo/components";
 import { Camera, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
+import { useJobEvents } from "@/system/events/useJobEvents";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSettingsModal from "./PhotoSettingsModal";
 import PhotoSidebar from "./PhotoSidebar";
@@ -31,6 +33,57 @@ export default function PhotoApp() {
     setActiveLibraryId(id);
     localStorage.setItem(STORAGE_KEY, id);
   };
+
+  // ── Sync progress tracking ──
+  const queryClient = useQueryClient();
+
+  const syncProgressQueries = useQueries({
+    queries: (libraries ?? []).map((lib) => ({
+      queryKey: api.photo.getSyncProgress.queryKey({ id: lib.id }),
+      queryFn: () => api.photo.getSyncProgress.fetch({ id: lib.id }),
+      enabled: lib.syncStatus === "syncing",
+      refetchInterval: 3000,
+      staleTime: 2000,
+    })),
+  });
+
+  const syncProgress: Record<string, { isActive: boolean; pct: number }> = {};
+  for (let i = 0; i < (libraries ?? []).length; i++) {
+    const lib = libraries![i];
+    const q = syncProgressQueries[i];
+    if (q?.data) {
+      const d = q.data;
+      const total = d.completed + d.running + d.pending + d.failed;
+      const pct = total > 0 ? Math.round((d.completed / total) * 100) : 0;
+      const isActive = d.status === "syncing" || d.running > 0 || d.pending > 0;
+      if (isActive) {
+        syncProgress[lib.id] = { isActive, pct };
+      }
+    } else if (lib.syncStatus === "syncing") {
+      syncProgress[lib.id] = { isActive: true, pct: 0 };
+    }
+  }
+
+  useJobEvents({
+    onEvent: (event) => {
+      if (event.type === "job_update") {
+        const payload = event.job.payload as Record<string, unknown>;
+        const appId = payload?.appId as string | undefined;
+        if (appId && (libraries ?? []).some((l) => l.id === appId)) {
+          queryClient.invalidateQueries({
+            queryKey: api.photo.getSyncProgress.queryKey({ id: appId }),
+          });
+          if (
+            event.job.status === "completed" ||
+            event.job.status === "failed"
+          ) {
+            api.photo.list.invalidate(queryClient);
+            api.photo.listPhotos.invalidate(queryClient);
+          }
+        }
+      }
+    },
+  });
 
   if (isLoading) {
     return (
@@ -86,6 +139,7 @@ export default function PhotoApp() {
           collapsed={sidebarCollapsed}
           onCreateClick={() => setSettingsOpen(true)}
           onSettingsClick={() => setSettingsOpen(true)}
+          syncProgress={syncProgress}
         />
         <div className="min-w-0 flex-1 overflow-auto">
           {activeLibraryId && <PhotoAppPage photoLibraryId={activeLibraryId} />}
