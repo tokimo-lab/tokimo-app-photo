@@ -1,5 +1,7 @@
+import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import type { PhotoDetailOutput } from "@/generated/rust-api";
+import { DEFAULT_LONG_FORMAT } from "@/system";
 
 export const WEEKDAYS = [
   "周日",
@@ -37,15 +39,14 @@ export function getDirectoryPath(fullPath: string): string {
 
 export function formatDateLines(
   iso: string,
+  fmt?: string,
 ): { dateLine: string; timeLine: string } | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  const wd = WEEKDAYS[d.getDay()];
-  const h = d.getHours().toString().padStart(2, "0");
-  const min = d.getMinutes().toString().padStart(2, "0");
-  return { dateLine: `${m}月${day}日`, timeLine: `${wd}, ${h}:${min}` };
+  const d = dayjs(iso);
+  if (!d.isValid()) return null;
+  const formatted = d.format(fmt ?? DEFAULT_LONG_FORMAT);
+  // Still show the weekday line alongside the formatted date
+  const wd = WEEKDAYS[d.day()];
+  return { dateLine: formatted, timeLine: wd };
 }
 
 export function InfoRow({ label, value }: { label: string; value: string }) {

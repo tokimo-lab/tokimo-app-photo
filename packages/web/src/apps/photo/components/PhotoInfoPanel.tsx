@@ -15,7 +15,7 @@ import type { PhotoDetailOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
 import { thumbUrl } from "@/lib/thumb";
-import { useWindowActions } from "@/system";
+import { useDateFormat, useWindowActions } from "@/system";
 import { ExifModal, stripExifQuotes } from "./ExifModal";
 import {
   EXTRA_EXIF_FIELDS,
@@ -76,6 +76,7 @@ export function PhotoInfoPanel({
   const [showExifModal, setShowExifModal] = useState(false);
   const [showOcrDebug, setShowOcrDebug] = useState(false);
   const { openWindow } = useWindowActions();
+  const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(
     (selection: import("./PhotoMapView").MapClusterSelection) => {
@@ -126,7 +127,9 @@ export function PhotoInfoPanel({
     (detail.exifData?.LensModel
       ? stripExifQuotes(detail.exifData.LensModel)
       : null);
-  const dateLines = detail.takenAt ? formatDateLines(detail.takenAt) : null;
+  const dateLines = detail.takenAt
+    ? formatDateLines(detail.takenAt, longFormat)
+    : null;
 
   return (
     <>
@@ -416,7 +419,7 @@ export function PhotoInfoPanel({
             {detail.ocrScannedAt && (
               <p className="mt-2 flex items-center gap-1 text-xs text-white/30">
                 <span>
-                  识别于 {new Date(detail.ocrScannedAt).toLocaleString("zh-CN")}
+                  识别于 {formatLong(detail.ocrScannedAt)}
                   {(() => {
                     const modelName = getOcrModelName(
                       ocrResults[0]?.modelName ?? null,
