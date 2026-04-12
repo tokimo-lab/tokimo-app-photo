@@ -45,8 +45,10 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
 
 export default function PhotoAppPage({
   photoLibraryId,
+  syncing,
 }: {
   photoLibraryId?: string;
+  syncing?: boolean;
 }) {
   const { metadata } = useWindowNav();
   const id = photoLibraryId ?? (metadata.appId as string | undefined);
@@ -194,6 +196,13 @@ export default function PhotoAppPage({
     searchQuery,
     initialDate,
   });
+
+  // Disable pagination during sync — offset-based pages become unreliable
+  // while the dataset is being mutated by the backend.
+  const guardedLoadMoreTimeline = syncing ? undefined : loadMoreTimeline;
+  const guardedLoadMoreUpward = syncing ? undefined : loadMoreUpward;
+  const guardedLoadMoreFav = syncing ? undefined : loadMoreFav;
+  const guardedLoadMoreTrash = syncing ? undefined : loadMoreTrash;
 
   // ── Mutations hook ─────────────────────────────────────────────────────
   const {
@@ -359,10 +368,10 @@ export default function PhotoAppPage({
               appId={id!}
               total={timelineTotal}
               hasMore={timelineHasMore}
-              onLoadMore={loadMoreTimeline}
+              onLoadMore={guardedLoadMoreTimeline}
               isLoadingMore={timelineLoadingMore}
               hasNewer={upwardHasMore}
-              onLoadNewer={loadMoreUpward}
+              onLoadNewer={guardedLoadMoreUpward}
               isLoadingNewer={upwardLoadingMore}
               onToggleFavorite={handleToggleFavorite}
               isSelecting={isSelecting}
@@ -392,7 +401,7 @@ export default function PhotoAppPage({
               appId={id!}
               total={favTotal}
               hasMore={favHasMore}
-              onLoadMore={loadMoreFav}
+              onLoadMore={guardedLoadMoreFav}
               isLoadingMore={favLoadingMore}
               onToggleFavorite={handleToggleFavorite}
               isSelecting={isSelecting}
@@ -453,7 +462,7 @@ export default function PhotoAppPage({
                 appId={id!}
                 total={trashTotal}
                 hasMore={trashHasMore}
-                onLoadMore={loadMoreTrash}
+                onLoadMore={guardedLoadMoreTrash}
                 isLoadingMore={trashLoadingMore}
                 onToggleFavorite={handleToggleFavorite}
                 isSelecting={isSelecting}

@@ -107,7 +107,13 @@ export default function PhotoApp() {
           syncProgress={syncProgress}
         />
         <div className="min-w-0 flex-1 overflow-auto">
-          {activeLibraryId && <PhotoAppPage photoLibraryId={activeLibraryId} />}
+          {activeLibraryId && (
+            <PhotoAppPage
+              key={activeLibraryId}
+              photoLibraryId={activeLibraryId}
+              syncing={!!syncProgress[activeLibraryId]?.isActive}
+            />
+          )}
         </div>
       </div>
       <PhotoSettingsModal
