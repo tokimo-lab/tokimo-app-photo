@@ -13,4 +13,22 @@ export const manifest: AppManifest = {
   order: 3,
   component: () => import("./components/PhotoApp"),
   menuBar: () => import("./components/PhotoMenuBar"),
+
+  userSettings: {
+    order: 13,
+    sections: [
+      {
+        key: "sidebar",
+        label: "settings.sidebar.title",
+        fields: [
+          {
+            key: "sidebarCollapsed",
+            type: "boolean",
+            label: "settings.sidebar.defaultCollapsed",
+            defaultValue: false,
+          },
+        ],
+      },
+    ],
+  },
 };

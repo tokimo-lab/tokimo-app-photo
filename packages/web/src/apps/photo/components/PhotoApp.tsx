@@ -4,6 +4,7 @@ import { Camera, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
+import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSettingsModal from "./PhotoSettingsModal";
@@ -14,7 +15,10 @@ const STORAGE_KEY = "photo-active-library";
 export default function PhotoApp() {
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
-  const sidebarCollapsed = containerWidth > 0 && containerWidth < 720;
+  const { collapsed: sidebarCollapsed, onToggleCollapse } = useSidebarCollapsed(
+    "photo",
+    containerWidth > 0 && containerWidth < 720,
+  );
   const [activeLibraryId, setActiveLibraryId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initialized = useRef(false);
@@ -105,6 +109,7 @@ export default function PhotoApp() {
           onCreateClick={() => setSettingsOpen(true)}
           onSettingsClick={() => setSettingsOpen(true)}
           syncProgress={syncProgress}
+          onToggleCollapse={onToggleCollapse}
         />
         <div className="min-w-0 flex-1 overflow-auto">
           {activeLibraryId && (
