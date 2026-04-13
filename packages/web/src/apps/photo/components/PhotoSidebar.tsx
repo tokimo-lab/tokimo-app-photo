@@ -24,22 +24,36 @@ export default function PhotoSidebar({
 }) {
   const sections = [
     {
-      items: libraries.map((lib) => ({
-        key: lib.id,
-        icon: <AppIcon icon={lib.icon} color={lib.color} size={20} />,
-        label: lib.name,
-        extra: (() => {
-          const sp = syncProgress?.[lib.id];
-          if (sp?.isActive) {
-            return <CircularProgress value={sp.pct} size={24} />;
-          }
-          return lib.itemCount > 0 ? (
-            <span className="text-[10px] tabular-nums text-fg-muted">
-              {lib.itemCount}
+      items: libraries.map((lib) => {
+        const sp = syncProgress?.[lib.id];
+        return {
+          key: lib.id,
+          icon: <AppIcon icon={lib.icon} color={lib.color} size={20} />,
+          collapsedIcon: sp?.isActive ? (
+            <span className="relative flex h-7 w-7 items-center justify-center">
+              <AppIcon icon={lib.icon} color={lib.color} size={16} />
+              <CircularProgress
+                value={sp.pct}
+                size={28}
+                strokeWidth={2}
+                showText={false}
+                className="absolute left-0 top-0"
+              />
             </span>
-          ) : undefined;
-        })(),
-      })),
+          ) : undefined,
+          label: lib.name,
+          extra: (() => {
+            if (sp?.isActive) {
+              return <CircularProgress value={sp.pct} size={24} />;
+            }
+            return lib.itemCount > 0 ? (
+              <span className="text-[10px] tabular-nums text-fg-muted">
+                {lib.itemCount}
+              </span>
+            ) : undefined;
+          })(),
+        };
+      }),
     },
   ];
 
