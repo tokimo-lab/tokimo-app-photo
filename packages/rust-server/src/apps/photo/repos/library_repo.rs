@@ -101,7 +101,7 @@ impl PhotoLibraryRepo {
             active.scrape_enabled = Set(scrape_enabled);
         }
         if let Some(scrape_agents) = input.scrape_agents {
-            active.scrape_agents = Set(scrape_agents);
+            active.scrape_agents = Set(Some(scrape_agents));
         }
         if let Some(settings) = input.settings {
             active.settings = Set(Some(settings));
