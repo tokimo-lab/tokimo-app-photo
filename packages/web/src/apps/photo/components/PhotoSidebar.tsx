@@ -33,19 +33,19 @@ export default function PhotoSidebar({
             <AppIcon
               icon={getAvatarIcon(lib.avatar) || lib.name}
               color={getAvatarColor(lib.avatar)}
-              size={20}
+              size={24}
             />
           ),
           collapsedIcon: sp?.isActive ? (
-            <span className="relative flex h-7 w-7 items-center justify-center">
+            <span className="relative flex h-8 w-8 items-center justify-center">
               <AppIcon
                 icon={getAvatarIcon(lib.avatar)}
                 color={getAvatarColor(lib.avatar)}
-                size={20}
+                size={24}
               />
               <CircularProgress
                 value={sp.pct}
-                size={28}
+                size={32}
                 strokeWidth={2}
                 showText={false}
                 className="absolute left-0 top-0"
@@ -57,6 +57,7 @@ export default function PhotoSidebar({
             if (sp?.isActive) {
               return <CircularProgress value={sp.pct} size={24} />;
             }
+            if (collapsed) return undefined;
             return lib.itemCount > 0 ? (
               <span className="text-[10px] tabular-nums text-fg-muted">
                 {lib.itemCount}
