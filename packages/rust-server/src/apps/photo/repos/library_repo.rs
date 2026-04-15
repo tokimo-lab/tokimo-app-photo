@@ -10,8 +10,7 @@ use crate::error::OptionExt;
 pub struct UpdatePhotoLibraryFields {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub icon: Option<String>,
-    pub color: Option<Option<String>>,
+    pub avatar: Option<serde_json::Value>,
     pub poster_path: Option<String>,
     pub scrape_enabled: Option<bool>,
     pub scrape_agents: Option<Vec<String>>,
@@ -88,11 +87,8 @@ impl PhotoLibraryRepo {
         if let Some(description) = input.description {
             active.description = Set(Some(description));
         }
-        if let Some(icon) = input.icon {
-            active.icon = Set(Some(icon));
-        }
-        if let Some(color) = input.color {
-            active.color = Set(color);
+        if let Some(avatar) = input.avatar {
+            active.avatar = Set(Some(avatar));
         }
         if let Some(poster_path) = input.poster_path {
             active.poster_path = Set(Some(poster_path));
