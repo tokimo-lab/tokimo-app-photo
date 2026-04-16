@@ -1,5 +1,5 @@
-pub mod album;
 pub mod ai;
+pub mod album;
 pub mod batch;
 pub mod browse;
 pub mod crud;
@@ -11,14 +11,14 @@ pub mod sync;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::db::entities::vfs;
 use crate::apps::photo::models::PhotoLibraryOutput;
 use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::db::entities::vfs;
 use crate::db::{ApiDateTimeExt, OptionalApiDateTimeExt};
 use crate::error::AppError;
 
-pub use album::*;
 pub use ai::*;
+pub use album::*;
 pub use batch::*;
 pub use browse::*;
 pub use crud::*;
@@ -107,8 +107,8 @@ pub(crate) async fn to_photo_library_output(
     db: &sea_orm::DatabaseConnection,
     model: crate::db::entities::photo_libraries::Model,
 ) -> Result<PhotoLibraryOutput, AppError> {
-    use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, PaginatorTrait};
     use crate::db::entities::photos;
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
     let lib_id = model.id;
 

@@ -1,13 +1,13 @@
 use chrono::Utc;
-use sea_orm::*;
 use sea_orm::prelude::Expr;
+use sea_orm::*;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::db::entities::{photo_faces, photo_persons, photos};
 use crate::apps::photo::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
-use crate::db::pagination::{Page, PageInput};
 use crate::config::PhotoAiSettings;
+use crate::db::entities::{photo_faces, photo_persons, photos};
+use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
 
@@ -74,11 +74,7 @@ impl PhotoFaceService {
             ",
         );
 
-        let stmt = Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            &sql,
-            [app_id.into()],
-        );
+        let stmt = Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, [app_id.into()]);
         let row = db.query_one_raw(stmt).await?;
 
         if let Some(row) = row {
@@ -115,9 +111,7 @@ impl PhotoFaceService {
         person_id: Uuid,
         face_id: i32,
     ) -> Result<(), AppError> {
-        let person = photo_persons::Entity::find_by_id(person_id)
-            .one(db)
-            .await?;
+        let person = photo_persons::Entity::find_by_id(person_id).one(db).await?;
         if let Some(p) = person {
             let mut active: photo_persons::ActiveModel = p.clone().into();
             active.face_count = Set(p.face_count + 1);
@@ -142,13 +136,9 @@ impl PhotoFaceService {
             .await?
             .not_found("Photo not found")?;
 
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes =
-            crate::apps::photo::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
+        let image_bytes = crate::apps::photo::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
 
         let detections = Self::represent(ai, image_bytes).await?;
         let count = detections.len();
@@ -192,22 +182,17 @@ impl PhotoFaceService {
                 ],
             );
             let row = db.query_one_raw(stmt).await?;
-            let face_id: i32 = row
-                .as_ref()
-                .and_then(|r| r.try_get::<i32>("", "id").ok())
-                .unwrap_or(0);
+            let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
 
             // Assign to existing person or create a new one
             // Threshold 0.68: conservative — prefer splitting over merging
-            let person_id =
-                match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
-                    Some(pid) => pid,
-                    None => Self::create_person(db, photo.app_id).await?,
-                };
+            let person_id = match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
+                Some(pid) => pid,
+                None => Self::create_person(db, photo.app_id).await?,
+            };
 
             // Link face → person
-            let update_sql =
-                "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
+            let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
             let stmt = Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 update_sql,
@@ -244,8 +229,7 @@ impl PhotoFaceService {
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(Expr::cust(
-                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)"
-                    .to_string(),
+                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)".to_string(),
             ))
             .all(db)
             .await?;
@@ -264,10 +248,7 @@ impl PhotoFaceService {
                 Ok(count) => {
                     success += 1;
                     if count > 0 {
-                        info!(
-                            "[photo_face] {count} faces found in {}",
-                            photo.filename
-                        );
+                        info!("[photo_face] {count} faces found in {}", photo.filename);
                     }
                 }
                 Err(e) => {
@@ -283,10 +264,7 @@ impl PhotoFaceService {
     }
 
     /// List all persons for an app.
-    pub async fn list_persons(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<PersonOutput>, AppError> {
+    pub async fn list_persons(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PersonOutput>, AppError> {
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -307,16 +285,10 @@ impl PhotoFaceService {
         let mut persons = Vec::new();
         for row in rows {
             persons.push(PersonOutput {
-                id: row
-                    .try_get::<Uuid>("", "id")
-                    .unwrap_or_default()
-                    .to_string(),
+                id: row.try_get::<Uuid>("", "id").unwrap_or_default().to_string(),
                 name: row.try_get("", "name").ok().flatten(),
                 face_count: row.try_get::<i32>("", "face_count").unwrap_or(0),
-                avatar_photo_id: row
-                    .try_get::<Uuid>("", "avatar_photo_id")
-                    .ok()
-                    .map(|u| u.to_string()),
+                avatar_photo_id: row.try_get::<Uuid>("", "avatar_photo_id").ok().map(|u| u.to_string()),
                 avatar_thumbnail_path: row.try_get("", "avatar_thumbnail_path").ok().flatten(),
             });
         }
@@ -363,11 +335,7 @@ impl PhotoFaceService {
     }
 
     /// Merge two persons: move all faces from source to target, then delete source.
-    pub async fn merge_persons(
-        db: &DatabaseConnection,
-        target_id: Uuid,
-        source_id: Uuid,
-    ) -> Result<(), AppError> {
+    pub async fn merge_persons(db: &DatabaseConnection, target_id: Uuid, source_id: Uuid) -> Result<(), AppError> {
         // Move all faces from source → target
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -388,9 +356,7 @@ impl PhotoFaceService {
             .and_then(|r| r.try_get::<i64>("", "cnt").ok())
             .unwrap_or(0) as i32;
 
-        let target = photo_persons::Entity::find_by_id(target_id)
-            .one(db)
-            .await?;
+        let target = photo_persons::Entity::find_by_id(target_id).one(db).await?;
         if let Some(t) = target {
             let mut active: photo_persons::ActiveModel = t.into();
             active.face_count = Set(new_count);
@@ -399,19 +365,13 @@ impl PhotoFaceService {
         }
 
         // Delete the source person
-        photo_persons::Entity::delete_by_id(source_id)
-            .exec(db)
-            .await?;
+        photo_persons::Entity::delete_by_id(source_id).exec(db).await?;
 
         Ok(())
     }
 
     /// Rename a person.
-    pub async fn rename_person(
-        db: &DatabaseConnection,
-        person_id: Uuid,
-        name: &str,
-    ) -> Result<(), AppError> {
+    pub async fn rename_person(db: &DatabaseConnection, person_id: Uuid, name: &str) -> Result<(), AppError> {
         let person = photo_persons::Entity::find_by_id(person_id)
             .one(db)
             .await?
@@ -429,11 +389,7 @@ impl PhotoFaceService {
     ///
     /// If the face was previously assigned to another person, that person's `face_count` is
     /// decremented. The target person's `face_count` is incremented.
-    pub async fn assign_face_to_person(
-        db: &DatabaseConnection,
-        face_id: i32,
-        person_id: Uuid,
-    ) -> Result<(), AppError> {
+    pub async fn assign_face_to_person(db: &DatabaseConnection, face_id: i32, person_id: Uuid) -> Result<(), AppError> {
         let face = photo_faces::Entity::find_by_id(face_id)
             .one(db)
             .await?
@@ -454,9 +410,10 @@ impl PhotoFaceService {
 
         // Decrement old person's face_count if applicable
         if let Some(old_pid) = old_person_id
-            && old_pid != person_id {
-                Self::recount_person(db, old_pid).await?;
-            }
+            && old_pid != person_id
+        {
+            Self::recount_person(db, old_pid).await?;
+        }
 
         // Recount target person
         Self::recount_person(db, person_id).await?;
@@ -544,10 +501,7 @@ impl PhotoFaceService {
     }
 
     /// Get all detected faces for a specific photo, with person info.
-    pub async fn get_photo_faces(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-    ) -> Result<Vec<PhotoFaceOutput>, AppError> {
+    pub async fn get_photo_faces(db: &DatabaseConnection, photo_id: Uuid) -> Result<Vec<PhotoFaceOutput>, AppError> {
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -572,10 +526,7 @@ impl PhotoFaceService {
                 w: row.try_get::<f64>("", "w").unwrap_or(0.0),
                 h: row.try_get::<f64>("", "h").unwrap_or(0.0),
                 confidence: row.try_get::<f64>("", "confidence").ok(),
-                person_id: row
-                    .try_get::<Uuid>("", "person_id")
-                    .ok()
-                    .map(|u| u.to_string()),
+                person_id: row.try_get::<Uuid>("", "person_id").ok().map(|u| u.to_string()),
                 person_name: row.try_get::<String>("", "person_name").ok(),
             });
         }

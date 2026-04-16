@@ -4,15 +4,14 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::db::entities::{photo_ocr_results, photos};
 use crate::config::PhotoAiSettings;
+use crate::db::entities::{photo_ocr_results, photos};
 use crate::error::AppError;
 use crate::error::OptionExt;
 
 /// Extensions the `image` crate cannot decode — need `FFmpeg` conversion.
 pub(crate) const NEEDS_FFMPEG_DECODE: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw",
-    ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 /// Single OCR detection result.
@@ -44,9 +43,7 @@ impl PhotoOcrService {
         id: i32,
         input: crate::apps::photo::handlers::ai::UpdateOcrResultInput,
     ) -> Result<photo_ocr_results::Model, AppError> {
-        let model = photo_ocr_results::Entity::find_by_id(id)
-            .one(db)
-            .await?;
+        let model = photo_ocr_results::Entity::find_by_id(id).one(db).await?;
         let Some(model) = model else {
             return Err(AppError::NotFound("OCR result not found".into()));
         };
@@ -81,13 +78,8 @@ impl PhotoOcrService {
     }
 
     /// Delete a single OCR result by id.
-    pub async fn delete_ocr_result(
-        db: &DatabaseConnection,
-        id: i32,
-    ) -> Result<(), AppError> {
-        let res = photo_ocr_results::Entity::delete_by_id(id)
-            .exec(db)
-            .await?;
+    pub async fn delete_ocr_result(db: &DatabaseConnection, id: i32) -> Result<(), AppError> {
+        let res = photo_ocr_results::Entity::delete_by_id(id).exec(db).await?;
         if res.rows_affected == 0 {
             return Err(AppError::NotFound("OCR result not found".into()));
         }
@@ -127,8 +119,7 @@ impl PhotoOcrService {
         aux_model_name: Option<&str>,
     ) -> Result<(Vec<OcrResult>, Option<serde_json::Value>), AppError> {
         let model = model_name.unwrap_or("rapid-ocr-rust");
-        let needs_hybrid =
-            !rust_models::ocr_manager::OcrManager::model_supports_blocks(model);
+        let needs_hybrid = !rust_models::ocr_manager::OcrManager::model_supports_blocks(model);
 
         let (items, debug) = if needs_hybrid {
             let det_model = aux_model_name.unwrap_or("rapid-ocr-rust");
@@ -151,9 +142,7 @@ impl PhotoOcrService {
                 continue;
             }
             // -1.0 sentinel from sidecar means "no coordinates available"
-            let coord = |v: f32| -> Option<f64> {
-                if v < 0.0 { None } else { Some(f64::from(v)) }
-            };
+            let coord = |v: f32| -> Option<f64> { if v < 0.0 { None } else { Some(f64::from(v)) } };
             let positioning_type = if item.char_positions.is_some() {
                 "ctc".to_string()
             } else {
@@ -169,15 +158,17 @@ impl PhotoOcrService {
                 score: Some(f64::from(item.score)),
                 paragraph_id: item.paragraph_id as i32,
                 char_positions: item.char_positions.map(|positions| {
-                    serde_json::json!(positions
-                        .iter()
-                        .map(|(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)}))
-                        .collect::<Vec<_>>())
+                    serde_json::json!(
+                        positions
+                            .iter()
+                            .map(|(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)}))
+                            .collect::<Vec<_>>()
+                    )
                 }),
                 positioning_type,
-                corners: item.corners.map(|c| {
-                    c.iter().map(|(x, y)| [f64::from(*x), f64::from(*y)]).collect()
-                }),
+                corners: item
+                    .corners
+                    .map(|c| c.iter().map(|(x, y)| [f64::from(*x), f64::from(*y)]).collect()),
             });
         }
 
@@ -201,14 +192,12 @@ impl PhotoOcrService {
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
         // Get thumbnail bytes (prefer thumbnail, fallback to original)
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
         let image_bytes = load_photo_bytes(db, &state.sources, &photo, image_path).await?;
 
-        let (results, debug_info) = Self::ocr_image(&state.ai, image_bytes, Some(&model_name), aux_model_name.as_deref()).await?;
+        let (results, debug_info) =
+            Self::ocr_image(&state.ai, image_bytes, Some(&model_name), aux_model_name.as_deref()).await?;
         let count = results.len();
 
         if !results.is_empty() {
@@ -290,10 +279,7 @@ impl PhotoOcrService {
                 Ok(count) => {
                     success += 1;
                     if count > 0 {
-                        info!(
-                            "[photo_ocr] {} text regions found in {}",
-                            count, photo.filename
-                        );
+                        info!("[photo_ocr] {} text regions found in {}", count, photo.filename);
                     }
                 }
                 Err(e) => {
@@ -339,17 +325,10 @@ impl PhotoOcrService {
         let mut results = Vec::new();
         for row in rows {
             results.push(OcrSearchResult {
-                photo_id: row
-                    .try_get::<Uuid>("", "photo_id")
-                    .unwrap_or_default()
-                    .to_string(),
-                filename: row
-                    .try_get::<String>("", "filename")
-                    .unwrap_or_default(),
+                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
+                filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
-                matched_text: row
-                    .try_get::<String>("", "matched_text")
-                    .unwrap_or_default(),
+                matched_text: row.try_get::<String>("", "matched_text").unwrap_or_default(),
             });
         }
         Ok(results)
@@ -401,19 +380,14 @@ pub(crate) async fn load_raw_bytes(
 
     // Fallback: resolve via VFS if source exists
     if let Some(source_id) = photo.source_id {
-        let fs = vfs::Entity::find_by_id(source_id)
-            .one(db)
-            .await?;
+        let fs = vfs::Entity::find_by_id(source_id).one(db).await?;
         if let Some(fs_model) = fs {
             if fs_model.r#type == "local" {
                 let base_path = fs_model
                     .config
                     .as_ref()
                     .and_then(|c: &serde_json::Value| c.as_object())
-                    .and_then(|o| {
-                        o.get("root_folder_path")
-                            .or_else(|| o.get("rootPath"))
-                    })
+                    .and_then(|o| o.get("root_folder_path").or_else(|| o.get("rootPath")))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let abs_path = format!(
@@ -431,9 +405,7 @@ pub(crate) async fn load_raw_bytes(
                     let data = vfs
                         .read_bytes(std::path::Path::new(&photo.path), 0, None)
                         .await
-                        .map_err(|e| {
-                            AppError::Internal(format!("VFS read error: {e}"))
-                        })?;
+                        .map_err(|e| AppError::Internal(format!("VFS read error: {e}")))?;
                     return Ok(data);
                 }
             }
@@ -447,14 +419,11 @@ pub(crate) async fn load_raw_bytes(
 }
 
 /// Convert image bytes to JPEG using `FFmpeg` FFI (for HEIC, AVIF, RAW, etc.).
-async fn convert_to_jpeg_via_ffmpeg(
-    raw_bytes: &[u8],
-    filename: &str,
-) -> Result<Vec<u8>, AppError> {
+async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8>, AppError> {
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();
     let result = tokio::task::spawn_blocking(move || {
-        use ffmpeg_tool::image::{decode_image_from_bytes, ImageDecodeOptions, ImageFormat};
+        use ffmpeg_tool::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
         let opts = ImageDecodeOptions {
             width: None,

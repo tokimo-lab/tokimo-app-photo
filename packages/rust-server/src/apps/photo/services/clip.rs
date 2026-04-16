@@ -3,8 +3,8 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::db::entities::photos;
 use crate::config::PhotoAiSettings;
+use crate::db::entities::photos;
 use crate::error::AppError;
 use crate::error::OptionExt;
 
@@ -34,10 +34,7 @@ pub struct PhotoClipService;
 
 impl PhotoClipService {
     /// Embed image bytes → 512-dim CLIP vector via integrated AI service.
-    async fn embed_image(
-        ai: &rust_models::AiService,
-        image_bytes: Vec<u8>,
-    ) -> Result<Vec<f32>, AppError> {
+    async fn embed_image(ai: &rust_models::AiService, image_bytes: Vec<u8>) -> Result<Vec<f32>, AppError> {
         let vec = ai
             .clip_image(&image_bytes)
             .await
@@ -54,10 +51,7 @@ impl PhotoClipService {
     }
 
     /// Embed text → 512-dim CLIP vector via integrated AI service.
-    async fn embed_text(
-        ai: &rust_models::AiService,
-        text: &str,
-    ) -> Result<Vec<f32>, AppError> {
+    async fn embed_text(ai: &rust_models::AiService, text: &str) -> Result<Vec<f32>, AppError> {
         let vec = ai
             .clip_text(text)
             .await
@@ -80,11 +74,7 @@ impl PhotoClipService {
     }
 
     /// Store a CLIP vector for a photo (upsert).
-    async fn store_vector(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-        vec: &[f32],
-    ) -> Result<(), AppError> {
+    async fn store_vector(db: &DatabaseConnection, photo_id: Uuid, vec: &[f32]) -> Result<(), AppError> {
         let vec_str = Self::format_vector(vec);
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -120,13 +110,9 @@ impl PhotoClipService {
         state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
     ) -> Result<(), AppError> {
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes =
-            Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
+        let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
 
         let vec = Self::embed_image(&state.ai, image_bytes).await?;
         Self::store_vector(db, photo.id, &vec).await?;
@@ -140,10 +126,7 @@ impl PhotoClipService {
         photo: &photos::Model,
         source_base_paths: &std::collections::HashMap<Uuid, String>,
     ) -> Result<Vec<u8>, AppError> {
-        let path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
         // Try direct file read first (thumbnails, local paths)
         if let Ok(bytes) = tokio::fs::read(path).await {
@@ -153,11 +136,7 @@ impl PhotoClipService {
         // Resolve via pre-cached source base path
         if let Some(source_id) = photo.source_id {
             if let Some(base) = source_base_paths.get(&source_id) {
-                let abs = format!(
-                    "{}/{}",
-                    base.trim_end_matches('/'),
-                    photo.path.trim_start_matches('/')
-                );
+                let abs = format!("{}/{}", base.trim_end_matches('/'), photo.path.trim_start_matches('/'));
                 if let Ok(bytes) = tokio::fs::read(&abs).await {
                     return Self::maybe_decode_heic(bytes, &photo.filename).await;
                 }
@@ -181,15 +160,9 @@ impl PhotoClipService {
     }
 
     /// If the file is HEIC/AVIF/RAW, decode to small JPEG; otherwise pass through.
-    async fn maybe_decode_heic(
-        raw_bytes: Vec<u8>,
-        filename: &str,
-    ) -> Result<Vec<u8>, AppError> {
+    async fn maybe_decode_heic(raw_bytes: Vec<u8>, filename: &str) -> Result<Vec<u8>, AppError> {
         let lower = filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE
-            .iter()
-            .any(|ext| lower.ends_with(ext))
-        {
+        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
             return Self::convert_to_jpeg_small(&raw_bytes, filename).await;
         }
         Ok(raw_bytes)
@@ -205,10 +178,7 @@ impl PhotoClipService {
         let raw_bytes = super::ocr::load_raw_bytes(db, &state.sources, photo, path).await?;
 
         let lower = photo.filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE
-            .iter()
-            .any(|ext| lower.ends_with(ext))
-        {
+        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
             return Self::convert_to_jpeg_small(&raw_bytes, &photo.filename).await;
         }
 
@@ -216,14 +186,11 @@ impl PhotoClipService {
     }
 
     /// Decode HEIC/AVIF/RAW to a small JPEG (512px max) via `FFmpeg` FFI.
-    async fn convert_to_jpeg_small(
-        raw_bytes: &[u8],
-        filename: &str,
-    ) -> Result<Vec<u8>, AppError> {
+    async fn convert_to_jpeg_small(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8>, AppError> {
         let fname = filename.to_string();
         let bytes = raw_bytes.to_vec();
         tokio::task::spawn_blocking(move || {
-            use ffmpeg_tool::image::{decode_image_from_bytes, ImageDecodeOptions, ImageFormat};
+            use ffmpeg_tool::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
             let opts = ImageDecodeOptions {
                 width: Some(512),
@@ -242,7 +209,7 @@ impl PhotoClipService {
         db: &DatabaseConnection,
         app_id: Uuid,
     ) -> Result<std::collections::HashMap<Uuid, String>, AppError> {
-        use crate::db::entities::{vfs, photos};
+        use crate::db::entities::{photos, vfs};
 
         // Get distinct source_ids from photos
         let source_ids: Vec<Option<Uuid>> = photos::Entity::find()
@@ -259,18 +226,15 @@ impl PhotoClipService {
         for source_id in source_ids.into_iter().flatten() {
             if let Some(fs) = vfs::Entity::find_by_id(source_id).one(db).await?
                 && fs.r#type == "local"
-                    && let Some(base) = fs
-                        .config
-                        .as_ref()
-                        .and_then(|c| c.as_object())
-                        .and_then(|o| {
-                            o.get("root_folder_path")
-                                .or_else(|| o.get("rootPath"))
-                        })
-                        .and_then(|v| v.as_str())
-                    {
-                        map.insert(source_id, base.to_string());
-                    }
+                && let Some(base) = fs
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.as_object())
+                    .and_then(|o| o.get("root_folder_path").or_else(|| o.get("rootPath")))
+                    .and_then(|v| v.as_str())
+            {
+                map.insert(source_id, base.to_string());
+            }
         }
         Ok(map)
     }
@@ -365,15 +329,12 @@ impl PhotoClipService {
                     let photo_id = photo.id;
 
                     // Load bytes without DB call (uses pre-cached source paths)
-                    let bytes_result =
-                        Self::load_bytes_fast(&state_c, &photo, &sp).await;
+                    let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                     let result = match bytes_result {
-                        Ok(image_bytes) => {
-                            match Self::embed_image(&state_c.ai, image_bytes).await {
-                                Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
-                                Err(e) => Err(e),
-                            }
-                        }
+                        Ok(image_bytes) => match Self::embed_image(&state_c.ai, image_bytes).await {
+                            Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
+                            Err(e) => Err(e),
+                        },
                         Err(e) => Err(e),
                     };
                     (photo_id, filename, result)
@@ -381,18 +342,19 @@ impl PhotoClipService {
 
                 // When we hit the concurrency limit, drain one before adding more
                 if futures.len() >= CONCURRENCY
-                    && let Some((photo_id, filename, result)) = futures.next().await {
-                        processed += 1;
-                        match result {
-                            Ok(()) => success += 1,
-                            Err(e) => {
-                                error!("[photo_clip] Failed for {filename}: {e}");
-                                let zero_vec = vec![0.0f32; 512];
-                                let _ = Self::store_vector(db, photo_id, &zero_vec).await;
-                            }
+                    && let Some((photo_id, filename, result)) = futures.next().await
+                {
+                    processed += 1;
+                    match result {
+                        Ok(()) => success += 1,
+                        Err(e) => {
+                            error!("[photo_clip] Failed for {filename}: {e}");
+                            let zero_vec = vec![0.0f32; 512];
+                            let _ = Self::store_vector(db, photo_id, &zero_vec).await;
                         }
-                        Self::maybe_report_progress(db, job_id, processed, total, success).await;
                     }
+                    Self::maybe_report_progress(db, job_id, processed, total, success).await;
+                }
             }
 
             // Drain remaining futures
@@ -431,10 +393,7 @@ impl PhotoClipService {
                     "total": total,
                     "success": success,
                 });
-                let _ = crate::db::repos::job_repo::JobRepo::update_progress(
-                    db, jid, pct, Some(meta),
-                )
-                .await;
+                let _ = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(meta)).await;
             }
         }
     }
@@ -474,13 +433,8 @@ impl PhotoClipService {
         let mut results = Vec::new();
         for row in rows {
             results.push(ClipSearchResult {
-                photo_id: row
-                    .try_get::<Uuid>("", "photo_id")
-                    .unwrap_or_default()
-                    .to_string(),
-                filename: row
-                    .try_get::<String>("", "filename")
-                    .unwrap_or_default(),
+                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
+                filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
                 similarity: row.try_get::<f64>("", "similarity").unwrap_or(0.0),
                 width: row.try_get("", "width").ok(),

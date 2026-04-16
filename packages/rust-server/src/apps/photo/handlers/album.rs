@@ -1,16 +1,16 @@
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::pagination::PageInput;
-use crate::apps::photo::repos::PhotoRepo;
-use crate::error::AppError;
-use crate::handlers::{ok, ApiResponse};
 use crate::AppState;
+use crate::apps::photo::repos::PhotoRepo;
+use crate::db::pagination::PageInput;
+use crate::error::AppError;
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -38,8 +38,7 @@ pub async fn create_album(
     Json(body): Json<CreateAlbumBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
-    let album =
-        PhotoRepo::create_album(&state.db, uid, &body.name, body.description.as_deref()).await?;
+    let album = PhotoRepo::create_album(&state.db, uid, &body.name, body.description.as_deref()).await?;
     Ok(ok(serde_json::to_value(album).unwrap()))
 }
 
@@ -66,11 +65,7 @@ pub async fn add_photos_to_album(
     Json(body): Json<AlbumPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let album_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::add_photos_to_album(&state.db, album_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "photoCount": count })))
 }
@@ -82,11 +77,7 @@ pub async fn remove_photos_from_album(
     Json(body): Json<AlbumPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let album_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::remove_photos_from_album(&state.db, album_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "photoCount": count })))
 }

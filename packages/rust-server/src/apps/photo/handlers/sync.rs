@@ -4,12 +4,12 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::db::repos::job_repo::JobRepo;
+use crate::AppState;
 use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::db::repos::job_repo::JobRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::handlers::{ok, ApiResponse};
-use crate::AppState;
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -56,8 +56,7 @@ pub async fn get_photo_sync_progress(
         "photo_face_detect",
         "photo_reverse_geocode",
     ];
-    let (total, completed, running, pending, failed) =
-        JobRepo::count_jobs_by_app(&state.db, uid, job_types).await?;
+    let (total, completed, running, pending, failed) = JobRepo::count_jobs_by_app(&state.db, uid, job_types).await?;
 
     let rows = JobRepo::get_task_progress_by_app(&state.db, uid, job_types).await?;
     let tasks: Vec<TaskProgress> = rows

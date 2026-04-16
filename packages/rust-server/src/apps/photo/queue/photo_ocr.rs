@@ -1,11 +1,11 @@
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::apps::photo::services::ocr::PhotoOcrService;
 use crate::AppState;
+use crate::apps::photo::services::ocr::PhotoOcrService;
 
 /// Job handler: batch OCR all unscanned photos in an app.
 ///

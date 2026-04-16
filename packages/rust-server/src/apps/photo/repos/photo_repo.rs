@@ -3,10 +3,8 @@ use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::db::entities::{vfs, photo_albums, photos};
-use crate::apps::photo::models::{
-    FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget,
-};
+use crate::apps::photo::models::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::db::entities::{photo_albums, photos, vfs};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
@@ -48,10 +46,7 @@ pub struct PhotoRepo;
 
 impl PhotoRepo {
     /// List photos with pagination, sorting, and optional search
-    pub async fn list(
-        db: &DatabaseConnection,
-        input: ListPhotosInput,
-    ) -> Result<Page<PhotoOutput>, AppError> {
+    pub async fn list(db: &DatabaseConnection, input: ListPhotosInput) -> Result<Page<PhotoOutput>, AppError> {
         let mut query = photos::Entity::find()
             .filter(photos::Column::AppId.eq(input.app_id))
             .filter(photos::Column::IsHidden.eq(false))
@@ -63,37 +58,32 @@ impl PhotoRepo {
 
         // Date filter: show only photos taken before (or on) this date
         if let Some(date_str) = input.before_date
-            && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                let end_of_day = dt
-                    .and_hms_opt(23, 59, 59)
-                    .unwrap()
-                    .and_utc()
-                    .fixed_offset();
-                query = query.filter(photos::Column::TakenAt.lte(end_of_day));
-            }
+            && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        {
+            let end_of_day = dt.and_hms_opt(23, 59, 59).unwrap().and_utc().fixed_offset();
+            query = query.filter(photos::Column::TakenAt.lte(end_of_day));
+        }
 
         // Date filter: show only photos taken after (or on) this date
         if let Some(date_str) = input.after_date
-            && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                let start_of_day = dt
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc()
-                    .fixed_offset();
-                query = query.filter(photos::Column::TakenAt.gte(start_of_day));
-            }
+            && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        {
+            let start_of_day = dt.and_hms_opt(0, 0, 0).unwrap().and_utc().fixed_offset();
+            query = query.filter(photos::Column::TakenAt.gte(start_of_day));
+        }
 
         if let Some(s) = input.search
-            && !s.is_empty() {
-                let pattern = format!("%{s}%");
-                query = query.filter(
-                    sea_orm::sea_query::Condition::any()
-                        .add(photos::Column::Filename.like(&pattern))
-                        .add(photos::Column::Title.like(&pattern))
-                        .add(photos::Column::CameraMake.like(&pattern))
-                        .add(photos::Column::CameraModel.like(&pattern)),
-                );
-            }
+            && !s.is_empty()
+        {
+            let pattern = format!("%{s}%");
+            query = query.filter(
+                sea_orm::sea_query::Condition::any()
+                    .add(photos::Column::Filename.like(&pattern))
+                    .add(photos::Column::Title.like(&pattern))
+                    .add(photos::Column::CameraMake.like(&pattern))
+                    .add(photos::Column::CameraModel.like(&pattern)),
+            );
+        }
 
         // Sorting
         query = match input.sort_by.as_str() {
@@ -126,19 +116,13 @@ impl PhotoRepo {
     }
 
     /// Get photo by ID with full detail
-    pub async fn get_by_id(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-    ) -> Result<Option<PhotoDetailOutput>, AppError> {
+    pub async fn get_by_id(db: &DatabaseConnection, photo_id: Uuid) -> Result<Option<PhotoDetailOutput>, AppError> {
         let model = photos::Entity::find_by_id(photo_id).one(db).await?;
         Ok(model.map(PhotoDetailOutput::from))
     }
 
     /// Toggle favorite
-    pub async fn toggle_favorite(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-    ) -> Result<bool, AppError> {
+    pub async fn toggle_favorite(db: &DatabaseConnection, photo_id: Uuid) -> Result<bool, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
             .await?
@@ -152,10 +136,7 @@ impl PhotoRepo {
     }
 
     /// List photo albums
-    pub async fn list_albums(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<PhotoAlbumOutput>, AppError> {
+    pub async fn list_albums(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PhotoAlbumOutput>, AppError> {
         let items = photo_albums::Entity::find()
             .filter(photo_albums::Column::AppId.eq(app_id))
             .order_by_asc(photo_albums::Column::SortOrder)
@@ -277,10 +258,7 @@ impl PhotoRepo {
     }
 
     /// Count photos in app
-    pub async fn count(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn count(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
         let count = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .count(db)
@@ -326,22 +304,14 @@ impl PhotoRepo {
     }
 
     /// Delete a photo album (unlinks photos but doesn't delete them)
-    pub async fn delete_album(
-        db: &DatabaseConnection,
-        album_id: Uuid,
-    ) -> Result<(), AppError> {
+    pub async fn delete_album(db: &DatabaseConnection, album_id: Uuid) -> Result<(), AppError> {
         photos::Entity::update_many()
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Option::<Uuid>::None),
-            )
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Option::<Uuid>::None))
             .exec(db)
             .await?;
 
-        photo_albums::Entity::delete_by_id(album_id)
-            .exec(db)
-            .await?;
+        photo_albums::Entity::delete_by_id(album_id).exec(db).await?;
         Ok(())
     }
 
@@ -358,10 +328,7 @@ impl PhotoRepo {
 
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Some(album_id)),
-            )
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Some(album_id)))
             .exec(db)
             .await?;
 
@@ -370,17 +337,14 @@ impl PhotoRepo {
             .count(db)
             .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel =
-            photo_albums::Entity::find_by_id(album_id)
-                .one(db)
-                .await?
-                .not_found("Album not found")?
-                .into();
+        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")?
+            .into();
         album_active.photo_count = Set(count);
 
-        let album = photo_albums::Entity::find_by_id(album_id)
-            .one(db)
-            .await?;
+        let album = photo_albums::Entity::find_by_id(album_id).one(db).await?;
         if album.as_ref().and_then(|a| a.cover_photo_id).is_none() && !photo_ids.is_empty() {
             album_active.cover_photo_id = Set(Some(photo_ids[0]));
         }
@@ -398,10 +362,7 @@ impl PhotoRepo {
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Option::<Uuid>::None),
-            )
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Option::<Uuid>::None))
             .exec(db)
             .await?;
 
@@ -410,12 +371,11 @@ impl PhotoRepo {
             .count(db)
             .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel =
-            photo_albums::Entity::find_by_id(album_id)
-                .one(db)
-                .await?
-                .not_found("Album not found")?
-                .into();
+        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")?
+            .into();
         album_active.photo_count = Set(count);
         album_active.update(db).await?;
 
@@ -437,11 +397,7 @@ impl PhotoRepo {
     }
 
     /// Batch delete photos by IDs within an app
-    pub async fn batch_delete(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
+    pub async fn batch_delete(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
         let result = photos::Entity::delete_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
@@ -451,10 +407,7 @@ impl PhotoRepo {
     }
 
     /// Toggle hidden flag on a photo
-    pub async fn toggle_hidden(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-    ) -> Result<bool, AppError> {
+    pub async fn toggle_hidden(db: &DatabaseConnection, photo_id: Uuid) -> Result<bool, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
             .await?
@@ -468,11 +421,7 @@ impl PhotoRepo {
     }
 
     /// Batch set hidden for multiple photos
-    pub async fn batch_set_hidden(
-        db: &DatabaseConnection,
-        photo_ids: &[Uuid],
-        hidden: bool,
-    ) -> Result<u64, AppError> {
+    pub async fn batch_set_hidden(db: &DatabaseConnection, photo_ids: &[Uuid], hidden: bool) -> Result<u64, AppError> {
         let result = photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .col_expr(photos::Column::IsHidden, Expr::value(hidden))
@@ -509,11 +458,7 @@ impl PhotoRepo {
     }
 
     /// Soft-delete (trash) photos by setting `deleted_at`
-    pub async fn trash_photos(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
+    pub async fn trash_photos(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
         let now = chrono::Utc::now().fixed_offset();
         let result = photos::Entity::update_many()
             .filter(photos::Column::AppId.eq(app_id))
@@ -526,11 +471,7 @@ impl PhotoRepo {
     }
 
     /// Restore photos from trash by clearing `deleted_at`
-    pub async fn restore_photos(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
+    pub async fn restore_photos(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
         let result = photos::Entity::update_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
@@ -566,11 +507,7 @@ impl PhotoRepo {
     }
 
     /// Permanently delete photos that are already trashed
-    pub async fn permanent_delete(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
+    pub async fn permanent_delete(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
         let result = photos::Entity::delete_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
@@ -615,21 +552,18 @@ impl PhotoRepo {
 
         if let Some(ref date_str) = exif.taken_at {
             let cleaned = date_str.trim_matches('"');
-            let normalised =
-                if cleaned.len() >= 10 && &cleaned[4..5] == ":" && &cleaned[7..8] == ":" {
-                    format!(
-                        "{}-{}-{}{}",
-                        &cleaned[0..4],
-                        &cleaned[5..7],
-                        &cleaned[8..10],
-                        &cleaned[10..]
-                    )
-                } else {
-                    cleaned.to_string()
-                };
-            if let Ok(dt) =
-                chrono::NaiveDateTime::parse_from_str(&normalised, "%Y-%m-%d %H:%M:%S")
-            {
+            let normalised = if cleaned.len() >= 10 && &cleaned[4..5] == ":" && &cleaned[7..8] == ":" {
+                format!(
+                    "{}-{}-{}{}",
+                    &cleaned[0..4],
+                    &cleaned[5..7],
+                    &cleaned[8..10],
+                    &cleaned[10..]
+                )
+            } else {
+                cleaned.to_string()
+            };
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&normalised, "%Y-%m-%d %H:%M:%S") {
                 active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
             }
         }
@@ -676,9 +610,7 @@ impl PhotoRepo {
 
         // Save full raw EXIF as JSON
         if !exif.raw_tags.is_empty() {
-            active.exif_data = Set(Some(
-                serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
-            ));
+            active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
         }
 
         active.update(db).await?;
@@ -687,11 +619,7 @@ impl PhotoRepo {
 
     /// Update only the `taken_at` field (from filename date or mtime).
     /// `date_str` must be `"YYYY-MM-DD HH:MM:SS"`.
-    pub async fn update_taken_at(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-        date_str: &str,
-    ) -> Result<(), AppError> {
+    pub async fn update_taken_at(db: &DatabaseConnection, photo_id: Uuid, date_str: &str) -> Result<(), AppError> {
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
             let mut active = photos::ActiveModel {
                 id: Set(photo_id),
@@ -721,10 +649,7 @@ impl PhotoRepo {
     }
 
     /// Get timeline index: year/month counts for an app (all photos, not paginated)
-    pub async fn timeline_index(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<TimelineEntry>, AppError> {
+    pub async fn timeline_index(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<TimelineEntry>, AppError> {
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r"
@@ -743,17 +668,19 @@ impl PhotoRepo {
             ",
             [app_id.into()],
         );
-        let results = db
-            .query_all_raw(stmt)
-            .await
-            .map_err(AppError::Database)?;
+        let results = db.query_all_raw(stmt).await.map_err(AppError::Database)?;
         let mut entries = Vec::new();
         for row in results {
             let year: i32 = row.try_get("", "year").unwrap_or(0);
             let month: i32 = row.try_get("", "month").unwrap_or(0);
             let day: i32 = row.try_get("", "day").unwrap_or(0);
             let count: i64 = row.try_get("", "count").unwrap_or(0);
-            entries.push(TimelineEntry { year, month, day, count });
+            entries.push(TimelineEntry {
+                year,
+                month,
+                day,
+                count,
+            });
         }
         Ok(entries)
     }
@@ -820,10 +747,7 @@ impl PhotoRepo {
     }
 
     /// Return all photos with GPS coordinates for map display.
-    pub async fn list_map_points(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<PhotoMapPoint>, AppError> {
+    pub async fn list_map_points(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PhotoMapPoint>, AppError> {
         let items = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
@@ -863,7 +787,7 @@ impl PhotoRepo {
         let total = query.clone().count(db).await? as i64;
         let items = query
             .into_partial_model::<PhotoOutput>()
-            .paginate(db, page.page_size )
+            .paginate(db, page.page_size)
             .fetch_page(page.page.saturating_sub(1))
             .await?;
 
@@ -871,10 +795,7 @@ impl PhotoRepo {
     }
 
     /// Get the raw `photos::Model` by ID (for internal use; does not convert to DTO).
-    pub async fn get_model_by_id(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-    ) -> Result<Option<photos::Model>, AppError> {
+    pub async fn get_model_by_id(db: &DatabaseConnection, photo_id: Uuid) -> Result<Option<photos::Model>, AppError> {
         Ok(photos::Entity::find_by_id(photo_id).one(db).await?)
     }
 
@@ -883,27 +804,17 @@ impl PhotoRepo {
         db: &DatabaseConnection,
         ids: Vec<Uuid>,
     ) -> Result<std::collections::HashMap<Uuid, vfs::Model>, AppError> {
-        let rows = vfs::Entity::find()
-            .filter(vfs::Column::Id.is_in(ids))
-            .all(db)
-            .await?;
+        let rows = vfs::Entity::find().filter(vfs::Column::Id.is_in(ids)).all(db).await?;
         Ok(rows.into_iter().map(|fs| (fs.id, fs)).collect())
     }
 
     /// Get a single `vfs` row by ID.
-    pub async fn get_file_system_by_id(
-        db: &DatabaseConnection,
-        id: Uuid,
-    ) -> Result<Option<vfs::Model>, AppError> {
+    pub async fn get_file_system_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<vfs::Model>, AppError> {
         Ok(vfs::Entity::find_by_id(id).one(db).await?)
     }
 
     /// Set `live_video_path` on a photo.
-    pub async fn update_live_video_path(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-        path: String,
-    ) -> Result<(), AppError> {
+    pub async fn update_live_video_path(db: &DatabaseConnection, photo_id: Uuid, path: String) -> Result<(), AppError> {
         let active = photos::ActiveModel {
             id: Set(photo_id),
             live_video_path: Set(Some(path)),
@@ -914,10 +825,7 @@ impl PhotoRepo {
     }
 
     /// Return all non-deleted photo IDs belonging to an app.
-    pub async fn get_ids_for_app(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<Uuid>, AppError> {
+    pub async fn get_ids_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<Uuid>, AppError> {
         use sea_orm::DerivePartialModel;
 
         #[derive(DerivePartialModel)]
@@ -950,8 +858,8 @@ impl PhotoRepo {
             return Ok(0);
         }
 
-        let mut delete_q = photo_ocr_results::Entity::delete_many()
-            .filter(photo_ocr_results::Column::PhotoId.is_in(photo_ids));
+        let mut delete_q =
+            photo_ocr_results::Entity::delete_many().filter(photo_ocr_results::Column::PhotoId.is_in(photo_ids));
         if let Some(m) = model_name {
             delete_q = delete_q.filter(photo_ocr_results::Column::ModelName.eq(m));
         }
@@ -973,10 +881,7 @@ impl PhotoRepo {
     pub async fn clear_all_ocr_results(db: &DatabaseConnection) -> Result<u64, AppError> {
         use crate::db::entities::photo_ocr_results;
 
-        let deleted = photo_ocr_results::Entity::delete_many()
-            .exec(db)
-            .await?
-            .rows_affected;
+        let deleted = photo_ocr_results::Entity::delete_many().exec(db).await?.rows_affected;
 
         photos::Entity::update_many()
             .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
@@ -990,10 +895,7 @@ impl PhotoRepo {
 
     /// Delete face-detection results for an app's photos and reset related persons.
     /// Returns the number of deleted `photo_faces` rows.
-    pub async fn clear_face_results_for_app(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn clear_face_results_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
         use crate::db::entities::{photo_faces, photo_persons};
 
         let photo_ids = Self::get_ids_for_app(db, app_id).await?;
@@ -1019,10 +921,7 @@ impl PhotoRepo {
 
     /// Delete CLIP embedding vectors for an app's photos.
     /// Returns the number of deleted rows.
-    pub async fn clear_clip_results_for_app(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn clear_clip_results_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
         use crate::db::entities::photo_clip_vectors;
 
         let photo_ids = Self::get_ids_for_app(db, app_id).await?;

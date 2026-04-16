@@ -1,11 +1,11 @@
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::apps::photo::services::face::PhotoFaceService;
 use crate::AppState;
+use crate::apps::photo::services::face::PhotoFaceService;
 
 /// Job handler: batch face detection for all unscanned photos in an app.
 ///
@@ -24,8 +24,7 @@ pub async fn handle(
 
     info!("[photo_face_detect] Starting face detection batch for app {app_id}");
 
-    let count =
-        PhotoFaceService::detect_app(db, &state.ai, &state.sources, app_uuid).await?;
+    let count = PhotoFaceService::detect_app(db, &state.ai, &state.sources, app_uuid).await?;
 
     info!("[photo_face_detect] Done: {count} photos processed");
 

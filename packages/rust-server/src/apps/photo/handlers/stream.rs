@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Path, Query, Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
@@ -10,22 +10,29 @@ use std::{path::Path as StdPath, sync::Arc};
 use tower::util::ServiceExt;
 use tower_http::services::ServeFile;
 
-use crate::apps::photo::repos::PhotoRepo;
-use crate::handlers::media::utils::resolve_local_path;
-use crate::handlers::media::stream::mime_for;
-use crate::handlers::{err404, err500};
 use crate::AppState;
+use crate::apps::photo::repos::PhotoRepo;
+use crate::handlers::media::stream::mime_for;
+use crate::handlers::media::utils::resolve_local_path;
+use crate::handlers::{err404, err500};
 
 const PHOTO_SERVE_CHUNK_SIZE: usize = 512 * 1024;
 const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
-    "smb", "nfs", "webdav", "ftp", "sftp", "s3",
-    "115cloud", "aliyundrive", "baidu_netdisk", "quark",
+    "smb",
+    "nfs",
+    "webdav",
+    "ftp",
+    "sftp",
+    "s3",
+    "115cloud",
+    "aliyundrive",
+    "baidu_netdisk",
+    "quark",
 ];
 
 /// Extensions that browsers cannot decode natively.
 const BROWSER_INCOMPATIBLE_EXTS: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw",
-    ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 fn needs_server_decode(path: &str) -> bool {
@@ -56,7 +63,16 @@ pub async fn serve_photo_image(
         return serve_raw_as_jpeg(state, &target).await;
     }
 
-    serve_vfs_file(state, target.path, target.mime_type.as_deref(), target.source_id.as_deref(), target.source_type.as_deref(), target.source_config.as_ref(), request).await
+    serve_vfs_file(
+        state,
+        target.path,
+        target.mime_type.as_deref(),
+        target.source_id.as_deref(),
+        target.source_type.as_deref(),
+        target.source_config.as_ref(),
+        request,
+    )
+    .await
 }
 
 /// GET /api/apps/photo/{photoId}/live-video
@@ -77,7 +93,16 @@ pub async fn serve_live_video(
     };
 
     let mime = Some("video/mp4");
-    serve_vfs_file(state, live_path, mime, target.source_id.as_deref(), target.source_type.as_deref(), target.source_config.as_ref(), request).await
+    serve_vfs_file(
+        state,
+        live_path,
+        mime,
+        target.source_id.as_deref(),
+        target.source_type.as_deref(),
+        target.source_config.as_ref(),
+        request,
+    )
+    .await
 }
 
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
@@ -131,11 +156,7 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
     }
     cmd.args(["-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "2", "pipe:1"]);
 
-    let result = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await;
+    let result = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
 
     let _ = tokio::fs::remove_file(&tmp_path).await;
 
@@ -157,10 +178,7 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
 }
 
 /// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
-async fn serve_raw_as_jpeg(
-    state: Arc<AppState>,
-    target: &crate::apps::photo::models::PhotoStreamTarget,
-) -> Response {
+async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::apps::photo::models::PhotoStreamTarget) -> Response {
     let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

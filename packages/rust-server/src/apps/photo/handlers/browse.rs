@@ -1,17 +1,17 @@
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::pagination::PageInput;
+use crate::AppState;
 use crate::apps::photo::repos::{ListPhotosInput, PhotoRepo};
+use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::handlers::{ok, ApiResponse};
-use crate::AppState;
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -180,7 +180,12 @@ pub async fn similar_photos(
         Some(row) => row
             .try_get::<String>("", "vec")
             .map_err(|e| AppError::Internal(format!("Failed to read CLIP vector: {e}")))?,
-        None => return Ok(ok(SimilarPhotosResponse { indexed: false, items: vec![] })),
+        None => {
+            return Ok(ok(SimilarPhotosResponse {
+                indexed: false,
+                items: vec![],
+            }));
+        }
     };
 
     let rows = state
@@ -199,24 +204,15 @@ pub async fn similar_photos(
                  AND 1 - (v.vec <=> $1::vector) > 0.5
                ORDER BY v.vec <=> $1::vector
                LIMIT $4",
-            [
-                vec_str.into(),
-                app_id.into(),
-                photo_id.into(),
-                i64::from(limit).into(),
-            ],
+            [vec_str.into(), app_id.into(), photo_id.into(), i64::from(limit).into()],
         ))
         .await?;
 
     let mut results = Vec::new();
     for row in rows {
         results.push(SimilarPhotoResult {
-            photo_id: row
-                .try_get::<Uuid>("", "photo_id")
-                .unwrap_or_default(),
-            filename: row
-                .try_get::<String>("", "filename")
-                .unwrap_or_default(),
+            photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default(),
+            filename: row.try_get::<String>("", "filename").unwrap_or_default(),
             thumbnail_path: row.try_get("", "thumbnail_path").ok(),
             similarity: row.try_get::<f64>("", "similarity").unwrap_or(0.0),
             width: row.try_get("", "width").ok(),
@@ -234,7 +230,10 @@ pub async fn similar_photos(
             mime_type: row.try_get("", "mime_type").ok(),
         });
     }
-    Ok(ok(SimilarPhotosResponse { indexed: true, items: results }))
+    Ok(ok(SimilarPhotosResponse {
+        indexed: true,
+        items: results,
+    }))
 }
 
 // ── Photo tags (CLIP zero-shot classification) ──
@@ -283,7 +282,7 @@ pub async fn photo_tags(
             return Ok(ok(PhotoTagsResponse {
                 indexed: false,
                 tags: vec![],
-            }))
+            }));
         }
     };
 
@@ -313,8 +312,5 @@ pub async fn photo_tags(
         })
         .collect();
 
-    Ok(ok(PhotoTagsResponse {
-        indexed: true,
-        tags,
-    }))
+    Ok(ok(PhotoTagsResponse { indexed: true, tags }))
 }

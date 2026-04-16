@@ -1,15 +1,15 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::IntoResponse,
-    Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 
+use crate::AppState;
 use crate::apps::photo::repos::PhotoRepo;
 use crate::error::AppError;
-use crate::handlers::{ok, ApiResponse};
-use crate::AppState;
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -36,9 +36,7 @@ pub async fn update_photo_ai_settings(
 }
 
 /// POST /api/settings/photo-ai/test
-pub async fn test_photo_ai_connection(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn test_photo_ai_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut results: Vec<serde_json::Value> = Vec::new();
 
     let models_ready = state.ai.models_ready();
@@ -109,21 +107,20 @@ pub async fn download_ai_models(
 
     tokio::spawn(async move {
         let reg = Arc::clone(&registry);
-        let progress_cb: rust_models::models::ProgressFn =
-            Box::new(move |file, status, pct, downloaded, total| {
-                let snap = crate::handlers::ws::VisionProgress {
-                    file_name: file.to_string(),
-                    status: status.to_string(),
-                    progress: pct,
-                    downloaded_bytes: downloaded,
-                    total_bytes: total,
-                    error: None,
-                };
-                let reg = Arc::clone(&reg);
-                tokio::spawn(async move {
-                    reg.update_and_broadcast(&snap).await;
-                });
+        let progress_cb: rust_models::models::ProgressFn = Box::new(move |file, status, pct, downloaded, total| {
+            let snap = crate::handlers::ws::VisionProgress {
+                file_name: file.to_string(),
+                status: status.to_string(),
+                progress: pct,
+                downloaded_bytes: downloaded,
+                total_bytes: total,
+                error: None,
+            };
+            let reg = Arc::clone(&reg);
+            tokio::spawn(async move {
+                reg.update_and_broadcast(&snap).await;
             });
+        });
 
         let result = if let Some(cat) = category {
             ai.ensure_category_with_progress(cat, progress_cb).await
@@ -195,9 +192,7 @@ pub async fn ocr_search(
     Query(q): Query<OcrSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results =
-        crate::apps::photo::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q)
-            .await?;
+    let results = crate::apps::photo::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -213,12 +208,7 @@ pub async fn clear_ocr_results(
     Query(q): Query<ClearOcrQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let deleted = PhotoRepo::clear_ocr_results_for_app(
-        &state.db,
-        app_id,
-        q.model.as_deref(),
-    )
-    .await?;
+    let deleted = PhotoRepo::clear_ocr_results_for_app(&state.db, app_id, q.model.as_deref()).await?;
     Ok(ok(serde_json::json!({ "deletedCount": deleted })))
 }
 
@@ -314,18 +304,12 @@ pub async fn load_sidecar_model(
         .as_deref()
         .filter(|u| !u.is_empty())
         .ok_or_else(|| {
-            AppError::BadRequest(
-                "OCR sidecar 未配置。请在 AI 模型设置中配置 OCR_SIDECAR_URL 后重试。".to_string(),
-            )
+            AppError::BadRequest("OCR sidecar 未配置。请在 AI 模型设置中配置 OCR_SIDECAR_URL 后重试。".to_string())
         })?;
 
     let resp = state
         .http_client
-        .post(format!(
-            "{}/models/{}/load",
-            url.trim_end_matches('/'),
-            model_id
-        ))
+        .post(format!("{}/models/{}/load", url.trim_end_matches('/'), model_id))
         .timeout(std::time::Duration::from_secs(600))
         .send()
         .await
@@ -333,9 +317,7 @@ pub async fn load_sidecar_model(
 
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(AppError::BadRequest(format!(
-            "Sidecar model load failed: {text}"
-        )));
+        return Err(AppError::BadRequest(format!("Sidecar model load failed: {text}")));
     }
 
     let body: serde_json::Value = resp
@@ -358,9 +340,7 @@ pub async fn clip_embed(
     let st = state.clone();
 
     tokio::spawn(async move {
-        match crate::apps::photo::services::clip::PhotoClipService::embed_app(&db, &st, app_id, None)
-            .await
-        {
+        match crate::apps::photo::services::clip::PhotoClipService::embed_app(&db, &st, app_id, None).await {
             Ok(count) => tracing::info!("CLIP embedded {count} photos for app {app_id}"),
             Err(e) => tracing::error!("CLIP embed failed for app {app_id}: {e}"),
         }
@@ -381,9 +361,7 @@ pub async fn clip_search(
     Query(q): Query<ClipSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results =
-        crate::apps::photo::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q)
-            .await?;
+    let results = crate::apps::photo::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -393,12 +371,7 @@ pub async fn refresh_clip(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    crate::apps::photo::services::clip::PhotoClipService::embed_photo(
-        &state.db,
-        &state,
-        photo_id,
-    )
-    .await?;
+    crate::apps::photo::services::clip::PhotoClipService::embed_photo(&state.db, &state, photo_id).await?;
     Ok(ok(serde_json::json!({ "status": "ok" })))
 }
 
@@ -424,12 +397,7 @@ pub async fn refresh_ocr(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let count = crate::apps::photo::services::ocr::PhotoOcrService::ocr_photo(
-        &state.db,
-        &state,
-        photo_id,
-    )
-    .await?;
+    let count = crate::apps::photo::services::ocr::PhotoOcrService::ocr_photo(&state.db, &state, photo_id).await?;
     Ok(ok(serde_json::json!({ "ocrCount": count })))
 }
 
@@ -485,10 +453,8 @@ pub async fn update_ocr_result(
     Path(ocr_id): Path<i32>,
     Json(input): Json<UpdateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let updated = crate::apps::photo::services::ocr::PhotoOcrService::update_ocr_result(
-        &state.db, ocr_id, input,
-    )
-    .await?;
+    let updated =
+        crate::apps::photo::services::ocr::PhotoOcrService::update_ocr_result(&state.db, ocr_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": updated.id.to_string(),
@@ -534,10 +500,8 @@ pub async fn create_ocr_result(
     Json(input): Json<CreateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&photo_id)?;
-    let created = crate::apps::photo::services::ocr::PhotoOcrService::create_ocr_result(
-        &state.db, photo_id, input,
-    )
-    .await?;
+    let created =
+        crate::apps::photo::services::ocr::PhotoOcrService::create_ocr_result(&state.db, photo_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": created.id.to_string(),

@@ -1,19 +1,19 @@
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use std::{path::Path as StdPath, sync::Arc};
 use uuid::Uuid;
 
-use crate::db::pagination::PageInput;
+use crate::AppState;
 use crate::apps::photo::repos::PhotoRepo;
+use crate::common::thread_util::named_spawn_blocking;
+use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::handlers::{ok, ApiResponse};
-use crate::common::thread_util::named_spawn_blocking;
-use crate::AppState;
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -51,11 +51,7 @@ pub async fn batch_favorite(
     Json(body): Json<BatchFavoriteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let _lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::batch_set_favorite(&state.db, &photo_ids, body.favorite).await?;
     Ok(ok(serde_json::json!({ "updated": count })))
 }
@@ -73,11 +69,7 @@ pub async fn batch_delete(
     Json(body): Json<BatchDeleteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let deleted = PhotoRepo::batch_delete(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "deleted": deleted })))
 }
@@ -96,11 +88,7 @@ pub async fn batch_hide(
     Json(body): Json<BatchHideBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let _lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::batch_set_hidden(&state.db, &photo_ids, body.hidden).await?;
     Ok(ok(serde_json::json!({ "updated": count })))
 }
@@ -164,11 +152,7 @@ pub async fn trash_photos(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let trashed = PhotoRepo::trash_photos(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "trashed": trashed })))
 }
@@ -180,11 +164,7 @@ pub async fn restore_photos(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let restored = PhotoRepo::restore_photos(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "restored": restored })))
 }
@@ -211,11 +191,7 @@ pub async fn permanent_delete(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let deleted = PhotoRepo::permanent_delete(&state.db, lib_id, &photo_ids).await?;
 
     let storage = Arc::clone(&state.storage);
@@ -334,9 +310,10 @@ async fn rescan_local_photo(
     };
 
     let abs_for_exif = abs_path.clone();
-    let exif_result =
-        named_spawn_blocking("exif-extract", move || rust_image_processor::extract_exif(&abs_for_exif))
-            .await;
+    let exif_result = named_spawn_blocking("exif-extract", move || {
+        rust_image_processor::extract_exif(&abs_for_exif)
+    })
+    .await;
 
     let mut got_dims = false;
     if let Ok(Some(ref exif)) = exif_result {
@@ -417,10 +394,7 @@ async fn rescan_remote_photo(
         return;
     };
 
-    let Ok(bytes) = vfs
-        .read_bytes(StdPath::new(path), 0, Some(256 * 1024))
-        .await
-    else {
+    let Ok(bytes) = vfs.read_bytes(StdPath::new(path), 0, Some(256 * 1024)).await else {
         return;
     };
 
@@ -458,36 +432,38 @@ async fn rescan_remote_photo(
         || std::path::Path::new(&lower)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("heif"));
-    if is_heic && (!got_dims || !got_date)
-        && let Ok(full_bytes) = vfs.read_bytes(StdPath::new(path), 0, None).await {
-            let ffmpeg_bin = rust_hls::resolve_ffmpeg_binary();
-            let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
-            let tmp_path = format!("/tmp/tokimo_rescan_{photo_id}.heic");
-            if tokio::fs::write(&tmp_path, &full_bytes).await.is_ok() {
-                if !got_dims {
-                    let probe_bin = ffprobe_bin.clone();
-                    let tmp_for_dims = tmp_path.clone();
-                    if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
-                        rust_image_processor::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
-                    })
-                    .await
-                    {
-                        let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
-                    }
+    if is_heic
+        && (!got_dims || !got_date)
+        && let Ok(full_bytes) = vfs.read_bytes(StdPath::new(path), 0, None).await
+    {
+        let ffmpeg_bin = rust_hls::resolve_ffmpeg_binary();
+        let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
+        let tmp_path = format!("/tmp/tokimo_rescan_{photo_id}.heic");
+        if tokio::fs::write(&tmp_path, &full_bytes).await.is_ok() {
+            if !got_dims {
+                let probe_bin = ffprobe_bin.clone();
+                let tmp_for_dims = tmp_path.clone();
+                if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
+                    rust_image_processor::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
+                })
+                .await
+                {
+                    let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
                 }
-                if !got_date {
-                    let tmp_for_date = tmp_path.clone();
-                    if let Ok(Some(date_str)) = named_spawn_blocking("photo-ffprobe", move || {
-                        rust_image_processor::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
-                    })
-                    .await
-                    {
-                        let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
-                    }
-                }
-                let _ = tokio::fs::remove_file(&tmp_path).await;
             }
+            if !got_date {
+                let tmp_for_date = tmp_path.clone();
+                if let Ok(Some(date_str)) = named_spawn_blocking("photo-ffprobe", move || {
+                    rust_image_processor::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
+                })
+                .await
+                {
+                    let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+                }
+            }
+            let _ = tokio::fs::remove_file(&tmp_path).await;
         }
+    }
 
     if !got_date && !is_heic {
         let filename = path.rsplit('/').next().unwrap_or(path);
@@ -495,16 +471,18 @@ async fn rescan_remote_photo(
             let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
         } else if let Ok(vfs2) = sources.ensure_vfs(&source_id_str).await
             && let Ok(info) = vfs2.stat(StdPath::new(path)).await
-                && let Some(modified) = info.modified {
-                    let date_str = modified.format("%Y-%m-%d %H:%M:%S").to_string();
-                    let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
-                }
+            && let Some(modified) = info.modified
+        {
+            let date_str = modified.format("%Y-%m-%d %H:%M:%S").to_string();
+            let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+        }
     }
 
     if let Ok(vfs3) = sources.ensure_vfs(&source_id_str).await
-        && let Some(live_path) = detect_live_video_companion_remote(&vfs3, path).await {
-            let _ = PhotoRepo::update_live_video_path(db, photo_id, live_path).await;
-        }
+        && let Some(live_path) = detect_live_video_companion_remote(&vfs3, path).await
+    {
+        let _ = PhotoRepo::update_live_video_path(db, photo_id, live_path).await;
+    }
 }
 
 fn detect_live_video_companion_local(abs_path: &str, rel_path: &str) -> Option<String> {
@@ -529,10 +507,7 @@ fn detect_live_video_companion_local(abs_path: &str, rel_path: &str) -> Option<S
     None
 }
 
-async fn detect_live_video_companion_remote(
-    vfs: &next_fs::Vfs,
-    photo_path: &str,
-) -> Option<String> {
+async fn detect_live_video_companion_remote(vfs: &next_fs::Vfs, photo_path: &str) -> Option<String> {
     let path = StdPath::new(photo_path);
     let stem = path.file_stem()?.to_str()?.to_lowercase();
     let dir = path.parent()?;
@@ -565,9 +540,7 @@ pub async fn refresh_exif(
         .await?
         .not_found("Photo not found")?;
 
-    let source_id = photo
-        .source_id
-        .bad_request("Photo has no source")?;
+    let source_id = photo.source_id.bad_request("Photo has no source")?;
     let path = photo.path.clone();
 
     let fs = PhotoRepo::get_file_system_by_id(&state.db, source_id).await?;

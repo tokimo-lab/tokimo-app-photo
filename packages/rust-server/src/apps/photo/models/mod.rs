@@ -1,11 +1,11 @@
-use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use sea_orm::DerivePartialModel;
+use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde::Serialize;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::db::entities::{photo_albums, photos};
 use crate::db::ApiDateTimeExt;
+use crate::db::entities::{photo_albums, photos};
 
 /// Photo list item (timeline / grid view)
 #[derive(Debug, Clone, Serialize, DerivePartialModel, TS)]

@@ -5,17 +5,17 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::apps::photo::models::PhotoLibraryOutput;
 use crate::apps::photo::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::handlers::{ok, ok_empty, ApiResponse};
+use crate::handlers::{ApiResponse, ok, ok_empty};
 use crate::services::media::source::normalize_source_path;
-use crate::AppState;
 
 use super::{
-    parse_uuid, sources_to_json, to_photo_library_output, to_photo_library_outputs,
-    CreatePhotoLibraryInput, UpdatePhotoLibraryInput, PhotoLibraryReorderInput,
+    CreatePhotoLibraryInput, PhotoLibraryReorderInput, UpdatePhotoLibraryInput, parse_uuid, sources_to_json,
+    to_photo_library_output, to_photo_library_outputs,
 };
 
 /// GET /api/apps/photo
@@ -152,12 +152,7 @@ pub async fn reorder_photo_libraries(
     let orders: Vec<(Uuid, i32)> = body
         .orders
         .into_iter()
-        .filter_map(|item| {
-            item.id
-                .parse::<Uuid>()
-                .ok()
-                .map(|uid| (uid, item.sort_order))
-        })
+        .filter_map(|item| item.id.parse::<Uuid>().ok().map(|uid| (uid, item.sort_order)))
         .collect();
     PhotoLibraryRepo::reorder(&state.db, orders).await?;
     Ok(ok_empty())

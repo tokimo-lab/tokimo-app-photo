@@ -1,13 +1,13 @@
 use reqwest::Client;
-use rust_client_api::geocoding::{GeocodingClient, GeoLocation};
+use rust_client_api::geocoding::{GeoLocation, GeocodingClient};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::db::entities::{photo_geo_cache, photos};
 use crate::config::PhotoGeoSettings;
+use crate::db::entities::{photo_geo_cache, photos};
 use crate::db::repos::system_config_repo::SystemConfigRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
@@ -22,18 +22,9 @@ fn provider_has_key(settings: &PhotoGeoSettings) -> bool {
     match settings.provider.as_str() {
         "amap" => settings.amap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
         "qqmap" => settings.qqmap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
-        "tianditu" => settings
-            .tianditu_server_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "mapbox" => settings
-            .mapbox_access_token
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "maptiler" => settings
-            .maptiler_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
+        "tianditu" => settings.tianditu_server_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "mapbox" => settings.mapbox_access_token.as_ref().is_some_and(|k| !k.is_empty()),
+        "maptiler" => settings.maptiler_api_key.as_ref().is_some_and(|k| !k.is_empty()),
         _ => false,
     }
 }
@@ -99,9 +90,7 @@ pub async fn reverse_geocode_dispatch(
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))
         }
-        other => Err(AppError::Internal(format!(
-            "Unknown geo provider: {other}"
-        ))),
+        other => Err(AppError::Internal(format!("Unknown geo provider: {other}"))),
     }
 }
 
@@ -157,12 +146,9 @@ impl PhotoGeoService {
         };
         photo_geo_cache::Entity::insert(cache_model)
             .on_conflict(
-                OnConflict::columns([
-                    photo_geo_cache::Column::LatKey,
-                    photo_geo_cache::Column::LonKey,
-                ])
-                .do_nothing()
-                .to_owned(),
+                OnConflict::columns([photo_geo_cache::Column::LatKey, photo_geo_cache::Column::LonKey])
+                    .do_nothing()
+                    .to_owned(),
             )
             .exec(db)
             .await
@@ -172,11 +158,7 @@ impl PhotoGeoService {
     }
 
     /// Batch reverse-geocode all photos in an app that have GPS but no geo data.
-    pub async fn reverse_geocode_app(
-        db: &DatabaseConnection,
-        http: &Client,
-        app_id: Uuid,
-    ) -> Result<u32, AppError> {
+    pub async fn reverse_geocode_app(db: &DatabaseConnection, http: &Client, app_id: Uuid) -> Result<u32, AppError> {
         let settings: PhotoGeoSettings = SystemConfigRepo::get(db).await?;
         if !settings.enabled || !provider_has_key(&settings) {
             return Err(AppError::Internal(
@@ -257,10 +239,7 @@ impl PhotoGeoService {
     }
 
     /// Get location stats for an app (grouped by province/city/district).
-    pub async fn location_stats(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<LocationGroup>, AppError> {
+    pub async fn location_stats(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<LocationGroup>, AppError> {
         use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
         let rows = db
