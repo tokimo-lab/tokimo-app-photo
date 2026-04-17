@@ -6,6 +6,15 @@ interface ViewerZoomPanOptions {
   imgRef: React.RefObject<HTMLImageElement | null>;
 }
 
+function getPinchDist(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 export function useViewerZoomPan({ imgRef }: ViewerZoomPanOptions) {
   const [scale, setScale] = useState(1);
   const [panX, setPanX] = useState(0);
@@ -22,6 +31,17 @@ export function useViewerZoomPan({ imgRef }: ViewerZoomPanOptions) {
   panXRef.current = panX;
   const panYRef = useRef(panY);
   panYRef.current = panY;
+
+  // Pinch-to-zoom state
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{
+    startDist: number;
+    startScale: number;
+    startPanX: number;
+    startPanY: number;
+    startMidX: number;
+    startMidY: number;
+  } | null>(null);
 
   // Pan boundary clamping — snaps back after drag ends or zoom changes
   useEffect(() => {
@@ -164,23 +184,118 @@ export function useViewerZoomPan({ imgRef }: ViewerZoomPanOptions) {
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      pointersRef.current.set(e.pointerId, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+      if (pointersRef.current.size === 2) {
+        // Start pinch — cancel any ongoing drag
+        isDragging.current = false;
+        setDragging(true); // suppress boundary clamping during pinch
+
+        const [a, b] = [...pointersRef.current.values()];
+        const dist = getPinchDist(a, b);
+        const container = containerRef.current;
+        const rect = container?.getBoundingClientRect();
+        const cx = rect ? rect.left + rect.width / 2 : 0;
+        const cy = rect ? rect.top + rect.height / 2 : 0;
+        pinchRef.current = {
+          startDist: dist,
+          startScale: scaleRef.current,
+          startPanX: panXRef.current,
+          startPanY: panYRef.current,
+          startMidX: (a.x + b.x) / 2 - cx,
+          startMidY: (a.y + b.y) / 2 - cy,
+        };
+        return;
+      }
+
+      // Single pointer drag (only when zoomed)
       if (e.button !== 0 || !isZoomed) return;
       e.preventDefault();
       isDragging.current = true;
       setDragging(true);
       dragStart.current = { x: e.clientX, y: e.clientY, panX, panY };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
     [isZoomed, panX, panY],
   );
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.set(e.pointerId, {
+      x: e.clientX,
+      y: e.clientY,
+    });
+
+    // Pinch mode
+    if (pointersRef.current.size === 2 && pinchRef.current) {
+      const [a, b] = [...pointersRef.current.values()];
+      const dist = getPinchDist(a, b);
+      const pinch = pinchRef.current;
+      const ratio = dist / pinch.startDist;
+      const newScale = Math.min(
+        MAX_SCALE,
+        Math.max(1, pinch.startScale * ratio),
+      );
+
+      // Zoom relative to pinch midpoint
+      const container = containerRef.current;
+      const rect = container?.getBoundingClientRect();
+      const cx = rect ? rect.left + rect.width / 2 : 0;
+      const cy = rect ? rect.top + rect.height / 2 : 0;
+      const midX = (a.x + b.x) / 2 - cx;
+      const midY = (a.y + b.y) / 2 - cy;
+
+      const scaleChange = newScale / pinch.startScale;
+      const nx =
+        midX -
+        (pinch.startMidX - pinch.startPanX) * scaleChange +
+        (midX - pinch.startMidX);
+      const ny =
+        midY -
+        (pinch.startMidY - pinch.startPanY) * scaleChange +
+        (midY - pinch.startMidY);
+
+      // Direct DOM update for performance
+      scaleRef.current = newScale;
+      panXRef.current = nx;
+      panYRef.current = ny;
+
+      const wrapper = container?.querySelector(
+        ".absolute.inset-0 > div",
+      ) as HTMLElement | null;
+      if (wrapper) {
+        wrapper.style.transition = "none";
+        wrapper.style.transform = `translate(${nx}px, ${ny}px) scale(${newScale})`;
+      }
+      return;
+    }
+
+    // Single pointer drag
     if (!isDragging.current) return;
     setPanX(dragStart.current.panX + e.clientX - dragStart.current.x);
     setPanY(dragStart.current.panY + e.clientY - dragStart.current.y);
   }, []);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+
+    // Finalize pinch
+    if (pinchRef.current) {
+      const finalScale = scaleRef.current;
+      const finalPanX = panXRef.current;
+      const finalPanY = panYRef.current;
+      pinchRef.current = null;
+      setScale(finalScale);
+      setPanX(finalPanX);
+      setPanY(finalPanY);
+      if (pointersRef.current.size === 0) {
+        setDragging(false);
+      }
+      return;
+    }
+
     isDragging.current = false;
     setDragging(false);
   }, []);

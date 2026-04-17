@@ -235,6 +235,7 @@ export function PhotoLightbox({
             role="application"
             className="flex flex-1 items-center justify-center overflow-hidden select-none p-12"
             style={{
+              touchAction: "none",
               cursor: zoom.dragging
                 ? "grabbing"
                 : zoom.isZoomed

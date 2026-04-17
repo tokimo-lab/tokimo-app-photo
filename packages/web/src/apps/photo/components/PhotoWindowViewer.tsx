@@ -270,6 +270,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
               : "cursor-grab"
             : "cursor-default"
         }`}
+        style={{ touchAction: "none" }}
         onPointerDown={zoom.handlePointerDown}
         onPointerMove={zoom.handlePointerMove}
         onPointerUp={zoom.handlePointerUp}
