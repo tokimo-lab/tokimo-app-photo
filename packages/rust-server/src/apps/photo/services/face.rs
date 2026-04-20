@@ -18,10 +18,10 @@ pub struct PhotoFaceService;
 impl PhotoFaceService {
     /// Detect faces in an image using the integrated AI service.
     async fn represent(
-        ai: &rust_models::AiService,
+        ai: &rust_models::worker::client::AiWorkerClient,
         image_bytes: Vec<u8>,
-    ) -> Result<Vec<rust_models::face::FaceDetection>, AppError> {
-        ai.detect_faces(&image_bytes)
+    ) -> Result<Vec<rust_models::worker::protocol::types::FaceDetection>, AppError> {
+        ai.detect_faces(image_bytes)
             .await
             .map_err(|e| AppError::Internal(format!("Face detection error: {e}")))
     }
@@ -127,7 +127,7 @@ impl PhotoFaceService {
     /// Detect faces in a single photo and store embeddings.
     pub async fn detect_faces(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<rust_models::AiService>,
+        ai: &std::sync::Arc<rust_models::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
         photo_id: Uuid,
     ) -> Result<usize, AppError> {
@@ -210,7 +210,7 @@ impl PhotoFaceService {
     /// "Unscanned" = photos with no rows in `photo_faces`.
     pub async fn detect_app(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<rust_models::AiService>,
+        ai: &std::sync::Arc<rust_models::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
         app_id: Uuid,
     ) -> Result<u32, AppError> {

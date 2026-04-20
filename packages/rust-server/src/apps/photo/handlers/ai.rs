@@ -86,11 +86,13 @@ pub async fn download_ai_models(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DownloadModelsQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    use rust_models::worker::protocol::types as wire;
+
     let category = match query.category.as_deref() {
-        Some("ocr" | "ocr_server") => Some(rust_models::models::ModelCategory::OcrServer),
-        Some("ocr_mobile") => Some(rust_models::models::ModelCategory::OcrMobile),
-        Some("clip") => Some(rust_models::models::ModelCategory::Clip),
-        Some("face") => Some(rust_models::models::ModelCategory::Face),
+        Some("ocr" | "ocr_server") => Some(wire::ModelCategory::OcrServer),
+        Some("ocr_mobile") => Some(wire::ModelCategory::OcrMobile),
+        Some("clip") => Some(wire::ModelCategory::Clip),
+        Some("face") => Some(wire::ModelCategory::Face),
         Some(other) => {
             return Err(AppError::BadRequest(format!(
                 "Unknown category: {other}. Use ocr_server, ocr_mobile, clip, or face."
@@ -107,28 +109,47 @@ pub async fn download_ai_models(
 
     tokio::spawn(async move {
         let reg = Arc::clone(&registry);
-        let progress_cb: rust_models::models::ProgressFn = Box::new(move |file, status, pct, downloaded, total| {
-            let snap = crate::handlers::ws::VisionProgress {
-                file_name: file.to_string(),
-                status: status.to_string(),
-                progress: pct,
-                downloaded_bytes: downloaded,
-                total_bytes: total,
-                error: None,
-            };
-            let reg = Arc::clone(&reg);
-            tokio::spawn(async move {
-                reg.update_and_broadcast(&snap).await;
-            });
-        });
-
-        let result = if let Some(cat) = category {
-            ai.ensure_category_with_progress(cat, progress_cb).await
-        } else {
-            ai.ensure_models_with_progress(progress_cb).await
-        };
+        let rx = ai.ensure_category_with_progress(category).await;
 
         let done_label = format!("_{cat_label}");
+        let result: Result<(), String> = match rx {
+            Ok(mut rx) => {
+                let mut err: Option<String> = None;
+                while let Some(frame) = rx.recv().await {
+                    match frame {
+                        Ok(wire::ProgressFrame::Progress {
+                            file_name,
+                            status,
+                            percent,
+                            downloaded_bytes,
+                            total_bytes,
+                        }) => {
+                            let snap = crate::handlers::ws::VisionProgress {
+                                file_name,
+                                status,
+                                progress: u8::try_from(percent).unwrap_or(100),
+                                downloaded_bytes,
+                                total_bytes,
+                                error: None,
+                            };
+                            reg.update_and_broadcast(&snap).await;
+                        }
+                        Ok(wire::ProgressFrame::Done) => break,
+                        Ok(wire::ProgressFrame::Error { message }) => {
+                            err = Some(message);
+                            break;
+                        }
+                        Err(e) => {
+                            err = Some(e.to_string());
+                            break;
+                        }
+                    }
+                }
+                err.map_or(Ok(()), Err)
+            }
+            Err(e) => Err(e),
+        };
+
         match result {
             Ok(()) => {
                 tracing::info!("AI models ({cat_label}) downloaded successfully");
@@ -270,8 +291,8 @@ pub async fn clear_all_ocr_results(
 pub async fn get_sidecar_models(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let url = match state.ai.config().ocr_sidecar_url.as_deref() {
-        Some(u) if !u.is_empty() => u.to_string(),
+    let url = match state.ai.ocr_sidecar_url() {
+        Some(u) if !u.is_empty() => u,
         _ => return Ok(ok(serde_json::json!([]))),
     };
 
@@ -299,9 +320,7 @@ pub async fn load_sidecar_model(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let url = state
         .ai
-        .config()
-        .ocr_sidecar_url
-        .as_deref()
+        .ocr_sidecar_url()
         .filter(|u| !u.is_empty())
         .ok_or_else(|| {
             AppError::BadRequest("OCR sidecar 未配置。请在 AI 模型设置中配置 OCR_SIDECAR_URL 后重试。".to_string())

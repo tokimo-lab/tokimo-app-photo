@@ -113,24 +113,25 @@ impl PhotoOcrService {
     /// OCR a single photo using the integrated AI service.
     /// Returns (results, `optional_debug_info`).
     async fn ocr_image(
-        ai: &rust_models::AiService,
+        ai: &rust_models::worker::client::AiWorkerClient,
         image_bytes: Vec<u8>,
         model_name: Option<&str>,
         aux_model_name: Option<&str>,
     ) -> Result<(Vec<OcrResult>, Option<serde_json::Value>), AppError> {
+        use rust_models::worker::protocol::types as wire;
         let model = model_name.unwrap_or("rapid-ocr-rust");
-        let needs_hybrid = !rust_models::ocr_manager::OcrManager::model_supports_blocks(model);
+        let needs_hybrid = !wire::ocr_model_supports_blocks(model);
 
         let (items, debug) = if needs_hybrid {
             let det_model = aux_model_name.unwrap_or("rapid-ocr-rust");
-            let (items, debug) = ai
-                .ocr_hybrid(&image_bytes, det_model, model)
+            let items = ai
+                .ocr_hybrid(image_bytes, Some(det_model.to_string()), Some(model.to_string()))
                 .await
                 .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
-            (items, debug)
+            (items, None)
         } else {
             let items = ai
-                .ocr(&image_bytes, Some(model))
+                .ocr(image_bytes, Some(model.to_string()))
                 .await
                 .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
             (items, None)

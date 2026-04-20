@@ -298,7 +298,7 @@ pub async fn photo_tags(
 
     let tag_results = state
         .ai
-        .clip_classify(&image_vec)
+        .clip_classify(image_vec)
         .await
         .map_err(|e| AppError::Internal(format!("CLIP classify: {e}")))?;
 
