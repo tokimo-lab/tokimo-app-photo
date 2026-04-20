@@ -305,9 +305,9 @@ pub async fn photo_tags(
     let tags = tag_results
         .into_iter()
         .map(|t| PhotoTag {
-            category: t.category.to_string(),
-            icon: t.icon.to_string(),
-            subcategory: t.subcategory.to_string(),
+            category: t.category,
+            icon: t.icon,
+            subcategory: t.subcategory,
             score: f64::from(t.score),
         })
         .collect();
