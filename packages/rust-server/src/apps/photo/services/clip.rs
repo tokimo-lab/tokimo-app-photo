@@ -34,7 +34,7 @@ pub struct PhotoClipService;
 
 impl PhotoClipService {
     /// Embed image bytes → 512-dim CLIP vector via integrated AI service.
-    async fn embed_image(ai: &rust_models::worker::client::AiWorkerClient, image_bytes: Vec<u8>) -> Result<Vec<f32>, AppError> {
+    async fn embed_image(ai: &tokimo_perception::worker::client::AiWorkerClient, image_bytes: Vec<u8>) -> Result<Vec<f32>, AppError> {
         let vec = ai
             .clip_image(image_bytes)
             .await
@@ -51,7 +51,7 @@ impl PhotoClipService {
     }
 
     /// Embed text → 512-dim CLIP vector via integrated AI service.
-    async fn embed_text(ai: &rust_models::worker::client::AiWorkerClient, text: &str) -> Result<Vec<f32>, AppError> {
+    async fn embed_text(ai: &tokimo_perception::worker::client::AiWorkerClient, text: &str) -> Result<Vec<f32>, AppError> {
         let vec = ai
             .clip_text(text.to_string())
             .await

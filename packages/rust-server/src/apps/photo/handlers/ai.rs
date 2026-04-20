@@ -86,7 +86,7 @@ pub async fn download_ai_models(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DownloadModelsQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    use rust_models::worker::protocol::types as wire;
+    use tokimo_perception::worker::protocol::types as wire;
 
     let category = match query.category.as_deref() {
         Some("ocr" | "ocr_server") => Some(wire::ModelCategory::OcrServer),
