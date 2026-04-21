@@ -253,6 +253,18 @@ export function usePhotoData({
     setTimelineLoadingMore(false);
     if (timelinePage === 1) {
       setAccTimeline(photosQuery.data.items);
+      // Seek fallback: when the seeked date has no photos at-or-before it,
+      // auto-enable upward to fetch the nearest newer photos so the user
+      // sees something instead of an empty state. Only kicks in for the
+      // first page (i.e. immediately after a seek) when downward is empty
+      // but the backend reports more photos exist newer than the anchor.
+      if (
+        photosQuery.data.items.length === 0 &&
+        !upwardEnabled &&
+        upwardAfterDate
+      ) {
+        setUpwardEnabled(true);
+      }
     } else {
       setAccTimeline((prev) => {
         const ids = new Set(prev.map((p) => p.id));
@@ -260,7 +272,13 @@ export function usePhotoData({
         return newItems.length === 0 ? prev : [...prev, ...newItems];
       });
     }
-  }, [photosQuery.data, photosQuery.isPlaceholderData, timelinePage]);
+  }, [
+    photosQuery.data,
+    photosQuery.isPlaceholderData,
+    timelinePage,
+    upwardEnabled,
+    upwardAfterDate,
+  ]);
 
   // Accumulate upward photos (newer than initialDate)
   const upwardTotal = upwardQuery.data?.total ?? 0;
