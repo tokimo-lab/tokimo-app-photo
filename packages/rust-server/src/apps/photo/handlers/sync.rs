@@ -8,9 +8,11 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::apps::photo::services::notifications as photo_notify;
 use crate::db::repos::job_repo::JobRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
+use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
 use crate::services::media::app_sync::AppSyncService;
 
@@ -51,6 +53,7 @@ pub struct TaskProgress {
 /// Triggers an async photo library sync.
 pub async fn sync_photo(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
     body: Option<Json<PhotoSyncInput>>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -74,17 +77,40 @@ pub async fn sync_photo(
 
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
 
+    let user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
     let db = state.db.clone();
     let sources = state.sources.clone();
     let storage = state.storage.clone();
+    let state_for_task = state.clone();
+    let library_name = library.name.clone();
 
     tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&db, &sources, &storage, uid, false).await {
+        match AppSyncService::execute_photo_sync(&db, &sources, &storage, uid, false, Some(user_id)).await {
             Ok(result) => {
                 info!("photo sync completed, {} jobs dispatched", result.total_jobs);
+                photo_notify::notify_sync_completed(
+                    &state_for_task,
+                    user_id,
+                    uid,
+                    &library_name,
+                    result.total_jobs,
+                )
+                .await;
             }
             Err(e) => {
                 error!("photo sync failed: {e}");
+                photo_notify::notify_sync_failed(
+                    &state_for_task,
+                    user_id,
+                    uid,
+                    &library_name,
+                    &e.to_string(),
+                )
+                .await;
             }
         }
     });

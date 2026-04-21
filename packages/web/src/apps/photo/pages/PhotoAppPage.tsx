@@ -21,7 +21,6 @@ import { PhotoPeopleView } from "@/apps/photo/components/PhotoPeopleView";
 import { PhotoSelectionBar } from "@/apps/photo/components/PhotoSelectionBar";
 import { PHOTO_SIZE_LEVELS } from "@/apps/photo/components/PhotoSizeSlider";
 import { PhotoTimeline } from "@/apps/photo/components/PhotoTimeline";
-import { SyncProgressOverlay } from "@/apps/photo/components/SyncProgressOverlay";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { useMessage, useWindowNav } from "@/system";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
@@ -508,12 +507,6 @@ export default function PhotoAppPage({
           isPending={isAddingToAlbum}
         />
       )}
-
-      {/* Sync progress floating overlay */}
-      <SyncProgressOverlay
-        appId={id}
-        onJobCompleted={() => void photosQuery.refetch()}
-      />
     </div>
   );
 }

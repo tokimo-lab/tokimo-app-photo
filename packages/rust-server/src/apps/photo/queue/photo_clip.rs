@@ -5,7 +5,9 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::apps::photo::repos::PhotoLibraryRepo;
 use crate::apps::photo::services::clip::PhotoClipService;
+use crate::apps::photo::services::notifications as photo_notify;
 
 /// Job handler: batch CLIP embed all photos in an app that don't yet have a vector.
 ///
@@ -15,6 +17,7 @@ pub async fn handle(
     state: &Arc<AppState>,
     job_id: Uuid,
     payload: &JsonValue,
+    user_id: Option<Uuid>,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     let app_id = payload
         .get("appId")
@@ -24,11 +27,41 @@ pub async fn handle(
 
     info!("[photo_clip] Starting CLIP embed batch for app {app_id}");
 
-    let count = PhotoClipService::embed_app(db, state, app_uuid, Some(job_id)).await?;
+    let library_name = PhotoLibraryRepo::get_by_id(db, app_uuid)
+        .await
+        .ok()
+        .flatten()
+        .map_or_else(|| app_id.to_string(), |m| m.name);
 
-    info!("[photo_clip] Done: {count} photos processed");
-
-    Ok(Some(json!({
-        "processed": count,
-    })))
+    match PhotoClipService::embed_app(db, state, app_uuid, Some(job_id)).await {
+        Ok(count) => {
+            info!("[photo_clip] Done: {count} photos processed");
+            if let Some(uid) = user_id {
+                photo_notify::notify_processing_completed(
+                    state,
+                    uid,
+                    app_uuid,
+                    &library_name,
+                    "photo_clip",
+                    i64::from(count),
+                )
+                .await;
+            }
+            Ok(Some(json!({ "processed": count })))
+        }
+        Err(e) => {
+            if let Some(uid) = user_id {
+                photo_notify::notify_processing_failed(
+                    state,
+                    uid,
+                    app_uuid,
+                    &library_name,
+                    "photo_clip",
+                    &e.to_string(),
+                )
+                .await;
+            }
+            Err(e.into())
+        }
+    }
 }

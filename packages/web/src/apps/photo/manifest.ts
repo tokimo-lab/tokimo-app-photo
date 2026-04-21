@@ -31,4 +31,23 @@ export const manifest: AppManifest = {
       },
     ],
   },
+
+  notifications: {
+    categories: [
+      { id: "sync_completed", label: "photo.notifications.syncCompleted" },
+      { id: "sync_failed", label: "photo.notifications.syncFailed" },
+      {
+        id: "processing_progress",
+        label: "photo.notifications.processingProgress",
+      },
+      {
+        id: "processing_completed",
+        label: "photo.notifications.processingCompleted",
+      },
+      {
+        id: "processing_failed",
+        label: "photo.notifications.processingFailed",
+      },
+    ],
+  },
 };
