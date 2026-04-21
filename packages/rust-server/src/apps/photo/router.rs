@@ -247,24 +247,8 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             post(ai::test_photo_ai_connection),
         )
         .route(
-            "/api/apps/photo/settings/ai/models-status",
-            get(ai::ai_models_status),
-        )
-        .route(
-            "/api/apps/photo/settings/ai/download-models",
-            post(ai::download_ai_models),
-        )
-        .route(
             "/api/apps/photo/settings/ai/ocr-results",
             delete(ai::clear_all_ocr_results),
-        )
-        .route(
-            "/api/apps/photo/settings/ai/sidecar-models",
-            get(ai::get_sidecar_models),
-        )
-        .route(
-            "/api/apps/photo/settings/ai/sidecar-models/{model_id}/load",
-            post(ai::load_sidecar_model),
         )
         // ── PhotoLibrary detail (must come after named routes) ──
         .route(
