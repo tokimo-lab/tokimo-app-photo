@@ -19,6 +19,84 @@ export interface LayoutResult {
   posToDateLabel: (pos: number) => string;
 }
 
+/** Ordinal-ish integer for a date, used only for interval math. */
+function dateOrdinal(y: number, m: number, d: number): number {
+  return y * 400 + m * 32 + d;
+}
+
+/** Nearest-entry lookup from a sorted list with precomputed positions. */
+function makeNearestLookup(
+  entriesWithPos: Array<TimelineEntry & { pos: number }>,
+) {
+  return (pos: number): string => {
+    if (entriesWithPos.length === 0) return "";
+    let best = entriesWithPos[0];
+    let bd = Math.abs(best.pos - pos);
+    for (let i = 1; i < entriesWithPos.length; i++) {
+      const e = entriesWithPos[i];
+      const d = Math.abs(e.pos - pos);
+      if (d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return `${best.year}年${best.month}月${best.day}日`;
+  };
+}
+
+/** Day-precise linear layout with month-level aggregated labels.
+ *  Used for single-year and single-month cases (any short-span timeline). */
+function buildDayPreciseLayout(
+  entries: TimelineEntry[],
+  includeYearInLabel: boolean,
+): LayoutResult {
+  // Sort DESC (newest at pos 0)
+  const sorted = [...entries].sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    if (a.month !== b.month) return b.month - a.month;
+    return b.day - a.day;
+  });
+
+  const maxOrd = dateOrdinal(sorted[0].year, sorted[0].month, sorted[0].day);
+  const last = sorted[sorted.length - 1];
+  const minOrd = dateOrdinal(last.year, last.month, last.day);
+  const span = maxOrd - minOrd || 1;
+
+  const entriesWithPos = sorted.map((e) => ({
+    ...e,
+    pos: Math.max(
+      0,
+      Math.min(1, (maxOrd - dateOrdinal(e.year, e.month, e.day)) / span),
+    ),
+  }));
+
+  const datePositions = new Map<string, number>();
+  for (const e of entriesWithPos) {
+    const key = `${e.year}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
+    datePositions.set(key, e.pos);
+  }
+
+  // Display labels: one per (year, month), positioned at the first (newest) entry of that ym
+  const seenYM = new Set<string>();
+  const marks: Mark[] = [];
+  for (const e of entriesWithPos) {
+    const ymKey = `${e.year}-${e.month}`;
+    if (seenYM.has(ymKey)) continue;
+    seenYM.add(ymKey);
+    marks.push({
+      position: e.pos,
+      label: includeYearInLabel ? `${e.year}/${e.month}` : `${e.month}月`,
+      isYear: false,
+    });
+  }
+
+  return {
+    marks,
+    datePositions,
+    posToDateLabel: makeNearestLookup(entriesWithPos),
+  };
+}
+
 export function useTimelineLayout(
   entries: TimelineEntry[],
   focusYear: number | null,
@@ -30,87 +108,43 @@ export function useTimelineLayout(
       posToDateLabel: () => "",
     };
     if (entries.length === 0) return empty;
-
-    // Only 1 day bucket — nothing to scrub through
     if (entries.length === 1) return empty;
 
     const years = [...new Set(entries.map((e) => e.year))].sort(
       (a, b) => b - a,
     );
     const focus = focusYear ?? years[0];
-    const marks: Mark[] = [];
-    const datePositions = new Map<string, number>();
 
-    // ── Single month: linear by day ─────────────────────────────
+    // ── Single month: day-precise linear ────────────────────────
     const uniqueYearMonths = [
       ...new Set(entries.map((e) => `${e.year}-${e.month}`)),
     ];
     if (uniqueYearMonths.length === 1) {
+      const layout = buildDayPreciseLayout(entries, true);
+      // Prepend a year-month header label at top (pos 0)
       const year = entries[0].year;
       const month = entries[0].month;
-      const days = entries.map((e) => e.day).sort((a, b) => b - a);
-      const maxD = Math.max(...days);
-      const minD = Math.min(...days);
-      const span = maxD - minD || 1;
-
-      // Year+month label at top
-      marks.push({ position: 0, label: `${year}/${month}`, isYear: true });
-
-      for (const e of entries) {
-        const pos = (maxD - e.day) / span;
-        const key = `${e.year}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
-        datePositions.set(key, Math.max(0, Math.min(1, pos)));
-        marks.push({ position: pos, label: `${e.day}日`, isYear: false });
-      }
-
-      return {
-        marks,
-        datePositions,
-        posToDateLabel: (pos: number) => {
-          const dayFloat = maxD - pos * span;
-          const d = Math.max(minD, Math.min(maxD, Math.round(dayFloat)));
-          return `${year}年${month}月${d}日`;
-        },
-      };
+      layout.marks.unshift({
+        position: 0,
+        label: `${year}/${month}`,
+        isYear: true,
+      });
+      return layout;
     }
 
-    // ── Single year: linear by month, no year label ─────────────
+    // ── Single year: day-precise linear, month labels only ──────
     if (years.length === 1) {
-      const months = [...new Set(entries.map((e) => e.month))].sort(
-        (a, b) => b - a,
-      );
-      const maxM = Math.max(...months);
-      const minM = Math.min(...months);
-      const span = maxM - minM || 1;
-
-      for (const mo of months) {
-        const pos = (maxM - mo) / span;
-        // Use first day of each month as the key
-        const key = `${years[0]}-${String(mo).padStart(2, "0")}-01`;
-        datePositions.set(key, Math.max(0, Math.min(1, pos)));
-        marks.push({
-          position: pos,
-          label: `${mo}月`,
-          isYear: false,
-        });
-      }
-      return {
-        marks,
-        datePositions,
-        posToDateLabel: (pos: number) => {
-          const mo = Math.round(maxM - pos * span);
-          return `${years[0]}年${Math.max(1, Math.min(12, mo))}月1日`;
-        },
-      };
+      return buildDayPreciseLayout(entries, false);
     }
 
     // ── Multi-year: 3-tier weight centered on focus year ────────
-    // Day tier:   focus year (±0) → 1/3 of track, month labels + day ticks
-    // Month tier: focus ±1–2 years → 1/3 of track, year labels only
-    // Year tier:  everything else → 1/3 of track, year labels only
-    // On drag-end, focus shifts → layout recomputes → second drag is precise
+    // Day tier:   focus year (±0) → compact slice, day-precise positioning
+    // Month tier: focus ±1–2 years → month-level positioning
+    // Year tier:  everything else → year-level only
+    const marks: Mark[] = [];
+    const datePositions = new Map<string, number>();
 
-    // Build month set per year
+    // Build month set per year (for tier-internal month range)
     const yearMonths = new Map<number, number[]>();
     for (const e of entries) {
       let arr = yearMonths.get(e.year);
@@ -119,6 +153,17 @@ export function useTimelineLayout(
         yearMonths.set(e.year, arr);
       }
       if (!arr.includes(e.month)) arr.push(e.month);
+    }
+
+    // Partition entries per year for nearest-day lookup in day tier
+    const yearEntries = new Map<number, TimelineEntry[]>();
+    for (const e of entries) {
+      let arr = yearEntries.get(e.year);
+      if (!arr) {
+        arr = [];
+        yearEntries.set(e.year, arr);
+      }
+      arr.push(e);
     }
 
     // Split into 3 tiers by distance from focus
@@ -132,7 +177,6 @@ export function useTimelineLayout(
       else yearOnlyYears.push(y);
     }
 
-    // Day tier gets half the weight so recent months don't stretch too far
     const DAY_TIER_W = 50;
     const TIER_W = 100;
     const tierAssign = (tier: number[], tw = TIER_W) => {
@@ -153,7 +197,6 @@ export function useTimelineLayout(
     const monthW = tierAssign(monthYears);
     const yearW = tierAssign(yearOnlyYears);
 
-    // Build yearMeta — NO coverage scaling (each tier keeps its 1/3)
     let totalW = 0;
     const yearMeta = new Map<number, { start: number; w: number }>();
     for (const y of years) {
@@ -162,13 +205,14 @@ export function useTimelineLayout(
       totalW += w;
     }
 
-    // Tier sets for mark generation
     const daySet = new Set(dayYears);
     const monthSet = new Set(monthYears);
 
-    // Estimate track pixel height for label density calculation
     const TRACK_PX = 700;
-    const LABEL_H = 16; // min px between month labels
+    const LABEL_H = 16;
+
+    // Sorted entries-with-pos in day tier (for nearest lookup)
+    const dayTierEntries: Array<TimelineEntry & { pos: number }> = [];
 
     for (const y of years) {
       const m = yearMeta.get(y)!;
@@ -184,27 +228,44 @@ export function useTimelineLayout(
       });
 
       if (daySet.has(y)) {
-        // Day tier: month labels + day ticks
-        for (let mo = maxMo; mo >= minMo; mo--) {
-          const moPos = (maxMo - mo) / moRange;
-          if (mo < maxMo) {
-            marks.push({
-              position: (m.start + moPos * m.w) / totalW,
-              label: `${mo + 1}月`,
-              isYear: false,
-            });
-          }
-          for (const day of [10, 20]) {
-            const dayPos = (maxMo - mo + (day - 1) / 30) / moRange;
-            marks.push({
-              position: (m.start + dayPos * m.w) / totalW,
-              label: "",
-              isYear: false,
-            });
-          }
+        // Day tier: month labels + day-precise entry positioning
+        const yEntries = yearEntries.get(y) ?? [];
+        // Compute ordinal span within this year tier (by day)
+        const sorted = [...yEntries].sort((a, b) => {
+          if (a.month !== b.month) return b.month - a.month;
+          return b.day - a.day;
+        });
+        const maxOrdY = dateOrdinal(
+          y,
+          sorted[0]?.month ?? maxMo,
+          sorted[0]?.day ?? 31,
+        );
+        const last = sorted[sorted.length - 1];
+        const minOrdY = dateOrdinal(y, last?.month ?? minMo, last?.day ?? 1);
+        const spanY = maxOrdY - minOrdY || 1;
+
+        // Month labels only — placed at first entry of each month
+        const seenYM = new Set<number>();
+        for (const e of sorted) {
+          if (seenYM.has(e.month)) continue;
+          seenYM.add(e.month);
+          const moPos = (maxOrdY - dateOrdinal(y, e.month, e.day)) / spanY;
+          marks.push({
+            position: (m.start + moPos * m.w) / totalW,
+            label: `${e.month}月`,
+            isYear: false,
+          });
+        }
+
+        for (const e of sorted) {
+          const moPos = (maxOrdY - dateOrdinal(y, e.month, e.day)) / spanY;
+          const pos = (m.start + moPos * m.w) / totalW;
+          const key = `${y}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
+          datePositions.set(key, Math.max(0, Math.min(1, pos)));
+          dayTierEntries.push({ ...e, pos });
         }
       } else if (monthSet.has(y)) {
-        // Month tier: show month labels at adaptive density
+        // Month tier: month labels at adaptive density
         const yearPx = (m.w / totalW) * TRACK_PX;
         const maxLabels = Math.max(1, Math.floor(yearPx / LABEL_H));
         const step = Math.max(1, Math.ceil(moRange / maxLabels));
@@ -216,33 +277,45 @@ export function useTimelineLayout(
             isYear: false,
           });
         }
+        // Month-level date positions
+        for (const e of yearEntries.get(y) ?? []) {
+          const moPos = (maxMo - e.month) / moRange;
+          const pos = (m.start + moPos * m.w) / totalW;
+          const key = `${y}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
+          datePositions.set(key, Math.max(0, Math.min(1, pos)));
+        }
+      } else {
+        // Year tier: year-only positioning
+        for (const e of yearEntries.get(y) ?? []) {
+          const pos = m.start / totalW;
+          const key = `${y}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
+          datePositions.set(key, pos);
+        }
       }
-      // Year tier: year label only
     }
 
-    // Date positions for each entry (using clipped month range)
-    for (const e of entries) {
-      const m = yearMeta.get(e.year);
-      if (!m) continue;
-      const months = yearMonths.get(e.year) ?? [];
-      const maxMo = Math.max(...months, 1);
-      const minMo = Math.min(...months, 12);
-      const moRange = maxMo - minMo + 1;
-      const pos = (m.start + ((maxMo - e.month) / moRange) * m.w) / totalW;
-      const key = `${e.year}-${String(e.month).padStart(2, "0")}-${String(e.day).padStart(2, "0")}`;
-      datePositions.set(key, Math.max(0, Math.min(1, pos)));
-    }
-
-    // Capture for posToDateLabel closure
+    // posToDateLabel: use day-tier nearest lookup when pos lands in a day-tier year,
+    // else fall back to month/year approximation.
     const _yearMeta = yearMeta;
     const _totalW = totalW;
     const _years = years;
     const _yearMonths = yearMonths;
+    const dayNearestLookup = makeNearestLookup(dayTierEntries);
 
     return {
       marks,
       datePositions,
       posToDateLabel: (pos: number) => {
+        // Detect day-tier range
+        for (const y of dayYears) {
+          const meta = _yearMeta.get(y)!;
+          const top = meta.start / _totalW;
+          const bottom = (meta.start + meta.w) / _totalW;
+          if (pos >= top && pos <= bottom) {
+            return dayNearestLookup(pos);
+          }
+        }
+        // Non-day-tier: month/year approximation (legacy behavior)
         const absW = pos * _totalW;
         for (let i = 0; i < _years.length; i++) {
           const y = _years[i];
@@ -252,13 +325,11 @@ export function useTimelineLayout(
             const months = _yearMonths.get(y) ?? [];
             const maxMo = Math.max(...months, 1);
             const minMo = Math.min(...months, 12);
-            const within = (absW - meta.start) / meta.w; // 0=top(maxMo) 1=bottom(minMo)
+            const within = (absW - meta.start) / meta.w;
             const moRange = maxMo - minMo + 1;
             const moFloat = maxMo - within * moRange;
             const mo = Math.max(minMo, Math.min(maxMo, Math.floor(moFloat)));
-            const dayFrac = moFloat - mo;
-            const d = Math.max(1, Math.min(31, Math.floor(dayFrac * 30) + 1));
-            return `${y}年${mo}月${d}日`;
+            return `${y}年${mo}月`;
           }
         }
         return "";
