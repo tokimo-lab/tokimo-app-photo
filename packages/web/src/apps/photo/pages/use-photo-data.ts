@@ -149,7 +149,14 @@ export function usePhotoData({
       search: debouncedSearch || undefined,
       beforeDate: timelineBeforeDate,
     },
-    { enabled: !!id && tab === "timeline" },
+    {
+      enabled: !!id && tab === "timeline",
+      // Keep previous data visible during seek-triggered refetches.
+      // Without this, photosQuery.data becomes undefined → isLoading=true
+      // → PhotoTimeline unmounts → pendingSeek state is lost and the
+      // post-seek re-alignment (sticky-tab compensation) never runs.
+      placeholderData: (prev) => prev,
+    },
   );
 
   const upwardAfterDate = useMemo(() => {
@@ -232,6 +239,12 @@ export function usePhotoData({
   const timelineTotal = photosQuery.data?.total ?? 0;
   useEffect(() => {
     if (!photosQuery.data?.items) return;
+    // Critical: when query key changes (e.g. seek), `placeholderData` keeps
+    // `data` populated with the PREVIOUS key's response. We must NOT
+    // re-populate the accumulator from that stale data — otherwise the
+    // freshly-cleared `accTimelineRef` is immediately re-filled with the
+    // wrong-window photos (e.g. today's photos after seeking to 3-15).
+    if (photosQuery.isPlaceholderData) return;
     setTimelineLoadingMore(false);
     if (timelinePage === 1) {
       accTimelineRef.current = photosQuery.data.items;
@@ -240,7 +253,7 @@ export function usePhotoData({
       const newItems = photosQuery.data.items.filter((p) => !ids.has(p.id));
       accTimelineRef.current = [...accTimelineRef.current, ...newItems];
     }
-  }, [photosQuery.data, timelinePage]);
+  }, [photosQuery.data, photosQuery.isPlaceholderData, timelinePage]);
 
   // Accumulate upward photos (newer than initialDate)
   const upwardTotal = upwardQuery.data?.total ?? 0;
