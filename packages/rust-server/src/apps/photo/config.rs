@@ -54,8 +54,6 @@ pub struct PhotoAiSettings {
     #[serde(default)]
     pub ocr_aux_model_name: Option<String>,
     #[serde(default)]
-    pub ocr_sidecar_url: Option<String>,
-    #[serde(default)]
     pub ocr_det_max_side: Option<u32>,
 }
 
@@ -73,7 +71,6 @@ impl SystemConfigSection for PhotoAiSettings {
             face_enabled: true,
             ocr_model_name: default_ocr_model(),
             ocr_aux_model_name: None,
-            ocr_sidecar_url: None,
             ocr_det_max_side: None,
         }
     }
@@ -121,7 +118,6 @@ impl PhotoAiSettings {
             face_enabled: flag("autoFace", global.face_enabled),
             ocr_model_name: str_field("ocrModelName", &global.ocr_model_name),
             ocr_aux_model_name: opt_str("ocrAuxModelName", &global.ocr_aux_model_name),
-            ocr_sidecar_url: global.ocr_sidecar_url,
             ocr_det_max_side: global.ocr_det_max_side,
         })
     }
