@@ -7,8 +7,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::apps::photo::repos::PhotoRepo;
-use crate::error::AppError;
+use crate::apps::photo::repos::{PhotoLibraryRepo, PhotoRepo};
+use crate::apps::photo::services::notifications as photo_notify;
+use crate::error::{AppError, OptionExt};
+use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
@@ -67,16 +69,47 @@ pub async fn test_photo_ai_connection(State(state): State<Arc<AppState>>) -> imp
 /// POST /api/apps/photo/{id}/photos/ocr-scan
 pub async fn ocr_scan(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
+    let user_id: uuid::Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+    let library = PhotoLibraryRepo::get_by_id(&state.db, app_id)
+        .await?
+        .not_found(format!("photo library {id} not found"))?;
+    let library_name = library.name.clone();
     let db = state.db.clone();
     let st = state.clone();
 
     tokio::spawn(async move {
         match crate::apps::photo::services::ocr::PhotoOcrService::ocr_app(&db, &st, app_id).await {
-            Ok(count) => tracing::info!("OCR scanned {count} photos for app {app_id}"),
-            Err(e) => tracing::error!("OCR scan failed for app {app_id}: {e}"),
+            Ok(count) => {
+                tracing::info!("OCR scanned {count} photos for app {app_id}");
+                photo_notify::notify_processing_completed(
+                    &st,
+                    user_id,
+                    app_id,
+                    &library_name,
+                    "photo_ocr",
+                    count as i64,
+                )
+                .await;
+            }
+            Err(e) => {
+                tracing::error!("OCR scan failed for app {app_id}: {e}");
+                photo_notify::notify_processing_failed(
+                    &st,
+                    user_id,
+                    app_id,
+                    &library_name,
+                    "photo_ocr",
+                    &e.to_string(),
+                )
+                .await;
+            }
         }
     });
 
@@ -174,16 +207,47 @@ pub async fn clear_all_ocr_results(
 /// POST /api/apps/photo/{id}/photos/clip-embed
 pub async fn clip_embed(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
+    let user_id: uuid::Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+    let library = PhotoLibraryRepo::get_by_id(&state.db, app_id)
+        .await?
+        .not_found(format!("photo library {id} not found"))?;
+    let library_name = library.name.clone();
     let db = state.db.clone();
     let st = state.clone();
 
     tokio::spawn(async move {
         match crate::apps::photo::services::clip::PhotoClipService::embed_app(&db, &st, app_id, None).await {
-            Ok(count) => tracing::info!("CLIP embedded {count} photos for app {app_id}"),
-            Err(e) => tracing::error!("CLIP embed failed for app {app_id}: {e}"),
+            Ok(count) => {
+                tracing::info!("CLIP embedded {count} photos for app {app_id}");
+                photo_notify::notify_processing_completed(
+                    &st,
+                    user_id,
+                    app_id,
+                    &library_name,
+                    "photo_clip",
+                    count as i64,
+                )
+                .await;
+            }
+            Err(e) => {
+                tracing::error!("CLIP embed failed for app {app_id}: {e}");
+                photo_notify::notify_processing_failed(
+                    &st,
+                    user_id,
+                    app_id,
+                    &library_name,
+                    "photo_clip",
+                    &e.to_string(),
+                )
+                .await;
+            }
         }
     });
 
