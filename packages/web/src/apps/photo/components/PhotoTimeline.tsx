@@ -1,6 +1,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Spin } from "@tokiomo/components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   computeJustifiedRows,
   type JustifiedRow,
@@ -273,7 +280,6 @@ export function PhotoTimeline({
   // measureRef may also contain a top "loading newer" spinner that shifts
   // the real list start when shown/hidden.
   const listRef = useRef<HTMLDivElement>(null);
-  const headerElsRef = useRef(new Map<string, HTMLDivElement>());
 
   const virtualizer = useVirtualizer({
     count: flatItems.length,
@@ -296,47 +302,34 @@ export function PhotoTimeline({
     }
   }, [virtualItems, flatItems.length, hasMore, onLoadMore, isLoadingMore]);
 
-  // ── Pending seek state ──────────────────────────────────────
-  // Declared early so the upward auto-loader effect below can gate on it.
-  const [pendingSeek, setPendingSeek] = useState<{
-    date: string;
-    deadline: number;
-  } | null>(null);
+  // ── Pending-seek tracking (out-of-range seeks only) ─────────
+  // When the user clicks a scrubber date that ISN'T in the currently
+  // loaded data, we trigger a backend refetch via `onSeekToDate`. The
+  // ref records what we're waiting for; the useLayoutEffect below
+  // applies the final scroll position atomically when new data arrives.
+  const pendingSeekRef = useRef<{ date: string; deadline: number } | null>(
+    null,
+  );
 
   // ── Upward infinite scroll: load newer photos when near top ──
-  // Only fires when (a) no pending seek, (b) user has actually scrolled
-  // since the last seek. Without these gates, after seek finishes the new
-  // data starts at index 0, so the trigger fires immediately and prepends
-  // exactly the photos the user just scrolled AWAY from (e.g. seek to 3-15
-  // → instantly reload 3-16…4-21 on top → janky flash + wrong order).
+  // Suppressed during a pending seek and until the user actually scrolls
+  // (wheel/touch/keyboard). Without these gates the loader fires the
+  // instant a seek lands at index 0, prepending the photos we just
+  // navigated AWAY from.
   useEffect(() => {
     if (!hasNewer || !onLoadNewer || isLoadingNewer) return;
-    if (pendingSeek) return;
+    if (pendingSeekRef.current) return;
     if (!userScrolledSinceSeekRef.current) return;
     const firstItem = virtualItems[0];
     if (!firstItem) return;
     if (firstItem.index <= 10) {
       onLoadNewer();
     }
-  }, [virtualItems, hasNewer, onLoadNewer, isLoadingNewer, pendingSeek]);
+  }, [virtualItems, hasNewer, onLoadNewer, isLoadingNewer]);
 
-  // ── Scroll-to-date flow ─────────────────────────────────────
-  // Strategy:
-  //   1. `scrollToDate` records a `pendingSeek` (state, not ref — so effects
-  //      below participate in scheduling).
-  //   2. We always finish positioning by calling
-  //      `headerEl.scrollIntoView({block:"start"})` on the real header DOM.
-  //      That respects the `scroll-padding-top` we set on the scroll
-  //      container, so the header lands flush below the sticky tab bar.
-  //   3. If the target date isn't loaded yet (idx<0), we trigger a backend
-  //      seek and wait — `placeholderData` keeps PhotoTimeline mounted, so
-  //      `pendingSeek` survives the refetch.
-  //   4. The re-align effect runs on every layout / render-range / load
-  //      change; as long as `pendingSeek` exists and we haven't reached the
-  //      target (delta <= 2px), we re-align. Cleared once stable.
-
+  // ── Header lookup ───────────────────────────────────────────
   const findHeaderIndex = useCallback(
-    (target: string): number => {
+    (target: string): { idx: number; exactDate: string } | null => {
       let idx = flatItems.findIndex(
         (item) => item.type === "header" && item.group.date.startsWith(target),
       );
@@ -360,118 +353,97 @@ export function PhotoTimeline({
           }
         }
       }
-      return idx;
+      if (idx < 0) return null;
+      const item = flatItems[idx];
+      if (item?.type !== "header") return null;
+      return { idx, exactDate: item.group.date };
     },
     [flatItems],
   );
 
-  const scrollHeaderBelowSticky = useCallback(
-    (target: string, smooth: boolean): { idx: number; aligned: boolean } => {
-      const idx = findHeaderIndex(target);
-      if (idx < 0) return { idx: -1, aligned: false };
-      const item = flatItems[idx];
-      if (item?.type !== "header") return { idx, aligned: false };
-
-      const headerEl = headerElsRef.current.get(item.group.date);
-      if (!headerEl) {
-        // Not yet rendered — bring it into the virtual window first.
-        virtualizer.scrollToIndex(idx, { align: "start", behavior: "auto" });
-        return { idx, aligned: false };
-      }
-
-      headerEl.scrollIntoView({
-        block: "start",
-        behavior: smooth ? "smooth" : "auto",
-      });
-      return { idx, aligned: true };
+  // ── Atomic scroll to a precomputed header offset ────────────
+  // `dateOffsets` is computed synchronously in the same useMemo as
+  // `flatItems`/`itemHeights`, using exact (not estimated) heights for
+  // headers (HEADER_HEIGHT) and rows (row.height + PHOTO_GAP). This is
+  // the same height calculation `estimateSize` returns to the
+  // virtualizer, so the offset matches the virtualizer's layout exactly.
+  // We bypass `scrollIntoView` and `virtualizer.scrollToIndex` because
+  // both are async (they depend on measureElement to settle), which
+  // creates the race conditions that cause off-target landings.
+  const scrollToHeaderByOffset = useCallback(
+    (exactDate: string, smooth: boolean): boolean => {
+      const scrollEl = scrollElRef.current;
+      const list = listRef.current;
+      if (!scrollEl || !list) return false;
+      const offset = dateOffsets.get(exactDate);
+      if (offset == null) return false;
+      const margin = list.offsetTop;
+      const padding =
+        Number.parseFloat(scrollEl.style.scrollPaddingTop || "0") || 0;
+      const top = Math.max(0, margin + offset - padding);
+      scrollEl.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+      return true;
     },
-    [findHeaderIndex, flatItems, virtualizer],
+    [dateOffsets],
   );
 
-  // ── Pending-seek-driven re-alignment ────────────────────────
-
-  const totalSize = virtualizer.getTotalSize();
-  const renderRangeKey =
-    virtualItems.length > 0
-      ? `${virtualItems[0].index}:${virtualItems[virtualItems.length - 1].index}`
-      : "empty";
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: totalSize/renderRangeKey are intentional triggers — re-align whenever virtual layout or rendered range changes
-  useEffect(() => {
-    if (!pendingSeek) return;
-    if (Date.now() > pendingSeek.deadline) {
-      setPendingSeek(null);
+  // ── Apply pending seek atomically when new data arrives ─────
+  // Runs synchronously before paint whenever flatItems / dateOffsets
+  // rebuild (i.e. after a refetch settles). If our pending target is
+  // now in the new data, we set scrollTop in the same frame — no
+  // intermediate "wrong scroll position then re-align" flicker.
+  useLayoutEffect(() => {
+    const pending = pendingSeekRef.current;
+    if (!pending) return;
+    if (Date.now() > pending.deadline) {
+      pendingSeekRef.current = null;
       return;
     }
+    const found = findHeaderIndex(pending.date);
+    if (!found) return;
+    if (scrollToHeaderByOffset(found.exactDate, false)) {
+      pendingSeekRef.current = null;
+    }
+  }, [findHeaderIndex, scrollToHeaderByOffset]);
 
-    const { idx, aligned } = scrollHeaderBelowSticky(pendingSeek.date, false);
-    if (idx < 0 || !aligned) return;
-
-    // After scrollIntoView settles in the next frame, verify alignment.
-    const raf = requestAnimationFrame(() => {
-      const item = flatItems[idx];
-      const scrollEl = scrollElRef.current;
-      if (!scrollEl || item?.type !== "header") return;
-      const headerEl = headerElsRef.current.get(item.group.date);
-      if (!headerEl) return;
-
-      const paddingTop =
-        Number.parseFloat(scrollEl.style.scrollPaddingTop || "0") || 0;
-      const targetY = scrollEl.getBoundingClientRect().top + paddingTop;
-      const actualY = headerEl.getBoundingClientRect().top;
-      const delta = Math.abs(actualY - targetY);
-
-      // Stable iff: visually aligned, no upward load in flight, and the
-      // target is far enough from the top that another upward prepend
-      // won't immediately shift us again.
-      const prependSettled = !hasNewer || idx > 10;
-      if (delta <= 2 && !isLoadingNewer && prependSettled) {
-        setPendingSeek(null);
-      }
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [
-    pendingSeek,
-    flatItems,
-    totalSize,
-    renderRangeKey,
-    hasNewer,
-    isLoadingNewer,
-    scrollHeaderBelowSticky,
-  ]);
-
-  // ── Scroll to date (for timeline scrubber) ──────────────────
+  // ── Scroll to date (entry point from TimelineScrubber) ──────
   const scrollToDate = useCallback(
     (datePrefix: string, smooth: boolean) => {
       // NOTE: do NOT silently fall back to nearest-day-in-same-month for
-      // the initial lookup. If the exact day isn't loaded, the right move
-      // is a backend seek to reload around the target. Without this guard
-      // "click 3-15 always lands on 3-31" happens when March is partial.
-      const idx = flatItems.findIndex(
+      // the initial in-range check. If the exact day isn't loaded, the
+      // right move is a backend seek to reload around the target.
+      const exactMatchIdx = flatItems.findIndex(
         (item) =>
           item.type === "header" && item.group.date.startsWith(datePrefix),
       );
 
-      // Reset user-scroll flag — the upward auto-loader stays suppressed
+      // Reset user-scroll flag — upward auto-loader stays suppressed
       // until the user does another wheel/touch/keyboard scroll.
       userScrolledSinceSeekRef.current = false;
 
-      // Always set pending — the re-align effect will keep things flush
-      // with the sticky tab bar across subsequent prepends/relayouts.
-      setPendingSeek((prev) =>
-        prev?.date === datePrefix
-          ? prev
-          : { date: datePrefix, deadline: Date.now() + 15000 },
-      );
+      if (exactMatchIdx >= 0) {
+        // In-range: scroll directly using precomputed offset. No
+        // pendingSeek needed — this is fully synchronous.
+        const item = flatItems[exactMatchIdx];
+        if (item.type === "header") {
+          pendingSeekRef.current = null;
+          scrollToHeaderByOffset(item.group.date, smooth);
+          return;
+        }
+      }
 
-      if (idx >= 0) {
-        scrollHeaderBelowSticky(datePrefix, smooth);
-      } else if (onSeekToDate) {
+      // Out-of-range: record the target, ask data hook to refetch
+      // around `datePrefix`. The useLayoutEffect above will pick up the
+      // new dateOffsets and apply scrollTop atomically before paint.
+      pendingSeekRef.current = {
+        date: datePrefix,
+        deadline: Date.now() + 15000,
+      };
+      if (onSeekToDate) {
         onSeekToDate(datePrefix);
       }
     },
-    [flatItems, scrollHeaderBelowSticky, onSeekToDate],
+    [flatItems, scrollToHeaderByOffset, onSeekToDate],
   );
 
   // ── Current visible date (for scroll spy) ───────────────────
@@ -540,11 +512,6 @@ export function PhotoTimeline({
               >
                 {item.type === "header" ? (
                   <div
-                    ref={(el) => {
-                      const map = headerElsRef.current;
-                      if (el) map.set(item.group.date, el);
-                      else map.delete(item.group.date);
-                    }}
                     data-date-header={item.group.date}
                     style={{
                       paddingLeft: PHOTO_GAP,
