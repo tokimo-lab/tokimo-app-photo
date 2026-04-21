@@ -21,7 +21,7 @@ import { type DateGroup, groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
 
 const PHOTO_GAP = 4;
-const HEADER_HEIGHT = 32;
+const HEADER_HEIGHT = 30;
 const VIRTUALIZER_OVERSCAN = 15;
 
 // ── Flat virtual item types ─────────────────────────────────────
@@ -200,40 +200,43 @@ export function PhotoTimeline({
   }, [groups, layoutWidth, targetRowHeight]);
 
   // ── Maintain scroll position when upward items are prepended ──
-  // Use useLayoutEffect (not useEffect) so the compensating scrollTop
-  // change is applied in the SAME frame that the new items render —
-  // otherwise the user briefly sees the old position before the
-  // adjustment, which looks like a jarring scroll jump.
+  // Strategy: use ResizeObserver on the inner list element. When the
+  // list height grows, that growth came from EITHER append (bottom) or
+  // prepend (top). We distinguish by tracking the first item's date —
+  // if it changed, the growth was a prepend, and we add the height
+  // delta to scrollTop so the user's view stays anchored.
   const prevFirstDateRef = useRef<string | null>(null);
-  const prevFirstDateOffsetRef = useRef(0);
+  const prevListHeightRef = useRef(0);
   useLayoutEffect(() => {
     if (flatItems.length === 0) return;
     const firstHeader = flatItems.find((item) => item.type === "header");
     const firstDate =
       firstHeader?.type === "header" ? firstHeader.group.date : null;
-    const prevFirst = prevFirstDateRef.current;
-    const prevOffset = prevFirstDateOffsetRef.current;
-
-    if (
-      prevFirst &&
-      firstDate &&
-      firstDate !== prevFirst &&
-      scrollElRef.current
-    ) {
-      // Items were prepended — adjust scroll to maintain visual position
-      const newOffset = dateOffsets.get(prevFirst) ?? 0;
-      const delta = newOffset - prevOffset;
-      if (delta > 0) {
-        scrollElRef.current.scrollTop += delta;
-      }
+    const list = listRef.current;
+    const scrollEl = scrollElRef.current;
+    if (!list || !scrollEl || !firstDate) {
+      prevFirstDateRef.current = firstDate;
+      prevListHeightRef.current = list?.offsetHeight ?? 0;
+      return;
     }
 
-    // Update tracking refs
+    const newHeight = list.offsetHeight;
+    const prevFirst = prevFirstDateRef.current;
+    const prevHeight = prevListHeightRef.current;
+
+    if (
+      prevFirst !== null &&
+      firstDate !== prevFirst &&
+      newHeight > prevHeight
+    ) {
+      // Prepend detected: list grew AND the first date changed.
+      const delta = newHeight - prevHeight;
+      scrollEl.scrollTop += delta;
+    }
+
     prevFirstDateRef.current = firstDate;
-    prevFirstDateOffsetRef.current = firstDate
-      ? (dateOffsets.get(firstDate) ?? 0)
-      : 0;
-  }, [flatItems, dateOffsets]);
+    prevListHeightRef.current = newHeight;
+  });
 
   // ── Scroll element (find nearest scrollable ancestor) ────────
   const scrollElRef = useRef<HTMLElement | null>(null);
@@ -301,14 +304,37 @@ export function PhotoTimeline({
     null,
   );
 
+  // ── User-scroll tracking ─────────────────────────────────────
+  // After a seek, the upward auto-loader is suppressed until the user
+  // performs an actual scroll gesture. Without this gate, the loader
+  // would fire immediately when seek lands on a date that's near the
+  // top of the loaded window, pulling in NEWER photos and visually
+  // pushing the seek target downward.
+  const userScrolledSinceSeekRef = useRef(false);
+  useEffect(() => {
+    const el = scrollElRef.current;
+    if (!el) return;
+    const onUserScroll = () => {
+      userScrolledSinceSeekRef.current = true;
+    };
+    el.addEventListener("wheel", onUserScroll, { passive: true });
+    el.addEventListener("touchmove", onUserScroll, { passive: true });
+    el.addEventListener("keydown", onUserScroll);
+    return () => {
+      el.removeEventListener("wheel", onUserScroll);
+      el.removeEventListener("touchmove", onUserScroll);
+      el.removeEventListener("keydown", onUserScroll);
+    };
+  }, []);
+
   // ── Upward infinite scroll: load newer photos when near top ──
-  // Suppressed only during a pending seek (where we'd be prepending the
-  // photos the user just navigated AWAY from). Otherwise fires whenever
-  // the rendered window is near the top — the prepend-position-maintain
-  // effect (useLayoutEffect above) keeps the visible position stable.
+  // Suppressed during pending seek and until the user actively scrolls,
+  // to prevent the seek target from being visually pushed down by
+  // background prepends.
   useEffect(() => {
     if (!hasNewer || !onLoadNewer || isLoadingNewer) return;
     if (pendingSeekRef.current) return;
+    if (!userScrolledSinceSeekRef.current) return;
     const firstItem = virtualItems[0];
     if (!firstItem) return;
     if (firstItem.index <= 10) {
@@ -407,10 +433,14 @@ export function PhotoTimeline({
       );
 
       // Reset prepend-tracking refs so the next prepend (after seek
-      // completes and upward-fetch returns) doesn't apply a stale
-      // delta — the layout is being rebuilt around a new anchor.
+      // completes) doesn't apply a stale delta — the layout is being
+      // rebuilt around a new anchor.
       prevFirstDateRef.current = null;
-      prevFirstDateOffsetRef.current = 0;
+      prevListHeightRef.current = listRef.current?.offsetHeight ?? 0;
+
+      // Reset user-scroll flag — upward auto-loader stays suppressed
+      // until the user does another wheel/touch/keyboard scroll.
+      userScrolledSinceSeekRef.current = false;
 
       if (exactMatchIdx >= 0) {
         // In-range: scroll directly using precomputed offset. No
@@ -507,6 +537,7 @@ export function PhotoTimeline({
                     style={{
                       paddingLeft: PHOTO_GAP,
                       paddingRight: PHOTO_GAP,
+                      height: HEADER_HEIGHT,
                     }}
                   >
                     <DateHeader
