@@ -418,6 +418,11 @@ export function PhotoTimeline({
     if (!found) return;
     if (scrollToHeaderByOffset(found.exactDate, false)) {
       pendingSeekRef.current = null;
+      // Open the upward auto-loader immediately so the user can scroll
+      // up to newer photos without first scrolling down. The list height
+      // is pinned by prepend-maintain so any prepend is visually
+      // transparent.
+      userScrolledSinceSeekRef.current = true;
     }
   }, [findHeaderIndex, scrollToHeaderByOffset]);
 
@@ -449,6 +454,8 @@ export function PhotoTimeline({
         if (item.type === "header") {
           pendingSeekRef.current = null;
           scrollToHeaderByOffset(item.group.date, smooth);
+          // Re-open upward loader (we just reset it above).
+          userScrolledSinceSeekRef.current = true;
           return;
         }
       }
