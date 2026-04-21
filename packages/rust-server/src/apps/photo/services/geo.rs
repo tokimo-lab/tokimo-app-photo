@@ -159,33 +159,64 @@ impl PhotoGeoService {
 
     /// Batch reverse-geocode all photos in an app that have GPS but no geo data.
     pub async fn reverse_geocode_app(db: &DatabaseConnection, http: &Client, app_id: Uuid) -> Result<u32, AppError> {
+        let pending = Self::list_pending_photo_ids(db, app_id).await?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let total = pending.len();
+        info!("Reverse geocoding {total} photos for app {app_id}");
+        let (success, _) = Self::process_photo_ids(db, http, pending).await;
+        info!("Reverse geocoding done: {success}/{total} photos updated");
+        Ok(success)
+    }
+
+    /// List photo IDs missing geo data (have GPS but no province).
+    pub async fn list_pending_photo_ids(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
         let settings: PhotoGeoSettings = SystemConfigRepo::get(db).await?;
         if !settings.enabled || !provider_has_key(&settings) {
             return Err(AppError::Internal(
                 "Reverse geocoding not enabled or API key missing".into(),
             ));
         }
-
-        // Find photos with GPS but no geo province
-        let pending = photos::Entity::find()
+        let ids = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::GpsLatitude.is_not_null())
             .filter(photos::Column::GpsLongitude.is_not_null())
             .filter(photos::Column::GeoProvince.is_null())
             .filter(photos::Column::DeletedAt.is_null())
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
             .all(db)
             .await?;
+        Ok(ids)
+    }
 
-        let total = pending.len();
-        if total == 0 {
-            info!("No photos need reverse geocoding for app {app_id}");
-            return Ok(0);
-        }
-
-        info!("Reverse geocoding {total} photos for app {app_id}");
+    /// Process explicit photo IDs (used by child batch jobs). Lenient: per-photo
+    /// failures don't abort the batch.
+    pub async fn process_photo_ids(
+        db: &DatabaseConnection,
+        http: &Client,
+        ids: Vec<Uuid>,
+    ) -> (u32, u32) {
+        let settings: PhotoGeoSettings = match SystemConfigRepo::get(db).await {
+            Ok(s) => s,
+            Err(e) => {
+                error!("[photo_geo] failed to load settings: {e}");
+                return (0, ids.len() as u32);
+            }
+        };
         let mut success_count = 0u32;
+        let mut failure_count = 0u32;
 
-        for photo in &pending {
+        for photo_id in ids {
+            let Ok(Some(photo)) = photos::Entity::find_by_id(photo_id).one(db).await else {
+                failure_count += 1;
+                continue;
+            };
             let Some(lat) = photo.gps_latitude else {
                 continue;
             };
@@ -195,7 +226,6 @@ impl PhotoGeoService {
 
             match Self::resolve_location(db, http, &settings, lat, lon).await {
                 Ok(geo) => {
-                    // Build formatted location name
                     let loc_name = [
                         geo.province.as_deref(),
                         geo.city.as_deref(),
@@ -218,24 +248,23 @@ impl PhotoGeoService {
                         active.location_name = Set(Some(loc_name));
                     }
                     if let Err(e) = active.update(db).await {
-                        error!("Failed to update photo {} geo: {e}", photo.id);
+                        error!("Failed to update photo {photo_id} geo: {e}");
+                        failure_count += 1;
                     } else {
                         success_count += 1;
                     }
                 }
                 Err(e) => {
-                    warn!("Geocode failed for photo {} ({lat},{lon}): {e}", photo.id);
-                    // Rate limit: sleep briefly on API errors
+                    failure_count += 1;
+                    warn!("Geocode failed for photo {photo_id} ({lat},{lon}): {e}");
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }
             }
 
-            // Rate limit: ~5 req/s to stay within free tier
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
-        info!("Reverse geocoding done: {success_count}/{total} photos updated");
-        Ok(success_count)
+        (success_count, failure_count)
     }
 
     /// Get location stats for an app (grouped by province/city/district).

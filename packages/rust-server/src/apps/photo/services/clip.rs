@@ -239,6 +239,126 @@ impl PhotoClipService {
         Ok(map)
     }
 
+    /// List photo IDs missing a CLIP vector. Empty Vec when models not ready.
+    pub async fn list_pending_photo_ids(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
+        app_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
+        let settings = PhotoAiSettings::for_app(db, app_id).await?;
+        if !settings.clip_enabled {
+            return Err(AppError::Internal("CLIP not enabled".into()));
+        }
+        if !state.ai.is_clip_enabled() || !state.ai.clip_models_ready() {
+            warn!("[photo_clip] CLIP model files not found, skipping batch for app {app_id}");
+            return Ok(Vec::new());
+        }
+        let ids = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(
+                photos::Column::Id.not_in_subquery(
+                    sea_orm::sea_query::Query::select()
+                        .column(crate::db::entities::photo_clip_vectors::Column::PhotoId)
+                        .from(crate::db::entities::photo_clip_vectors::Entity)
+                        .to_owned(),
+                ),
+            )
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
+            .all(db)
+            .await?;
+        Ok(ids)
+    }
+
+    /// Process explicit photo IDs (used by child batch jobs). Lenient: per-photo
+    /// failures are recorded as zero vectors so the photo isn't re-queued forever.
+    pub async fn process_photo_ids(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
+        app_id: Uuid,
+        ids: Vec<Uuid>,
+    ) -> (u32, u32) {
+        if ids.is_empty() {
+            return (0, 0);
+        }
+        // Pre-cache base paths so per-photo loading skips DB lookups.
+        let source_paths = match Self::preload_source_base_paths(db, app_id).await {
+            Ok(p) => std::sync::Arc::new(p),
+            Err(e) => {
+                error!("[photo_clip] preload_source_base_paths failed: {e}");
+                return (0, ids.len() as u32);
+            }
+        };
+
+        let mut success = 0u32;
+        let mut failures = 0u32;
+        const CONCURRENCY: usize = 8;
+
+        // Load photo rows for the given IDs.
+        let photos_rows = match photos::Entity::find()
+            .filter(photos::Column::Id.is_in(ids.clone()))
+            .all(db)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                error!("[photo_clip] failed to load photos: {e}");
+                return (0, ids.len() as u32);
+            }
+        };
+
+        use futures_util::StreamExt;
+        let mut futures = futures_util::stream::FuturesUnordered::new();
+
+        for photo in photos_rows {
+            let db_c = db.clone();
+            let state_c = state.clone();
+            let sp = source_paths.clone();
+            futures.push(async move {
+                let filename = photo.filename.clone();
+                let photo_id = photo.id;
+                let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
+                let result = match bytes_result {
+                    Ok(image_bytes) => match Self::embed_image(&state_c.ai, image_bytes).await {
+                        Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
+                        Err(e) => Err(e),
+                    },
+                    Err(e) => Err(e),
+                };
+                (photo_id, filename, result)
+            });
+
+            if futures.len() >= CONCURRENCY
+                && let Some((photo_id, filename, result)) = futures.next().await
+            {
+                match result {
+                    Ok(()) => success += 1,
+                    Err(e) => {
+                        failures += 1;
+                        error!("[photo_clip] Failed for {filename}: {e}");
+                        let zero_vec = vec![0.0f32; 512];
+                        let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                    }
+                }
+            }
+        }
+
+        while let Some((photo_id, filename, result)) = futures.next().await {
+            match result {
+                Ok(()) => success += 1,
+                Err(e) => {
+                    failures += 1;
+                    error!("[photo_clip] Failed for {filename}: {e}");
+                    let zero_vec = vec![0.0f32; 512];
+                    let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                }
+            }
+        }
+        (success, failures)
+    }
+
     /// Batch embed all photos in an app that don't yet have a CLIP vector.
     ///
     /// Processes in pages of 500 to avoid loading all rows at once.

@@ -132,10 +132,10 @@ pub async fn get_photo_sync_progress(
 
     let job_types = &[
         "file_scrape",
-        "photo_ocr",
-        "photo_clip",
-        "photo_face_detect",
-        "photo_reverse_geocode",
+        "photo_ocr_scan",
+        "photo_clip_scan",
+        "photo_face_scan",
+        "photo_geocode_scan",
     ];
     let (total, completed, running, pending, failed) = JobRepo::count_jobs_by_app(&state.db, uid, job_types).await?;
 

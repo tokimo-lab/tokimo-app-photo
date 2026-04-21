@@ -249,51 +249,66 @@ impl PhotoOcrService {
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
     ) -> Result<u32, AppError> {
+        let pending = Self::list_pending_photo_ids(db, state, app_id).await?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let total = pending.len();
+        info!("[photo_ocr] Processing {total} photos for app {app_id}");
+        let (success, _failures) = Self::process_photo_ids(db, state, pending).await;
+        info!("[photo_ocr] Done: {success}/{total} photos processed");
+        Ok(success)
+    }
+
+    /// List photo IDs that need OCR scanning. Returns empty Vec if OCR is
+    /// disabled or models aren't ready (parent worker decides whether to
+    /// surface this as an error).
+    pub async fn list_pending_photo_ids(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
+        app_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.ocr_enabled {
             return Err(AppError::Internal("OCR not enabled".into()));
         }
-
         if !state.ai.is_ocr_enabled() || !state.ai.ocr_models_ready() {
             warn!("[photo_ocr] OCR model files not found, skipping batch for app {app_id}");
-            return Ok(0);
+            return Ok(Vec::new());
         }
-
-        let pending = photos::Entity::find()
+        let ids = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::OcrScannedAt.is_null())
             .filter(photos::Column::DeletedAt.is_null())
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
             .all(db)
             .await?;
+        Ok(ids)
+    }
 
-        let total = pending.len();
-        if total == 0 {
-            info!("[photo_ocr] No photos need OCR for app {app_id}");
-            return Ok(0);
-        }
-
-        info!("[photo_ocr] Processing {total} photos for app {app_id}");
+    /// Process an explicit set of photo IDs (used by child batch jobs).
+    /// Returns (success_count, failure_count). Does not error on individual
+    /// per-photo failures (lenient).
+    pub async fn process_photo_ids(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
+        ids: Vec<Uuid>,
+    ) -> (u32, u32) {
         let mut success = 0u32;
-
-        for photo in &pending {
-            match Self::ocr_photo(db, state, photo.id).await {
-                Ok(count) => {
-                    success += 1;
-                    if count > 0 {
-                        info!("[photo_ocr] {} text regions found in {}", count, photo.filename);
-                    }
-                }
+        let mut failures = 0u32;
+        for photo_id in ids {
+            match Self::ocr_photo(db, state, photo_id).await {
+                Ok(_) => success += 1,
                 Err(e) => {
-                    error!("[photo_ocr] Failed for {}: {e}", photo.filename);
+                    failures += 1;
+                    error!("[photo_ocr] Failed for photo {photo_id}: {e}");
                 }
             }
-
-            // Brief pause to avoid overwhelming the AI server
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-
-        info!("[photo_ocr] Done: {success}/{total} photos processed");
-        Ok(success)
+        (success, failures)
     }
 
     /// Search OCR text across all photos in an app.

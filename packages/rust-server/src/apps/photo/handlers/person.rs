@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::apps::photo::repos::PhotoLibraryRepo;
-use crate::apps::photo::services::notifications as photo_notify;
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
@@ -26,42 +25,18 @@ pub async fn face_detect(
         .user_id
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
-    let library = PhotoLibraryRepo::get_by_id(&state.db, app_id)
+    PhotoLibraryRepo::get_by_id(&state.db, app_id)
         .await?
         .not_found(format!("photo library {id} not found"))?;
-    let library_name = library.name.clone();
-    let db = state.db.clone();
-    let st = state.clone();
 
-    tokio::spawn(async move {
-        match crate::apps::photo::services::face::PhotoFaceService::detect_app(&db, &st.ai, &st.sources, app_id).await {
-            Ok(count) => {
-                tracing::info!("Face detection: {count} photos for app {app_id}");
-                photo_notify::notify_processing_completed(
-                    &st,
-                    user_id,
-                    app_id,
-                    &library_name,
-                    "photo_face_detect",
-                    count as i64,
-                )
-                .await;
-            }
-            Err(e) => {
-                tracing::error!("Face detection failed for app {app_id}: {e}");
-                photo_notify::notify_processing_failed(
-                    &st,
-                    user_id,
-                    app_id,
-                    &library_name,
-                    "photo_face_detect",
-                    &e.to_string(),
-                )
-                .await;
-            }
-        }
-    });
-
+    crate::db::repos::job_repo::JobRepo::create_job(
+        &state.db,
+        "photo_face_scan",
+        serde_json::json!({ "appId": app_id.to_string() }),
+        None,
+        Some(user_id),
+    )
+    .await?;
     Ok(ok(serde_json::json!({"status": "started"})))
 }
 

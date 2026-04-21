@@ -214,53 +214,66 @@ impl PhotoFaceService {
         sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
         app_id: Uuid,
     ) -> Result<u32, AppError> {
+        let pending = Self::list_pending_photo_ids(db, ai, app_id).await?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let total = pending.len();
+        info!("[photo_face] Processing {total} photos for app {app_id}");
+        let (success, _) = Self::process_photo_ids(db, ai, sources, pending).await;
+        info!("[photo_face] Done: {success}/{total} photos processed");
+        Ok(success)
+    }
+
+    /// List photo IDs that still need face detection. Empty Vec when models
+    /// are not ready (parent worker treats as no-op).
+    pub async fn list_pending_photo_ids(
+        db: &DatabaseConnection,
+        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
+        app_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.face_enabled {
             return Err(AppError::Internal("Face recognition not enabled".into()));
         }
-
         if !ai.is_face_enabled() || !ai.face_models_ready() {
             warn!("[photo_face] Face model files not found, skipping batch for app {app_id}");
-            return Ok(0);
+            return Ok(Vec::new());
         }
-
-        // Find photos that have no face rows yet
-        let pending = photos::Entity::find()
+        let ids = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(Expr::cust(
                 "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)".to_string(),
             ))
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
             .all(db)
             .await?;
+        Ok(ids)
+    }
 
-        let total = pending.len();
-        if total == 0 {
-            info!("[photo_face] No photos need face detection for app {app_id}");
-            return Ok(0);
-        }
-
-        info!("[photo_face] Processing {total} photos for app {app_id}");
+    /// Process an explicit set of photo IDs (used by child batch jobs).
+    pub async fn process_photo_ids(
+        db: &DatabaseConnection,
+        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
+        sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+        ids: Vec<Uuid>,
+    ) -> (u32, u32) {
         let mut success = 0u32;
-
-        for photo in &pending {
-            match Self::detect_faces(db, ai, sources, photo.id).await {
-                Ok(count) => {
-                    success += 1;
-                    if count > 0 {
-                        info!("[photo_face] {count} faces found in {}", photo.filename);
-                    }
-                }
+        let mut failures = 0u32;
+        for photo_id in ids {
+            match Self::detect_faces(db, ai, sources, photo_id).await {
+                Ok(_) => success += 1,
                 Err(e) => {
-                    error!("[photo_face] Failed for {}: {e}", photo.filename);
+                    failures += 1;
+                    error!("[photo_face] Failed for photo {photo_id}: {e}");
                 }
             }
-
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-
-        info!("[photo_face] Done: {success}/{total} photos processed");
-        Ok(success)
+        (success, failures)
     }
 
     /// List all persons for an app.
