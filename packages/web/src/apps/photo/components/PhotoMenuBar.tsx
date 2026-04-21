@@ -70,7 +70,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
     }
   }, [isSelecting, clearSelection]);
 
-  const syncMutation = api.photo.rescan.useMutation({
+  const syncMutation = api.photo.sync.useMutation({
     onSuccess: () => {
       message.success("同步已开始");
       api.photo.list.invalidate(qc);

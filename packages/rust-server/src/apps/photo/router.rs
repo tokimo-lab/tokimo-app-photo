@@ -258,6 +258,10 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
                 .delete(crud::delete_photo_library),
         )
         .route(
+            "/api/apps/photo/{id}/sync",
+            post(sync::sync_photo),
+        )
+        .route(
             "/api/apps/photo/{id}/sync-progress",
             get(sync::get_photo_sync_progress),
         )
