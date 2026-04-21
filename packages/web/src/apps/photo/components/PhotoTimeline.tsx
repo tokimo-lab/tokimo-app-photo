@@ -524,9 +524,18 @@ export function PhotoTimeline({
             const item = flatItems[vItem.index];
             if (!item) return null;
 
+            // Use a content-stable key so prepended items don't shift
+            // existing items into "different content under same key" —
+            // that would force PhotoThumbnail remounts (gray placeholder
+            // flash). Index-based vItem.key was the cause.
+            const key =
+              item.type === "header"
+                ? `h:${item.group.date}`
+                : `r:${item.groupDate}:${item.row.items[0]?.photo.id ?? vItem.index}`;
+
             return (
               <div
-                key={vItem.key}
+                key={key}
                 data-index={vItem.index}
                 ref={virtualizer.measureElement}
                 style={{
