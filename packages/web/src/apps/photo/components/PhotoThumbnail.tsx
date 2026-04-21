@@ -5,6 +5,17 @@ import { thumbUrl } from "@/lib/thumb";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { photoLiveVideoUrl, THUMB_WIDTH } from "./photo-utils";
 
+// Module-level cache of photo IDs whose thumbnail has loaded at least
+// once. Persists across PhotoThumbnail mount/unmount cycles so that a
+// remount (e.g. caused by a virtualized list re-keying after prepend)
+// does not re-show the skeleton-shimmer / opacity-0 fade-in for an
+// already-loaded image. The browser's HTTP cache will return the same
+// bytes immediately, but React state would otherwise reset to
+// `loaded=false` until <img onLoad> fires again, producing a brief
+// gray flash for every visible thumbnail. Bounded by the number of
+// distinct photos viewed in this session — acceptable.
+const loadedPhotoIds = new Set<string>();
+
 export const PhotoThumbnail = memo(function PhotoThumbnail({
   photo,
   onClick,
@@ -28,8 +39,26 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
     : undefined;
   const imgRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  // Initialize loaded from module-level cache so a remounted thumbnail
+  // for a previously-loaded photo skips the skeleton/fade entirely.
+  const [loaded, setLoaded] = useState(() => loadedPhotoIds.has(photo.id));
   const [errored, setErrored] = useState(false);
+  const onImgRef = useCallback(
+    (el: HTMLImageElement | null) => {
+      imgRef.current = el;
+      // Cached images may not fire onLoad after remount — detect via the
+      // browser's `complete` flag at attach time as a second safety net.
+      if (el && el.complete && el.naturalWidth > 0) {
+        loadedPhotoIds.add(photo.id);
+        setLoaded(true);
+      }
+    },
+    [photo.id],
+  );
+  const handleLoad = useCallback(() => {
+    loadedPhotoIds.add(photo.id);
+    setLoaded(true);
+  }, [photo.id]);
   const [showLiveVideo, setShowLiveVideo] = useState(false);
 
   const isLive = !!photo.liveVideoPath;
@@ -91,13 +120,13 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
       >
         {src && !errored ? (
           <img
-            ref={imgRef}
+            ref={onImgRef}
             src={src}
             alt={photo.title || photo.filename}
             className={`h-full w-full object-cover transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"} ${isSelected ? "brightness-90" : ""}`}
             loading="lazy"
             decoding="async"
-            onLoad={() => setLoaded(true)}
+            onLoad={handleLoad}
             onError={() => setErrored(true)}
           />
         ) : (
