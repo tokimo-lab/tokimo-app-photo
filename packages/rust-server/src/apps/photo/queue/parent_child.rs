@@ -55,6 +55,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 /// re-enqueueing children.
 pub async fn run_scan<F>(
     db: &DatabaseConnection,
+    state: &Arc<AppState>,
     job_id: Uuid,
     payload: &JsonValue,
     user_id: Option<Uuid>,
@@ -97,11 +98,10 @@ where
     info!("[{task_type}_scan] {total} pending photos for app {app_uuid}");
     if total == 0 {
         if let Some(uid) = user_id {
-            // Use a state-less notification path: success completion of 0 items.
-            // We need state for the notification helpers, but parent scan
-            // handler signature (no state arg) doesn't match. Caller will
-            // wrap a state-bound version if it wants this notification.
-            let _ = uid;
+            // Surface "nothing to do" as a completion notification (count=0)
+            // so the user gets an immediate ack instead of silence.
+            photo_notify::notify_processing_completed(state, uid, app_uuid, &lib_name, task_type, 0)
+                .await;
         }
         return Ok(Some(json!({
             "processed": 0,
@@ -129,6 +129,17 @@ where
     }
     let inserted = JobRepo::create_jobs_batch(db, children).await?;
     info!("[{task_type}_scan] enqueued {inserted} child jobs (batch={batch_size})");
+
+    // Fire an immediate 0/total progress notification so the user sees the
+    // task in their notification center right away — children may take
+    // minutes per batch, so waiting for the first finalize_child would feel
+    // like the trigger silently failed.
+    if let Some(uid) = user_id {
+        photo_notify::notify_processing_progress(
+            state, uid, app_uuid, &lib_name, task_type, 0, total,
+        )
+        .await;
+    }
 
     Ok(Some(parent_meta_waiting(total, &lib_name, task_type)))
 }

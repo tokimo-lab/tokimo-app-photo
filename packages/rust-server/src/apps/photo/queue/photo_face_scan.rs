@@ -21,6 +21,7 @@ pub async fn handle(
     let ai = state.ai.clone();
     parent_child::run_scan(
         db,
+        state,
         job_id,
         payload,
         user_id,

@@ -13,13 +13,14 @@ const BATCH_SIZE: usize = 50;
 
 pub async fn handle(
     db: &DatabaseConnection,
-    _state: &Arc<AppState>,
+    state: &Arc<AppState>,
     job_id: Uuid,
     payload: &JsonValue,
     user_id: Option<Uuid>,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     parent_child::run_scan(
         db,
+        state,
         job_id,
         payload,
         user_id,

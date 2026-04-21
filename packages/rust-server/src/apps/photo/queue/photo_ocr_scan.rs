@@ -20,16 +20,17 @@ pub async fn handle(
     payload: &JsonValue,
     user_id: Option<Uuid>,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
-    let state = state.clone();
+    let state_owned = state.clone();
     parent_child::run_scan(
         db,
+        state,
         job_id,
         payload,
         user_id,
         "photo_ocr",
         "photo_ocr_batch",
         BATCH_SIZE,
-        async move |app_uuid| PhotoOcrService::list_pending_photo_ids(db, &state, app_uuid).await,
+        async move |app_uuid| PhotoOcrService::list_pending_photo_ids(db, &state_owned, app_uuid).await,
     )
     .await
 }
