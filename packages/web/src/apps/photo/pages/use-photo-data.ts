@@ -52,13 +52,18 @@ export function usePhotoData({
   const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
   const [favLoadingMore, setFavLoadingMore] = useState(false);
   const [trashLoadingMore, setTrashLoadingMore] = useState(false);
-  const accTimelineRef = useRef<PhotoOutput[]>([]);
-  const accUpwardRef = useRef<PhotoOutput[]>([]);
+  // NOTE: accumulators are useState (NOT useRef) so the merge memos
+  // recompute on the same render where new pages append. With useRef +
+  // useEffect-mutation, the memo would read a stale ref value during the
+  // render that picks up the new query data, dropping the latest page
+  // until the next unrelated re-render — see Bug B in plan.md.
+  const [accTimeline, setAccTimeline] = useState<PhotoOutput[]>([]);
+  const [accUpward, setAccUpward] = useState<PhotoOutput[]>([]);
   const [upwardPage, setUpwardPage] = useState(1);
   const [upwardLoadingMore, setUpwardLoadingMore] = useState(false);
   const [upwardEnabled, setUpwardEnabled] = useState(false);
-  const accFavRef = useRef<PhotoOutput[]>([]);
-  const accTrashRef = useRef<PhotoOutput[]>([]);
+  const [accFav, setAccFav] = useState<PhotoOutput[]>([]);
+  const [accTrash, setAccTrash] = useState<PhotoOutput[]>([]);
 
   // Debounce search query + reset pagination
   useEffect(() => {
@@ -66,7 +71,7 @@ export function usePhotoData({
     debounceTimerRef.current = setTimeout(() => {
       setDebouncedSearch(searchQuery);
       setTimelinePage(1);
-      accTimelineRef.current = [];
+      setAccTimeline([]);
     }, 300);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -242,16 +247,18 @@ export function usePhotoData({
     // Critical: when query key changes (e.g. seek), `placeholderData` keeps
     // `data` populated with the PREVIOUS key's response. We must NOT
     // re-populate the accumulator from that stale data — otherwise the
-    // freshly-cleared `accTimelineRef` is immediately re-filled with the
+    // freshly-cleared `accTimeline` is immediately re-filled with the
     // wrong-window photos (e.g. today's photos after seeking to 3-15).
     if (photosQuery.isPlaceholderData) return;
     setTimelineLoadingMore(false);
     if (timelinePage === 1) {
-      accTimelineRef.current = photosQuery.data.items;
+      setAccTimeline(photosQuery.data.items);
     } else {
-      const ids = new Set(accTimelineRef.current.map((p) => p.id));
-      const newItems = photosQuery.data.items.filter((p) => !ids.has(p.id));
-      accTimelineRef.current = [...accTimelineRef.current, ...newItems];
+      setAccTimeline((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const newItems = photosQuery.data.items.filter((p) => !ids.has(p.id));
+        return newItems.length === 0 ? prev : [...prev, ...newItems];
+      });
     }
   }, [photosQuery.data, photosQuery.isPlaceholderData, timelinePage]);
 
@@ -261,31 +268,29 @@ export function usePhotoData({
     if (!upwardQuery.data?.items) return;
     setUpwardLoadingMore(false);
     if (upwardPage === 1) {
-      accUpwardRef.current = upwardQuery.data.items;
+      setAccUpward(upwardQuery.data.items);
     } else {
-      const ids = new Set(accUpwardRef.current.map((p) => p.id));
-      const newItems = upwardQuery.data.items.filter((p) => !ids.has(p.id));
-      accUpwardRef.current = [...accUpwardRef.current, ...newItems];
+      setAccUpward((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const newItems = upwardQuery.data.items.filter((p) => !ids.has(p.id));
+        return newItems.length === 0 ? prev : [...prev, ...newItems];
+      });
     }
   }, [upwardQuery.data, upwardPage]);
 
   // Merge upward (reversed to desc) + downward
-  // biome-ignore lint/correctness/useExhaustiveDependencies: upwardQuery.data triggers re-merge of ref-accumulated photos
   const allTimelinePhotosRaw = useMemo(() => {
     const downward =
-      accTimelineRef.current.length > 0
-        ? accTimelineRef.current
-        : (photosQuery.data?.items ?? []);
-    if (accUpwardRef.current.length === 0) return downward;
-    const upwardReversed = [...accUpwardRef.current].reverse();
+      accTimeline.length > 0 ? accTimeline : (photosQuery.data?.items ?? []);
+    if (accUpward.length === 0) return downward;
+    const upwardReversed = [...accUpward].reverse();
     const downIds = new Set(downward.map((p) => p.id));
     const uniqueUp = upwardReversed.filter((p) => !downIds.has(p.id));
     return [...uniqueUp, ...downward];
-  }, [photosQuery.data?.items, upwardQuery.data?.items]);
+  }, [accTimeline, accUpward, photosQuery.data?.items]);
 
   const upwardHasMore =
-    !!upwardAfterDate &&
-    (!upwardEnabled || accUpwardRef.current.length < upwardTotal);
+    !!upwardAfterDate && (!upwardEnabled || accUpward.length < upwardTotal);
 
   const allTimelinePhotos = useMemo(
     () =>
@@ -311,20 +316,21 @@ export function usePhotoData({
     if (!favoritesQuery.data?.items) return;
     setFavLoadingMore(false);
     if (favPage === 1) {
-      accFavRef.current = favoritesQuery.data.items;
+      setAccFav(favoritesQuery.data.items);
     } else {
-      const ids = new Set(accFavRef.current.map((p) => p.id));
-      const newItems = favoritesQuery.data.items.filter((p) => !ids.has(p.id));
-      accFavRef.current = [...accFavRef.current, ...newItems];
+      setAccFav((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const newItems = favoritesQuery.data.items.filter(
+          (p) => !ids.has(p.id),
+        );
+        return newItems.length === 0 ? prev : [...prev, ...newItems];
+      });
     }
   }, [favoritesQuery.data, favPage]);
 
   const allFavPhotos = useMemo(
-    () =>
-      accFavRef.current.length > 0
-        ? accFavRef.current
-        : (favoritesQuery.data?.items ?? []),
-    [favoritesQuery.data?.items],
+    () => (accFav.length > 0 ? accFav : (favoritesQuery.data?.items ?? [])),
+    [accFav, favoritesQuery.data?.items],
   );
   const favHasMore = allFavPhotos.length < favTotal;
 
@@ -334,20 +340,19 @@ export function usePhotoData({
     if (!trashedQuery.data?.items) return;
     setTrashLoadingMore(false);
     if (trashPage === 1) {
-      accTrashRef.current = trashedQuery.data.items;
+      setAccTrash(trashedQuery.data.items);
     } else {
-      const ids = new Set(accTrashRef.current.map((p) => p.id));
-      const newItems = trashedQuery.data.items.filter((p) => !ids.has(p.id));
-      accTrashRef.current = [...accTrashRef.current, ...newItems];
+      setAccTrash((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const newItems = trashedQuery.data.items.filter((p) => !ids.has(p.id));
+        return newItems.length === 0 ? prev : [...prev, ...newItems];
+      });
     }
   }, [trashedQuery.data, trashPage]);
 
   const allTrashPhotos = useMemo(
-    () =>
-      accTrashRef.current.length > 0
-        ? accTrashRef.current
-        : (trashedQuery.data?.items ?? []),
-    [trashedQuery.data?.items],
+    () => (accTrash.length > 0 ? accTrash : (trashedQuery.data?.items ?? [])),
+    [accTrash, trashedQuery.data?.items],
   );
   const trashHasMore = allTrashPhotos.length < trashTotal;
 
@@ -396,8 +401,8 @@ export function usePhotoData({
     } else {
       beforeDate = `${parts[0]}-12-31`;
     }
-    accTimelineRef.current = [];
-    accUpwardRef.current = [];
+    setAccTimeline([]);
+    setAccUpward([]);
     setUpwardEnabled(false);
     setUpwardPage(1);
     setTimelinePage(1);
@@ -416,7 +421,7 @@ export function usePhotoData({
 
   const resetTrash = useCallback(() => {
     setTrashPage(1);
-    accTrashRef.current = [];
+    setAccTrash([]);
   }, []);
 
   return {
