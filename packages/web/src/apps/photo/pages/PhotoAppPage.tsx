@@ -1,4 +1,4 @@
-import { Button, Empty, PillTabBar, Spin, Tag } from "@tokiomo/components";
+import { Button, Empty, PillTabBar, Spin, Tag } from "@tokimo/ui";
 import {
   Calendar,
   FolderOpen,

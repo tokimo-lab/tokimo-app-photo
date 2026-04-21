@@ -1,4 +1,4 @@
-import { Modal } from "@tokiomo/components";
+import { Modal } from "@tokimo/ui";
 import { useRef } from "react";
 import { getOcrModelName } from "@/lib/ocr-models";
 

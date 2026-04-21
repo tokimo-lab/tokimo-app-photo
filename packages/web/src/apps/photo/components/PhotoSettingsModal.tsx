@@ -1,4 +1,4 @@
-import { Modal, Spin } from "@tokiomo/components";
+import { Modal, Spin } from "@tokimo/ui";
 import { lazy, Suspense } from "react";
 
 const PhotoSettingsPage = lazy(

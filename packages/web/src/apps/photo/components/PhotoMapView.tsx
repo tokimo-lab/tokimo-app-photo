@@ -1,6 +1,6 @@
 // Photo Map View — AMap JS API v1.4 + Supercluster clustering
 import AMapLoader from "@amap/amap-jsapi-loader";
-import { Empty, Spin } from "@tokiomo/components";
+import { Empty, Spin } from "@tokimo/ui";
 import { Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";

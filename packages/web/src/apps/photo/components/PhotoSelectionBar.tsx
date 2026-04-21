@@ -1,4 +1,4 @@
-import { Button } from "@tokiomo/components";
+import { Button } from "@tokimo/ui";
 import { EyeOff, Heart, HeartOff, ImagePlus, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 

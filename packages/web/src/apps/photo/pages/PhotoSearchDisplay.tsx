@@ -1,4 +1,4 @@
-import { Empty, Spin } from "@tokiomo/components";
+import { Empty, Spin } from "@tokimo/ui";
 import { ScanText, Sparkles, X } from "lucide-react";
 import { thumbUrl } from "@/lib/thumb";
 

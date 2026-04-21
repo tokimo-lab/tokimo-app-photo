@@ -1,4 +1,4 @@
-import { Button, Empty, Spin } from "@tokiomo/components";
+import { Button, Empty, Spin } from "@tokimo/ui";
 import { ChevronRight, Pencil, User, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";

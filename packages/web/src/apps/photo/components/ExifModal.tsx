@@ -1,4 +1,4 @@
-import { Modal } from "@tokiomo/components";
+import { Modal } from "@tokimo/ui";
 import { useRef } from "react";
 
 export function stripExifQuotes(value: string): string {

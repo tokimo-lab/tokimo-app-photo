@@ -1,4 +1,4 @@
-import { LoadingOutlined } from "@tokiomo/components";
+import { LoadingOutlined } from "@tokimo/ui";
 import {
   Image,
   RefreshCw,

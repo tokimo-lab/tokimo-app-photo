@@ -1,4 +1,4 @@
-import { Spin } from "@tokiomo/components";
+import { Spin } from "@tokimo/ui";
 import { MapPin } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";

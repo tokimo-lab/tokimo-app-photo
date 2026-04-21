@@ -1,4 +1,4 @@
-import { Slider } from "@tokiomo/components";
+import { Slider } from "@tokimo/ui";
 import { Image, LayoutGrid } from "lucide-react";
 import { useCallback } from "react";
 

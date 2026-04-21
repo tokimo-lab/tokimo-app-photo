@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Spin } from "@tokiomo/components";
+import { Spin } from "@tokimo/ui";
 import {
   useCallback,
   useEffect,

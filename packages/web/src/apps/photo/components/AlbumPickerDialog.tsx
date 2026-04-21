@@ -1,4 +1,4 @@
-import { Button, Modal, Spin } from "@tokiomo/components";
+import { Button, Modal, Spin } from "@tokimo/ui";
 import { Grid3x3, Plus } from "lucide-react";
 import { useState } from "react";
 import type { PhotoAlbumOutput } from "@/generated/rust-api";

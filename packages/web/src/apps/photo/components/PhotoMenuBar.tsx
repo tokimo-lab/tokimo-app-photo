@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Checkbox, Modal } from "@tokiomo/components";
+import { Checkbox, Modal } from "@tokimo/ui";
 import {
   FolderSync,
   LayoutGrid,

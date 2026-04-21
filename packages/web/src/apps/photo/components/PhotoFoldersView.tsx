@@ -1,4 +1,4 @@
-import { Empty, Spin } from "@tokiomo/components";
+import { Empty, Spin } from "@tokimo/ui";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";

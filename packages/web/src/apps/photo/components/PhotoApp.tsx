@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Spin } from "@tokiomo/components";
+import { Spin } from "@tokimo/ui";
 import { Camera, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";

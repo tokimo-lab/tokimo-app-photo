@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Dropdown, type DropdownMenuItem, Modal } from "@tokiomo/components";
+import { Dropdown, type DropdownMenuItem, Modal } from "@tokimo/ui";
 import { Link, Pencil, Plus, Users } from "lucide-react";
 import {
   type CSSProperties,
