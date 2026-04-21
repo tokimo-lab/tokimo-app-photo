@@ -200,9 +200,13 @@ export function PhotoTimeline({
   }, [groups, layoutWidth, targetRowHeight]);
 
   // ── Maintain scroll position when upward items are prepended ──
+  // Use useLayoutEffect (not useEffect) so the compensating scrollTop
+  // change is applied in the SAME frame that the new items render —
+  // otherwise the user briefly sees the old position before the
+  // adjustment, which looks like a jarring scroll jump.
   const prevFirstDateRef = useRef<string | null>(null);
   const prevFirstDateOffsetRef = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (flatItems.length === 0) return;
     const firstHeader = flatItems.find((item) => item.type === "header");
     const firstDate =
@@ -233,21 +237,15 @@ export function PhotoTimeline({
 
   // ── Scroll element (find nearest scrollable ancestor) ────────
   const scrollElRef = useRef<HTMLElement | null>(null);
-  // Tracks whether the user has interactively scrolled since the most
-  // recent seek. Used to gate the upward auto-loader so it doesn't fire
-  // immediately after a seek (which would prepend the photos we just
-  // scrolled away from). Set true on wheel/touch/keyboard scroll only;
-  // programmatic scrolls (scrollIntoView from seek) do NOT set it.
-  const userScrolledSinceSeekRef = useRef(false);
   useEffect(() => {
     let el = measureRef.current?.parentElement ?? null;
     while (el) {
       const ov = getComputedStyle(el).overflowY;
       if (ov === "auto" || ov === "scroll") {
         scrollElRef.current = el;
-        // Set scroll-padding-top so native scrollIntoView accounts for
-        // the sticky tab bar overlay. Dynamically measured from the
-        // PillTabBar wrapper (rendered with data-sticky-tab-bar="true").
+        // Set scroll-padding-top so the sticky tab bar doesn't overlap
+        // anchored headers. Dynamically measured from the PillTabBar
+        // wrapper (rendered with data-sticky-tab-bar="true").
         const sticky = document.querySelector<HTMLElement>(
           '[data-sticky-tab-bar="true"]',
         );
@@ -259,14 +257,6 @@ export function PhotoTimeline({
         if (overlay > 0) {
           el.style.scrollPaddingTop = `${overlay}px`;
         }
-        // Mark user-initiated scrolls so the upward auto-loader knows
-        // when it's safe to start prepending newer photos.
-        const markUserScroll = () => {
-          userScrolledSinceSeekRef.current = true;
-        };
-        el.addEventListener("wheel", markUserScroll, { passive: true });
-        el.addEventListener("touchmove", markUserScroll, { passive: true });
-        el.addEventListener("keydown", markUserScroll);
         return;
       }
       el = el.parentElement;
@@ -312,14 +302,13 @@ export function PhotoTimeline({
   );
 
   // ── Upward infinite scroll: load newer photos when near top ──
-  // Suppressed during a pending seek and until the user actually scrolls
-  // (wheel/touch/keyboard). Without these gates the loader fires the
-  // instant a seek lands at index 0, prepending the photos we just
-  // navigated AWAY from.
+  // Suppressed only during a pending seek (where we'd be prepending the
+  // photos the user just navigated AWAY from). Otherwise fires whenever
+  // the rendered window is near the top — the prepend-position-maintain
+  // effect (useLayoutEffect above) keeps the visible position stable.
   useEffect(() => {
     if (!hasNewer || !onLoadNewer || isLoadingNewer) return;
     if (pendingSeekRef.current) return;
-    if (!userScrolledSinceSeekRef.current) return;
     const firstItem = virtualItems[0];
     if (!firstItem) return;
     if (firstItem.index <= 10) {
@@ -417,9 +406,11 @@ export function PhotoTimeline({
           item.type === "header" && item.group.date.startsWith(datePrefix),
       );
 
-      // Reset user-scroll flag — upward auto-loader stays suppressed
-      // until the user does another wheel/touch/keyboard scroll.
-      userScrolledSinceSeekRef.current = false;
+      // Reset prepend-tracking refs so the next prepend (after seek
+      // completes and upward-fetch returns) doesn't apply a stale
+      // delta — the layout is being rebuilt around a new anchor.
+      prevFirstDateRef.current = null;
+      prevFirstDateOffsetRef.current = 0;
 
       if (exactMatchIdx >= 0) {
         // In-range: scroll directly using precomputed offset. No
