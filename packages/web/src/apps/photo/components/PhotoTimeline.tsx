@@ -305,35 +305,18 @@ export function PhotoTimeline({
   // ── Scroll to date (for timeline scrubber) ──────────────────
   const scrollToDate = useCallback(
     (datePrefix: string, smooth: boolean) => {
-      // Find exact or nearest header matching the date prefix.
+      // Find exact header matching the date prefix.
       // datePrefix can be "YYYY-MM-DD" (scrubber full date) or "YYYY-MM" (legacy).
-      let idx = flatItems.findIndex(
+      // NOTE: we intentionally do NOT fall back to nearest-day-in-same-month here.
+      // If the exact target day isn't loaded yet (common when scrubbing far from the
+      // currently loaded window), the correct action is a backend seek to reload
+      // around the target — not silently scrolling to whatever stray day from the
+      // same month happens to be in flatItems (which caused "clicking 3-15 always
+      // lands on 3-31" when March was only partially loaded).
+      const idx = flatItems.findIndex(
         (item) =>
           item.type === "header" && item.group.date.startsWith(datePrefix),
       );
-
-      // Full-date prefix with no exact match → find nearest date in same month
-      if (idx < 0 && datePrefix.length === 10) {
-        const monthPrefix = datePrefix.slice(0, 7);
-        const targetDay = Number.parseInt(datePrefix.slice(8, 10), 10);
-        let bestIdx = -1;
-        let bestDist = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < flatItems.length; i++) {
-          const item = flatItems[i];
-          if (
-            item.type === "header" &&
-            item.group.date.startsWith(monthPrefix)
-          ) {
-            const day = Number.parseInt(item.group.date.slice(8, 10), 10);
-            const dist = Math.abs(day - targetDay);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestIdx = i;
-            }
-          }
-        }
-        idx = bestIdx;
-      }
 
       if (idx >= 0) {
         pendingSeekRef.current = null;
@@ -342,7 +325,9 @@ export function PhotoTimeline({
           behavior: smooth ? "smooth" : "auto",
         });
       } else if (onSeekToDate) {
-        // Target date not loaded yet — remember target and seek via backend
+        // Target date not loaded yet — remember target and seek via backend.
+        // pendingSeekRef useEffect will then scroll (with nearest-in-month
+        // fallback) once the new page arrives.
         pendingSeekRef.current = datePrefix;
         onSeekToDate(datePrefix);
       }
