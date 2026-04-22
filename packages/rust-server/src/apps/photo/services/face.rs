@@ -220,7 +220,7 @@ impl PhotoFaceService {
         }
         let total = pending.len();
         info!("[photo_face] Processing {total} photos for app {app_id}");
-        let (success, _) = Self::process_photo_ids(db, ai, sources, pending).await;
+        let (success, _, _) = Self::process_photo_ids(db, ai, sources, pending).await;
         info!("[photo_face] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -260,20 +260,23 @@ impl PhotoFaceService {
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
         ids: Vec<Uuid>,
-    ) -> (u32, u32) {
+    ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;
         let mut failures = 0u32;
+        let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
             match Self::detect_faces(db, ai, sources, photo_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;
-                    error!("[photo_face] Failed for photo {photo_id}: {e}");
+                    let msg = format!("{e}");
+                    error!("[photo_face] Failed for photo {photo_id}: {msg}");
+                    errors.push(msg);
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-        (success, failures)
+        (success, failures, errors)
     }
 
     /// List all persons for an app.

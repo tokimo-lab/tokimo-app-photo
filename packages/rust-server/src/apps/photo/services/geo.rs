@@ -165,7 +165,7 @@ impl PhotoGeoService {
         }
         let total = pending.len();
         info!("Reverse geocoding {total} photos for app {app_id}");
-        let (success, _) = Self::process_photo_ids(db, http, pending).await;
+        let (success, _, _) = Self::process_photo_ids(db, http, pending).await;
         info!("Reverse geocoding done: {success}/{total} photos updated");
         Ok(success)
     }
@@ -201,12 +201,15 @@ impl PhotoGeoService {
         db: &DatabaseConnection,
         http: &Client,
         ids: Vec<Uuid>,
-    ) -> (u32, u32) {
+    ) -> (u32, u32, Vec<String>) {
+        let mut errors: Vec<String> = Vec::new();
         let settings: PhotoGeoSettings = match SystemConfigRepo::get(db).await {
             Ok(s) => s,
             Err(e) => {
-                error!("[photo_geo] failed to load settings: {e}");
-                return (0, ids.len() as u32);
+                let msg = format!("failed to load settings: {e}");
+                error!("[photo_geo] {msg}");
+                errors.push(msg);
+                return (0, ids.len() as u32, errors);
             }
         };
         let mut success_count = 0u32;
@@ -215,6 +218,7 @@ impl PhotoGeoService {
         for photo_id in ids {
             let Ok(Some(photo)) = photos::Entity::find_by_id(photo_id).one(db).await else {
                 failure_count += 1;
+                errors.push(format!("photo {photo_id} not found"));
                 continue;
             };
             let Some(lat) = photo.gps_latitude else {
@@ -248,7 +252,9 @@ impl PhotoGeoService {
                         active.location_name = Set(Some(loc_name));
                     }
                     if let Err(e) = active.update(db).await {
-                        error!("Failed to update photo {photo_id} geo: {e}");
+                        let msg = format!("Failed to update photo {photo_id} geo: {e}");
+                        error!("{msg}");
+                        errors.push(msg);
                         failure_count += 1;
                     } else {
                         success_count += 1;
@@ -256,7 +262,9 @@ impl PhotoGeoService {
                 }
                 Err(e) => {
                     failure_count += 1;
-                    warn!("Geocode failed for photo {photo_id} ({lat},{lon}): {e}");
+                    let msg = format!("Geocode failed for photo {photo_id} ({lat},{lon}): {e}");
+                    warn!("{msg}");
+                    errors.push(msg);
                     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                 }
             }
@@ -264,7 +272,7 @@ impl PhotoGeoService {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
-        (success_count, failure_count)
+        (success_count, failure_count, errors)
     }
 
     /// Get location stats for an app (grouped by province/city/district).

@@ -255,7 +255,7 @@ impl PhotoOcrService {
         }
         let total = pending.len();
         info!("[photo_ocr] Processing {total} photos for app {app_id}");
-        let (success, _failures) = Self::process_photo_ids(db, state, pending).await;
+        let (success, _failures, _errors) = Self::process_photo_ids(db, state, pending).await;
         info!("[photo_ocr] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -295,20 +295,23 @@ impl PhotoOcrService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         ids: Vec<Uuid>,
-    ) -> (u32, u32) {
+    ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;
         let mut failures = 0u32;
+        let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
             match Self::ocr_photo(db, state, photo_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;
-                    error!("[photo_ocr] Failed for photo {photo_id}: {e}");
+                    let msg = format!("{e}");
+                    error!("[photo_ocr] Failed for photo {photo_id}: {msg}");
+                    errors.push(msg);
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-        (success, failures)
+        (success, failures, errors)
     }
 
     /// Search OCR text across all photos in an app.

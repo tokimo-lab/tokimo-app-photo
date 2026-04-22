@@ -279,16 +279,19 @@ impl PhotoClipService {
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         ids: Vec<Uuid>,
-    ) -> (u32, u32) {
+    ) -> (u32, u32, Vec<String>) {
         if ids.is_empty() {
-            return (0, 0);
+            return (0, 0, Vec::new());
         }
+        let mut errors: Vec<String> = Vec::new();
         // Pre-cache base paths so per-photo loading skips DB lookups.
         let source_paths = match Self::preload_source_base_paths(db, app_id).await {
             Ok(p) => std::sync::Arc::new(p),
             Err(e) => {
-                error!("[photo_clip] preload_source_base_paths failed: {e}");
-                return (0, ids.len() as u32);
+                let msg = format!("preload_source_base_paths failed: {e}");
+                error!("[photo_clip] {msg}");
+                errors.push(msg);
+                return (0, ids.len() as u32, errors);
             }
         };
 
@@ -304,8 +307,10 @@ impl PhotoClipService {
         {
             Ok(p) => p,
             Err(e) => {
-                error!("[photo_clip] failed to load photos: {e}");
-                return (0, ids.len() as u32);
+                let msg = format!("failed to load photos: {e}");
+                error!("[photo_clip] {msg}");
+                errors.push(msg);
+                return (0, ids.len() as u32, errors);
             }
         };
 
@@ -337,7 +342,9 @@ impl PhotoClipService {
                     Ok(()) => success += 1,
                     Err(e) => {
                         failures += 1;
-                        error!("[photo_clip] Failed for {filename}: {e}");
+                        let msg = format!("Failed for {filename}: {e}");
+                        error!("[photo_clip] {msg}");
+                        errors.push(msg);
                         let zero_vec = vec![0.0f32; 512];
                         let _ = Self::store_vector(db, photo_id, &zero_vec).await;
                     }
@@ -350,13 +357,15 @@ impl PhotoClipService {
                 Ok(()) => success += 1,
                 Err(e) => {
                     failures += 1;
-                    error!("[photo_clip] Failed for {filename}: {e}");
+                    let msg = format!("Failed for {filename}: {e}");
+                    error!("[photo_clip] {msg}");
+                    errors.push(msg);
                     let zero_vec = vec![0.0f32; 512];
                     let _ = Self::store_vector(db, photo_id, &zero_vec).await;
                 }
             }
         }
-        (success, failures)
+        (success, failures, errors)
     }
 
     /// Batch embed all photos in an app that don't yet have a CLIP vector.
