@@ -226,5 +226,10 @@ pub async fn finalize_child(
             .await;
         }
     }
-    Ok(Some(json!({ "processed": success, "failed": failures })))
+    Ok(Some(json!({
+        "parentJobId": ctx.parent_job_id.to_string(),
+        "taskType": ctx.task_type,
+        "processed": success,
+        "failed": failures,
+    })))
 }
