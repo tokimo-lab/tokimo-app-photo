@@ -48,7 +48,7 @@ export const PhotoThumbnail = memo(function PhotoThumbnail({
       imgRef.current = el;
       // Cached images may not fire onLoad after remount — detect via the
       // browser's `complete` flag at attach time as a second safety net.
-      if (el && el.complete && el.naturalWidth > 0) {
+      if (el?.complete && el.naturalWidth > 0) {
         loadedPhotoIds.add(photo.id);
         setLoaded(true);
       }
