@@ -201,7 +201,14 @@ pub async fn finalize_child(
     success: u32,
     failures: u32,
 ) -> Result<Option<JsonValue>, DynErr> {
-    let agg = JobRepo::aggregate_parent_progress(db, ctx.parent_job_id).await?;
+    // Aggregate with the current child biased in — the worker hasn't yet
+    // marked this child `completed`/`failed` in the DB, so the raw count
+    // is always off by one. We know this child's outcome here, so inject
+    // it directly to keep the parent's progress/status accurate.
+    let pending_s = i32::try_from(success).unwrap_or(i32::MAX);
+    let pending_f = i32::try_from(failures).unwrap_or(i32::MAX);
+    let agg =
+        JobRepo::aggregate_parent_progress(db, ctx.parent_job_id, pending_s, pending_f).await?;
     if let (Some(uid), Some(a)) = (user_id, agg) {
         if a.completed {
             photo_notify::notify_processing_completed(
