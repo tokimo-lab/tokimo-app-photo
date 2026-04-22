@@ -240,3 +240,63 @@ pub async fn notify_processing_failed(
         warn!("notify_processing_failed failed: {e}");
     }
 }
+
+/// Sweep `*_scan` parent jobs that are still in flight after a server restart
+/// and emit a fresh progress notification for each so the user sees in-flight
+/// work in the notification center even before the next child batch finishes.
+///
+/// Without this, a user who restarts mid-scan sees nothing until the first
+/// child completes, which for slow OCR can be several minutes.
+pub async fn resync_inflight_progress(state: &Arc<AppState>) {
+    use crate::db::entities::jobs;
+    use sea_orm::*;
+
+    let scan_types = [
+        ("photo_ocr_scan", "photo_ocr"),
+        ("photo_clip_scan", "photo_clip"),
+        ("photo_face_scan", "photo_face_detect"),
+        ("photo_geocode_scan", "photo_reverse_geocode"),
+    ];
+
+    for (scan_type, task_type) in scan_types {
+        let parents = match jobs::Entity::find()
+            .filter(jobs::Column::Type.eq(scan_type))
+            .filter(jobs::Column::Status.is_in(["waiting", "running", "pending"]))
+            .all(&state.db)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                warn!("resync_inflight_progress: query {scan_type} failed: {e}");
+                continue;
+            }
+        };
+
+        for parent in parents {
+            let Some(uid) = parent.user_id else { continue };
+            let Some(meta) = &parent.meta else { continue };
+            let total = meta
+                .get("totalChildren")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
+            if total == 0 {
+                continue;
+            }
+            let done = meta
+                .get("done")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
+            let app_id = parent
+                .payload
+                .get("appId")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok());
+            let Some(app_id) = app_id else { continue };
+            let lib_name = meta
+                .get("libraryName")
+                .and_then(|v| v.as_str())
+                .map_or_else(String::new, std::string::ToString::to_string);
+            notify_processing_progress(state, uid, app_id, &lib_name, task_type, done, total).await;
+        }
+    }
+}
