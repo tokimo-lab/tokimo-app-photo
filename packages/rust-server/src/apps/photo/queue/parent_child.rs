@@ -110,7 +110,9 @@ where
 
     // One child job per photo. parentJobId + taskType travel in the payload
     // so the dispatch (which doesn't pass meta) can surface them to child
-    // handlers.
+    // handlers. They are ALSO persisted into dedicated `parent_job_id` and
+    // `task_type` columns (via create_child_jobs_batch) so DB queries can
+    // rely on stable indexed columns even if handlers overwrite `meta`.
     let children: Vec<_> = pending
         .iter()
         .map(|photo_id| {
@@ -121,14 +123,17 @@ where
                 "parentJobId": job_id.to_string(),
                 "taskType": task_type,
             });
-            let meta = json!({
-                "parentJobId": job_id.to_string(),
-                "taskType": task_type,
-            });
-            (child_job_type, payload, Some(meta), user_id)
+            (
+                child_job_type,
+                payload,
+                None::<JsonValue>,
+                user_id,
+                job_id,
+                task_type.to_string(),
+            )
         })
         .collect();
-    let inserted = JobRepo::create_jobs_batch(db, children).await?;
+    let inserted = JobRepo::create_child_jobs_batch(db, children).await?;
     info!("[{task_type}_scan] enqueued {inserted} child jobs (one per photo)");
 
     // Fire an immediate 0/total progress notification so the user sees the
