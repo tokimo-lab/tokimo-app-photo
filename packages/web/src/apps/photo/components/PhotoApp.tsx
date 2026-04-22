@@ -6,8 +6,8 @@ import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
+import { useWindowActions, useWindowId } from "@/system";
 import PhotoAppPage from "../pages/PhotoAppPage";
-import PhotoSettingsModal from "./PhotoSettingsModal";
 import PhotoSidebar from "./PhotoSidebar";
 
 const STORAGE_KEY = "photo-active-library";
@@ -20,8 +20,19 @@ export default function PhotoApp() {
     containerWidth > 0 && containerWidth < 720,
   );
   const [activeLibraryId, setActiveLibraryId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { openModalWindow } = useWindowActions();
+  const parentWindowId = useWindowId();
   const initialized = useRef(false);
+
+  const openSettings = () => {
+    openModalWindow({
+      component: () => import("./PhotoSettingsWindow"),
+      parentWindowId,
+      title: "TokimoPhoto 设置",
+      width: 960,
+      height: 640,
+    });
+  };
 
   useEffect(() => {
     if (!libraries?.length || initialized.current) return;
@@ -79,17 +90,13 @@ export default function PhotoApp() {
           </div>
           <button
             type="button"
-            onClick={() => setSettingsOpen(true)}
+            onClick={openSettings}
             className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700"
           >
             <Plus className="h-4 w-4" />
             新建图库
           </button>
         </div>
-        <PhotoSettingsModal
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
       </>
     );
   }
@@ -106,8 +113,8 @@ export default function PhotoApp() {
           activeId={activeLibraryId}
           onSelect={handleSelectLibrary}
           collapsed={sidebarCollapsed}
-          onCreateClick={() => setSettingsOpen(true)}
-          onSettingsClick={() => setSettingsOpen(true)}
+          onCreateClick={openSettings}
+          onSettingsClick={openSettings}
           syncProgress={syncProgress}
           onToggleCollapse={onToggleCollapse}
         />
@@ -121,10 +128,6 @@ export default function PhotoApp() {
           )}
         </div>
       </div>
-      <PhotoSettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
     </>
   );
 }
