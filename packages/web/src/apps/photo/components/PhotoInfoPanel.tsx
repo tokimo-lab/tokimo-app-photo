@@ -10,13 +10,15 @@ import {
   Sparkles,
   Tag,
 } from "lucide-react";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback } from "react";
 import type { PhotoDetailOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
 import { thumbUrl } from "@/lib/thumb";
-import { useDateFormat, useWindowActions } from "@/system";
-import { ExifModal, stripExifQuotes } from "./ExifModal";
+import { useDateFormat, useWindowActions, useWindowId } from "@/system";
+import type { TaskMetadata } from "@/system/window/window-types";
+import type { ExifWindowMetadata } from "./ExifWindow";
+import { stripExifQuotes } from "./ExifWindow";
 import {
   EXTRA_EXIF_FIELDS,
   formatCameraSettings,
@@ -26,7 +28,7 @@ import {
   InfoRow,
   InfoSection,
 } from "./info-panel-helpers";
-import { OcrDebugModal } from "./OcrDebugModal";
+import type { OcrDebugWindowMetadata } from "./OcrDebugWindow";
 import { OcrResultRow } from "./OcrResultRow";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoMiniMap } from "./PhotoMiniMap";
@@ -73,9 +75,8 @@ export function PhotoInfoPanel({
   } | null;
   onAddOcr?: () => void;
 }) {
-  const [showExifModal, setShowExifModal] = useState(false);
-  const [showOcrDebug, setShowOcrDebug] = useState(false);
-  const { openWindow } = useWindowActions();
+  const { openWindow, openModalWindow } = useWindowActions();
+  const parentWindowId = useWindowId();
   const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(
@@ -185,7 +186,19 @@ export function PhotoInfoPanel({
           {detail.exifData && Object.keys(detail.exifData).length > 0 && (
             <button
               type="button"
-              onClick={() => setShowExifModal(true)}
+              onClick={() => {
+                if (!detail.exifData) return;
+                openModalWindow({
+                  component: () => import("./ExifWindow"),
+                  parentWindowId,
+                  title: "EXIF 原始数据",
+                  width: 640,
+                  height: 640,
+                  metadata: {
+                    exifData: detail.exifData,
+                  } as ExifWindowMetadata as unknown as TaskMetadata,
+                });
+              }}
               className="mt-1 cursor-pointer rounded-md bg-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/15 hover:text-white/90"
             >
               查看 EXIF 原始数据
@@ -453,7 +466,20 @@ export function PhotoInfoPanel({
                     type="button"
                     className="ml-1 inline-flex items-center rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
                     title="查看多模型识别详情"
-                    onClick={() => setShowOcrDebug(true)}
+                    onClick={() => {
+                      if (!detail.ocrDebugInfo || !ocrResults) return;
+                      openModalWindow({
+                        component: () => import("./OcrDebugWindow"),
+                        parentWindowId,
+                        title: "OCR 调试",
+                        width: 720,
+                        height: 700,
+                        metadata: {
+                          debugInfo: detail.ocrDebugInfo,
+                          mergedTexts: ocrResults.map((r) => r.text),
+                        } as OcrDebugWindowMetadata as unknown as TaskMetadata,
+                      });
+                    }}
                   >
                     <SearchCode className="h-3 w-3" />
                   </button>
@@ -478,21 +504,6 @@ export function PhotoInfoPanel({
           onRefreshComplete={onRefreshComplete}
         />
       </div>
-
-      {showExifModal && detail.exifData && (
-        <ExifModal
-          exifData={detail.exifData}
-          onClose={() => setShowExifModal(false)}
-        />
-      )}
-
-      {showOcrDebug && detail.ocrDebugInfo && ocrResults && (
-        <OcrDebugModal
-          debugInfo={detail.ocrDebugInfo}
-          mergedTexts={ocrResults.map((r) => r.text)}
-          onClose={() => setShowOcrDebug(false)}
-        />
-      )}
     </>
   );
 }

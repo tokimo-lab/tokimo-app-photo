@@ -1,6 +1,5 @@
-import { Modal } from "@tokimo/ui";
-import { useRef } from "react";
 import { getOcrModelName } from "@/lib/ocr-models";
+import type { WindowState } from "@/system/window/window-types";
 
 interface OcrDebugInfo {
   detModel: string;
@@ -9,10 +8,9 @@ interface OcrDebugInfo {
   vlmText: string;
 }
 
-interface OcrDebugModalProps {
+export interface OcrDebugWindowMetadata {
   debugInfo: OcrDebugInfo;
   mergedTexts: string[];
-  onClose: () => void;
 }
 
 function Section({
@@ -53,23 +51,21 @@ function TextBlock({ text, index }: { text: string; index?: number }) {
   );
 }
 
-export function OcrDebugModal({
-  debugInfo,
-  mergedTexts,
-  onClose,
-}: OcrDebugModalProps) {
-  const bodyRef = useRef(document.body);
+export default function OcrDebugWindow({ win }: { win: WindowState }) {
+  const meta = win.metadata as OcrDebugWindowMetadata | undefined;
+  const debugInfo = meta?.debugInfo;
+  const mergedTexts = meta?.mergedTexts ?? [];
+
+  if (!debugInfo) {
+    return (
+      <div className="flex h-full items-center justify-center text-[var(--text-muted)]">
+        无调试信息
+      </div>
+    );
+  }
 
   return (
-    <Modal
-      open
-      title="OCR 多模型识别详情"
-      onCancel={onClose}
-      footer={null}
-      width={720}
-      zIndex={10000}
-      container={bodyRef}
-    >
+    <div className="h-full overflow-y-auto p-4">
       <div className="space-y-5">
         {/* Detection model raw results */}
         <Section title="检测模型原始结果" modelId={debugInfo.detModel}>
@@ -114,6 +110,6 @@ export function OcrDebugModal({
           </div>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }

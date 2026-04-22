@@ -1,5 +1,4 @@
-import { Modal } from "@tokimo/ui";
-import { useRef } from "react";
+import type { WindowState } from "@/system/window/window-types";
 
 export function stripExifQuotes(value: string): string {
   if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
@@ -8,26 +7,17 @@ export function stripExifQuotes(value: string): string {
   return value;
 }
 
-interface ExifModalProps {
+export interface ExifWindowMetadata {
   exifData: Record<string, string>;
-  onClose: () => void;
 }
 
-export function ExifModal({ exifData, onClose }: ExifModalProps) {
+export default function ExifWindow({ win }: { win: WindowState }) {
+  const meta = win.metadata as ExifWindowMetadata | undefined;
+  const exifData = meta?.exifData ?? {};
   const sortedKeys = Object.keys(exifData).sort();
-  // Force portal to document.body to escape FloatingWindow's ModalContainerContext
-  const bodyRef = useRef(document.body);
 
   return (
-    <Modal
-      open
-      title="EXIF 原始数据"
-      onCancel={onClose}
-      footer={null}
-      width={640}
-      zIndex={10000}
-      container={bodyRef}
-    >
+    <div className="h-full overflow-y-auto p-4">
       <div className="space-y-px font-mono text-sm">
         {sortedKeys.map((key, i) => (
           <div
@@ -43,6 +33,6 @@ export function ExifModal({ exifData, onClose }: ExifModalProps) {
           </div>
         ))}
       </div>
-    </Modal>
+    </div>
   );
 }
