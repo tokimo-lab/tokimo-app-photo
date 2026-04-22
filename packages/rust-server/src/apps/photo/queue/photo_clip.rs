@@ -1,4 +1,4 @@
-//! Child batch job for photo CLIP embedding.
+//! Child job for photo CLIP embedding (one photo per job).
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
@@ -22,6 +22,6 @@ pub async fn handle(
     let ctx = parent_child::parse_child_payload(payload)?;
     check_cancel(cancel)?;
     let (success, failures) =
-        PhotoClipService::process_photo_ids(db, state, ctx.app_id, ctx.photo_ids.clone()).await;
+        PhotoClipService::process_photo_ids(db, state, ctx.app_id, vec![ctx.photo_id]).await;
     parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await
 }

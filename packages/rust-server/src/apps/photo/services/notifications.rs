@@ -5,8 +5,10 @@
 //! Interactive feedback (e.g. "已收藏 N 张") stays as in-window toast and
 //! does NOT go through this module.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+use std::time::{Duration, Instant};
 
+use dashmap::DashMap;
 use serde_json::json;
 use tracing::warn;
 use uuid::Uuid;
@@ -151,6 +153,36 @@ fn progress_dedupe_key(library_id: Uuid, task_type: &str) -> String {
     format!("photo:processing:{library_id}:{task_type}")
 }
 
+/// Min interval between progress notifications for the same (library, task).
+/// At ~100k child jobs, per-child notifications would flood the WS + the
+/// notification center; we collapse to ~1/sec.
+const PROGRESS_THROTTLE: Duration = Duration::from_millis(1000);
+static PROGRESS_THROTTLE_MAP: LazyLock<DashMap<String, Instant>> = LazyLock::new(DashMap::new);
+
+/// Returns true if we should skip this progress tick (i.e. throttled).
+/// Never throttles the final (processed == total) tick.
+fn should_throttle_progress(key: &str, processed: i64, total: i64) -> bool {
+    if total > 0 && processed >= total {
+        return false;
+    }
+    let now = Instant::now();
+    let entry = PROGRESS_THROTTLE_MAP.entry(key.to_string());
+    match entry {
+        dashmap::mapref::entry::Entry::Occupied(mut o) => {
+            let last = *o.get();
+            if now.duration_since(last) < PROGRESS_THROTTLE {
+                return true;
+            }
+            o.insert(now);
+            false
+        }
+        dashmap::mapref::entry::Entry::Vacant(v) => {
+            v.insert(now);
+            false
+        }
+    }
+}
+
 /// Notify: long-running worker progress. Uses dedupe_key so the same task
 /// updates one notification in place rather than spamming a new entry per tick.
 pub async fn notify_processing_progress(
@@ -163,6 +195,10 @@ pub async fn notify_processing_progress(
     total: i64,
 ) {
     ensure_registered(state, user_id).await;
+    let key = progress_dedupe_key(library_id, task_type);
+    if should_throttle_progress(&key, processed, total) {
+        return;
+    }
     let label = task_label(task_type);
     let pct = if total > 0 {
         ((processed as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as i32
@@ -176,7 +212,7 @@ pub async fn notify_processing_progress(
         body: Some(format!("已处理 {processed} / {total}")),
         level: Some("info".into()),
         action: Some(open_photo_action(library_id)),
-        dedupe_key: Some(progress_dedupe_key(library_id, task_type)),
+        dedupe_key: Some(key.clone()),
         progress: Some(pct),
         template_context: None,
     };
@@ -196,6 +232,8 @@ pub async fn notify_processing_completed(
     processed: i64,
 ) {
     ensure_registered(state, user_id).await;
+    // Drop any throttle timestamp so a future rerun of this task starts fresh.
+    PROGRESS_THROTTLE_MAP.remove(&progress_dedupe_key(library_id, task_type));
     let label = task_label(task_type);
     let notification = Notification {
         app_id: APP_ID.into(),

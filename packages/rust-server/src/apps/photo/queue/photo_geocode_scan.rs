@@ -10,7 +10,6 @@ use crate::apps::photo::queue::parent_child;
 use crate::apps::photo::services::geo::PhotoGeoService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
-const BATCH_SIZE: usize = 50;
 
 pub async fn handle(
     db: &DatabaseConnection,
@@ -28,8 +27,7 @@ pub async fn handle(
         payload,
         user_id,
         "photo_reverse_geocode",
-        "photo_geocode_batch",
-        BATCH_SIZE,
+        "photo_geocode",
         async |app_uuid| PhotoGeoService::list_pending_photo_ids(db, app_uuid).await,
     )
     .await

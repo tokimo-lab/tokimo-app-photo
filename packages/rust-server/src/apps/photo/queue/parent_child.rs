@@ -2,8 +2,8 @@
 //!
 //! Background workers that may need to process hundreds of thousands of
 //! photos are split into a parent `*_scan` job (which enumerates pending
-//! photo IDs and enqueues many small `*_batch` child jobs) and the child
-//! batch jobs themselves. The parent transitions
+//! photo IDs and enqueues one child job per photo) and the child jobs
+//! themselves. The parent transitions
 //! `pending → running → waiting → completed` via the queue framework's
 //! `_phase: "waiting"` magic key, and child jobs aggregate their results
 //! back onto the parent via `JobRepo::aggregate_parent_progress`.
@@ -49,11 +49,10 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 }
 
 /// Run the "scan" half of a parent/child photo job: list pending photo IDs,
-/// chunk them into child `*_batch` jobs, and return a meta blob that flips
+/// enqueue one child job per photo, and return a meta blob that flips
 /// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
-#[allow(clippy::too_many_arguments)]
 pub async fn run_scan<F>(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
@@ -62,7 +61,6 @@ pub async fn run_scan<F>(
     user_id: Option<Uuid>,
     task_type: &str,
     child_job_type: &str,
-    batch_size: usize,
     list_pending_ids: F,
 ) -> Result<Option<JsonValue>, DynErr>
 where
@@ -110,31 +108,31 @@ where
         })));
     }
 
-    // Chunk into child batches and bulk-insert. parentJobId + taskType
-    // travel in the payload so the dispatch (which doesn't pass meta) can
-    // surface them to child handlers.
-    let mut children = Vec::with_capacity(pending.len().div_ceil(batch_size));
-    for chunk in pending.chunks(batch_size) {
-        let payload = json!({
-            "appId": app_uuid.to_string(),
-            "photoIds": chunk.iter().map(Uuid::to_string).collect::<Vec<_>>(),
-            "libraryName": lib_name,
-            "parentJobId": job_id.to_string(),
-            "taskType": task_type,
-        });
-        let meta = json!({
-            "parentJobId": job_id.to_string(),
-            "taskType": task_type,
-        });
-        children.push((child_job_type, payload, Some(meta), user_id));
-    }
+    // One child job per photo. parentJobId + taskType travel in the payload
+    // so the dispatch (which doesn't pass meta) can surface them to child
+    // handlers.
+    let children: Vec<_> = pending
+        .iter()
+        .map(|photo_id| {
+            let payload = json!({
+                "appId": app_uuid.to_string(),
+                "photoId": photo_id.to_string(),
+                "libraryName": lib_name,
+                "parentJobId": job_id.to_string(),
+                "taskType": task_type,
+            });
+            let meta = json!({
+                "parentJobId": job_id.to_string(),
+                "taskType": task_type,
+            });
+            (child_job_type, payload, Some(meta), user_id)
+        })
+        .collect();
     let inserted = JobRepo::create_jobs_batch(db, children).await?;
-    info!("[{task_type}_scan] enqueued {inserted} child jobs (batch={batch_size})");
+    info!("[{task_type}_scan] enqueued {inserted} child jobs (one per photo)");
 
     // Fire an immediate 0/total progress notification so the user sees the
-    // task in their notification center right away — children may take
-    // minutes per batch, so waiting for the first finalize_child would feel
-    // like the trigger silently failed.
+    // task in their notification center right away.
     if let Some(uid) = user_id {
         photo_notify::notify_processing_progress(
             state, uid, app_uuid, &lib_name, task_type, 0, total,
@@ -145,11 +143,11 @@ where
     Ok(Some(parent_meta_waiting(total, &lib_name, task_type)))
 }
 
-/// Extract `(appId, photoIds, libraryName, parentJobId, taskType)` from a
-/// child batch job's payload + meta blob. Returns parsed UUIDs.
+/// Extract `(appId, photoId, libraryName, parentJobId, taskType)` from a
+/// child job's payload. Returns parsed UUIDs.
 pub struct ChildContext {
     pub app_id: Uuid,
-    pub photo_ids: Vec<Uuid>,
+    pub photo_id: Uuid,
     pub library_name: String,
     pub parent_job_id: Uuid,
     pub task_type: String,
@@ -162,15 +160,11 @@ pub fn parse_child_payload(payload: &JsonValue) -> Result<ChildContext, DynErr> 
         .ok_or("Missing appId in child payload")?;
     let app_uuid = Uuid::parse_str(app_id)?;
 
-    let ids_array = payload
-        .get("photoIds")
-        .and_then(|v| v.as_array())
-        .ok_or("Missing photoIds in child payload")?;
-    let mut photo_ids = Vec::with_capacity(ids_array.len());
-    for v in ids_array {
-        let s = v.as_str().ok_or("photoIds entry is not a string")?;
-        photo_ids.push(Uuid::parse_str(s)?);
-    }
+    let photo_id_str = payload
+        .get("photoId")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing photoId in child payload")?;
+    let photo_id = Uuid::parse_str(photo_id_str)?;
 
     let library_name = payload
         .get("libraryName")
@@ -190,7 +184,7 @@ pub fn parse_child_payload(payload: &JsonValue) -> Result<ChildContext, DynErr> 
 
     Ok(ChildContext {
         app_id: app_uuid,
-        photo_ids,
+        photo_id,
         library_name,
         parent_job_id,
         task_type,

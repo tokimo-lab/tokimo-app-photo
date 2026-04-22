@@ -10,7 +10,6 @@ use crate::apps::photo::queue::parent_child;
 use crate::apps::photo::services::face::PhotoFaceService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
-const BATCH_SIZE: usize = 10;
 
 pub async fn handle(
     db: &DatabaseConnection,
@@ -29,8 +28,7 @@ pub async fn handle(
         payload,
         user_id,
         "photo_face_detect",
-        "photo_face_batch",
-        BATCH_SIZE,
+        "photo_face",
         async move |app_uuid| PhotoFaceService::list_pending_photo_ids(db, &ai, app_uuid).await,
     )
     .await

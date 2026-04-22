@@ -1,4 +1,4 @@
-//! Child batch job for photo face detection.
+//! Child job for photo reverse geocoding (one photo per job).
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::apps::photo::queue::parent_child;
-use crate::apps::photo::services::face::PhotoFaceService;
+use crate::apps::photo::services::geo::PhotoGeoService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
@@ -22,6 +22,6 @@ pub async fn handle(
     let ctx = parent_child::parse_child_payload(payload)?;
     check_cancel(cancel)?;
     let (success, failures) =
-        PhotoFaceService::process_photo_ids(db, &state.ai, &state.sources, ctx.photo_ids.clone()).await;
+        PhotoGeoService::process_photo_ids(db, &state.http_client, vec![ctx.photo_id]).await;
     parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await
 }

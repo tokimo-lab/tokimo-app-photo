@@ -1,4 +1,4 @@
-//! Child batch job for photo OCR. Processes a slice of photo IDs and reports
+//! Child job for photo OCR. Processes a single photo and reports
 //! aggregated progress / completion back to the parent job's notification.
 use std::sync::Arc;
 
@@ -22,6 +22,7 @@ pub async fn handle(
     check_cancel(cancel)?;
     let ctx = parent_child::parse_child_payload(payload)?;
     check_cancel(cancel)?;
-    let (success, failures) = PhotoOcrService::process_photo_ids(db, state, ctx.photo_ids.clone()).await;
+    let (success, failures) =
+        PhotoOcrService::process_photo_ids(db, state, vec![ctx.photo_id]).await;
     parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await
 }

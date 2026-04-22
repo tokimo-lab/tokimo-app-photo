@@ -1,5 +1,5 @@
 //! Parent scan job for photo CLIP embedding. Enumerates photos missing a
-//! vector and enqueues `photo_clip_batch` child jobs of size 10.
+//! vector and enqueues one `photo_clip` child job per photo.
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
@@ -11,7 +11,6 @@ use crate::apps::photo::queue::parent_child;
 use crate::apps::photo::services::clip::PhotoClipService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
-const BATCH_SIZE: usize = 10;
 
 pub async fn handle(
     db: &DatabaseConnection,
@@ -30,8 +29,7 @@ pub async fn handle(
         payload,
         user_id,
         "photo_clip",
-        "photo_clip_batch",
-        BATCH_SIZE,
+        "photo_clip",
         async move |app_uuid| PhotoClipService::list_pending_photo_ids(db, &state_owned, app_uuid).await,
     )
     .await
