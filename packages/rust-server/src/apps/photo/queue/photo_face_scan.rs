@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::apps::photo::queue::parent_child;
 use crate::apps::photo::services::face::PhotoFaceService;
+use crate::queue::cancellation::{JobCancel, check_cancel};
 
 const BATCH_SIZE: usize = 10;
 
@@ -17,7 +18,9 @@ pub async fn handle(
     job_id: Uuid,
     payload: &JsonValue,
     user_id: Option<Uuid>,
+    cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
+    check_cancel(cancel)?;
     let ai = state.ai.clone();
     parent_child::run_scan(
         db,
