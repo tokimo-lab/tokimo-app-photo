@@ -53,6 +53,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 /// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_scan<F>(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
