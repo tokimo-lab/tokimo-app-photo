@@ -23,10 +23,10 @@ pub async fn handle(
     check_cancel(cancel)?;
     let (success, failures, errors) =
         PhotoFaceService::process_photo_ids(db, &state.ai, &state.sources, vec![ctx.photo_id]).await;
-    parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
+    let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors.into_iter().next().unwrap_or_else(|| "photo_face failed".to_string());
         return Err(msg.into());
     }
-    Ok(Some(serde_json::json!({ "processed": success })))
+    Ok(out)
 }
