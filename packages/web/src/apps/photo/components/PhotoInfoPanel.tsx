@@ -15,7 +15,7 @@ import type { PhotoDetailOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { getOcrModelName } from "@/lib/ocr-models";
 import { thumbUrl } from "@/lib/thumb";
-import { useDateFormat, useWindowActions, useWindowId } from "@/system";
+import { useDateFormat, useOptionalWindowId, useWindowActions } from "@/system";
 import type { TaskMetadata } from "@/system/window/window-types";
 import type { ExifWindowMetadata } from "./ExifWindow";
 import { stripExifQuotes } from "./ExifWindow";
@@ -76,7 +76,7 @@ export function PhotoInfoPanel({
   onAddOcr?: () => void;
 }) {
   const { openWindow, openModalWindow } = useWindowActions();
-  const parentWindowId = useWindowId();
+  const parentWindowId = useOptionalWindowId();
   const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(
@@ -187,7 +187,7 @@ export function PhotoInfoPanel({
             <button
               type="button"
               onClick={() => {
-                if (!detail.exifData) return;
+                if (!detail.exifData || !parentWindowId) return;
                 openModalWindow({
                   component: () => import("./ExifWindow"),
                   parentWindowId,
@@ -467,7 +467,12 @@ export function PhotoInfoPanel({
                     className="ml-1 inline-flex items-center rounded p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60"
                     title="查看多模型识别详情"
                     onClick={() => {
-                      if (!detail.ocrDebugInfo || !ocrResults) return;
+                      if (
+                        !detail.ocrDebugInfo ||
+                        !ocrResults ||
+                        !parentWindowId
+                      )
+                        return;
                       openModalWindow({
                         component: () => import("./OcrDebugWindow"),
                         parentWindowId,
