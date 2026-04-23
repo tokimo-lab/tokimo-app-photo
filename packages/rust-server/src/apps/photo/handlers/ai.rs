@@ -228,39 +228,106 @@ pub async fn clip_search(
 }
 
 /// POST /api/photos/{id}/refresh-clip
+///
+/// Enqueues a single-photo CLIP job (priority=UserAction, dedupe_key=photo_id)
+/// and preempts any in-flight scan-child for the same photo. Returns the new
+/// job id so the frontend can subscribe to its updates.
 pub async fn refresh_clip(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    crate::apps::photo::services::clip::PhotoClipService::embed_photo(&state.db, &state, photo_id).await?;
-    Ok(ok(serde_json::json!({ "status": "ok" })))
+    let user_id: uuid::Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
+        &state, "photo_clip", photo_id,
+    )
+    .await?;
+
+    let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
+        &state.db,
+        "photo_clip_single",
+        serde_json::json!({ "photoId": photo_id.to_string() }),
+        None,
+        Some(user_id),
+        None,
+        Some("photo_clip_single".to_string()),
+        Some(photo_id.to_string()),
+        crate::queue::JobPriority::UserAction.as_i32(),
+    )
+    .await?;
+    state.job_notify.notify_waiters();
+    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
 }
 
 /// POST /api/photos/{id}/refresh-faces
 pub async fn refresh_faces(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let count = crate::apps::photo::services::face::PhotoFaceService::detect_faces(
-        &state.db,
-        &state.ai,
-        &state.sources,
-        photo_id,
+    let user_id: uuid::Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
+        &state, "photo_face", photo_id,
     )
     .await?;
-    Ok(ok(serde_json::json!({ "faceCount": count })))
+
+    let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
+        &state.db,
+        "photo_face_single",
+        serde_json::json!({ "photoId": photo_id.to_string() }),
+        None,
+        Some(user_id),
+        None,
+        Some("photo_face_single".to_string()),
+        Some(photo_id.to_string()),
+        crate::queue::JobPriority::UserAction.as_i32(),
+    )
+    .await?;
+    state.job_notify.notify_waiters();
+    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
 }
 
 /// POST /api/photos/{id}/refresh-ocr
 pub async fn refresh_ocr(
     State(state): State<Arc<AppState>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let count = crate::apps::photo::services::ocr::PhotoOcrService::ocr_photo(&state.db, &state, photo_id).await?;
-    Ok(ok(serde_json::json!({ "ocrCount": count })))
+    let user_id: uuid::Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
+        &state, "photo_ocr", photo_id,
+    )
+    .await?;
+
+    let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
+        &state.db,
+        "photo_ocr_single",
+        serde_json::json!({ "photoId": photo_id.to_string() }),
+        None,
+        Some(user_id),
+        None,
+        Some("photo_ocr_single".to_string()),
+        Some(photo_id.to_string()),
+        crate::queue::JobPriority::UserAction.as_i32(),
+    )
+    .await?;
+    state.job_notify.notify_waiters();
+    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
 }
 
 /// GET /api/photos/{id}/ocr-results

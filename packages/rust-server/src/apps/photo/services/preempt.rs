@@ -55,3 +55,29 @@ pub async fn preempt_scan_for(
 
     Ok(all_ids.len())
 }
+
+/// Preempt any in-flight scan-child for `photo_id` with `task_type` (e.g.
+/// `photo_ocr`). Used when the user fires a single-photo refresh action so
+/// the user-priority single job becomes the sole authority for that photo.
+pub async fn preempt_scan_child_for_photo(
+    state: &Arc<AppState>,
+    task_type: &str,
+    photo_id: Uuid,
+) -> Result<usize, AppError> {
+    let cancelled =
+        JobRepo::preempt_scan_child_for(&state.db, task_type, photo_id, PREEMPT_REASON).await?;
+    if cancelled.is_empty() {
+        return Ok(0);
+    }
+    for id in &cancelled {
+        state.job_cancel.cancel_one(*id, CancelReason::Preempted);
+    }
+    for id in &cancelled {
+        if let Ok(Some(model)) = jobs::Entity::find_by_id(*id).one(&state.db).await {
+            let _ = state.event_tx.send(AppEvent::JobUpdate {
+                job: Box::new(JobOutput::from(model)),
+            });
+        }
+    }
+    Ok(cancelled.len())
+}
