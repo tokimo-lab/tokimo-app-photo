@@ -20,8 +20,9 @@ impl PhotoFaceService {
     async fn represent(
         ai: &tokimo_perception::worker::client::AiWorkerClient,
         image_bytes: Vec<u8>,
+        request_id: Option<String>,
     ) -> Result<Vec<tokimo_perception::worker::protocol::types::FaceDetection>, AppError> {
-        ai.detect_faces(image_bytes)
+        ai.detect_faces(image_bytes, request_id)
             .await
             .map_err(|e| AppError::Internal(format!("Face detection error: {e}")))
     }
@@ -140,7 +141,10 @@ impl PhotoFaceService {
 
         let image_bytes = crate::apps::photo::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
 
-        let detections = Self::represent(ai, image_bytes).await?;
+        let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
+        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+        let detections = Self::represent(ai, image_bytes, rid).await?;
+        drop(scope);
         let count = detections.len();
 
         if count == 0 {

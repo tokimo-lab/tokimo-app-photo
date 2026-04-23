@@ -34,9 +34,13 @@ pub struct PhotoClipService;
 
 impl PhotoClipService {
     /// Embed image bytes → 512-dim CLIP vector via integrated AI service.
-    async fn embed_image(ai: &tokimo_perception::worker::client::AiWorkerClient, image_bytes: Vec<u8>) -> Result<Vec<f32>, AppError> {
+    async fn embed_image(
+        ai: &tokimo_perception::worker::client::AiWorkerClient,
+        image_bytes: Vec<u8>,
+        request_id: Option<String>,
+    ) -> Result<Vec<f32>, AppError> {
         let vec = ai
-            .clip_image(image_bytes)
+            .clip_image(image_bytes, request_id)
             .await
             .map_err(|e| AppError::Internal(format!("CLIP img error: {e}")))?;
 
@@ -51,9 +55,13 @@ impl PhotoClipService {
     }
 
     /// Embed text → 512-dim CLIP vector via integrated AI service.
-    async fn embed_text(ai: &tokimo_perception::worker::client::AiWorkerClient, text: &str) -> Result<Vec<f32>, AppError> {
+    async fn embed_text(
+        ai: &tokimo_perception::worker::client::AiWorkerClient,
+        text: &str,
+        request_id: Option<String>,
+    ) -> Result<Vec<f32>, AppError> {
         let vec = ai
-            .clip_text(text.to_string())
+            .clip_text(text.to_string(), request_id)
             .await
             .map_err(|e| AppError::Internal(format!("CLIP txt error: {e}")))?;
 
@@ -114,7 +122,10 @@ impl PhotoClipService {
 
         let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
 
-        let vec = Self::embed_image(&state.ai, image_bytes).await?;
+        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo.id);
+        let request_id = cancel_scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+        let vec = Self::embed_image(&state.ai, image_bytes, request_id).await?;
+        drop(cancel_scope);
         Self::store_vector(db, photo.id, &vec).await?;
 
         Ok(())
@@ -326,10 +337,16 @@ impl PhotoClipService {
                 let photo_id = photo.id;
                 let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                 let result = match bytes_result {
-                    Ok(image_bytes) => match Self::embed_image(&state_c.ai, image_bytes).await {
-                        Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
-                        Err(e) => Err(e),
-                    },
+                    Ok(image_bytes) => {
+                        let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+                        let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
+                        drop(scope);
+                        match embed_result {
+                            Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
+                            Err(e) => Err(e),
+                        }
+                    }
                     Err(e) => Err(e),
                 };
                 (photo_id, filename, result)
@@ -460,10 +477,16 @@ impl PhotoClipService {
                     // Load bytes without DB call (uses pre-cached source paths)
                     let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                     let result = match bytes_result {
-                        Ok(image_bytes) => match Self::embed_image(&state_c.ai, image_bytes).await {
-                            Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
-                            Err(e) => Err(e),
-                        },
+                        Ok(image_bytes) => {
+                            let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                            let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+                            let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
+                            drop(scope);
+                            match embed_result {
+                                Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
+                                Err(e) => Err(e),
+                            }
+                        }
                         Err(e) => Err(e),
                     };
                     (photo_id, filename, result)
@@ -539,7 +562,7 @@ impl PhotoClipService {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
 
-        let text_vec = Self::embed_text(&state.ai, query).await?;
+        let text_vec = Self::embed_text(&state.ai, query, None).await?;
         let vec_str = Self::format_vector(&text_vec);
 
         let rows = db

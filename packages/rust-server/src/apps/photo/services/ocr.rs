@@ -117,6 +117,7 @@ impl PhotoOcrService {
         image_bytes: Vec<u8>,
         model_name: Option<&str>,
         aux_model_name: Option<&str>,
+        request_id: Option<String>,
     ) -> Result<(Vec<OcrResult>, Option<serde_json::Value>), AppError> {
         use tokimo_perception::worker::protocol::types as wire;
         let model = model_name.unwrap_or("rapid-ocr-rust");
@@ -125,13 +126,13 @@ impl PhotoOcrService {
         let (items, debug) = if needs_hybrid {
             let det_model = aux_model_name.unwrap_or("rapid-ocr-rust");
             let items = ai
-                .ocr_hybrid(image_bytes, Some(det_model.to_string()), Some(model.to_string()))
+                .ocr_hybrid(image_bytes, Some(det_model.to_string()), Some(model.to_string()), request_id)
                 .await
                 .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
             (items, None)
         } else {
             let items = ai
-                .ocr(image_bytes, Some(model.to_string()))
+                .ocr(image_bytes, Some(model.to_string()), request_id)
                 .await
                 .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
             (items, None)
@@ -197,8 +198,15 @@ impl PhotoOcrService {
 
         let image_bytes = load_photo_bytes(db, &state.sources, &photo, image_path).await?;
 
+        // Bridge the owning job's cancel token to the AI worker's /v1/cancel
+        // so that `cancel_one(job_id, ...)` actually terminates the in-flight
+        // ONNX session instead of letting it chew CPU until the batch ends.
+        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo_id);
+        let request_id = cancel_scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+
         let (results, debug_info) =
-            Self::ocr_image(&state.ai, image_bytes, Some(&model_name), aux_model_name.as_deref()).await?;
+            Self::ocr_image(&state.ai, image_bytes, Some(&model_name), aux_model_name.as_deref(), request_id).await?;
+        drop(cancel_scope);
         let count = results.len();
 
         if !results.is_empty() {
