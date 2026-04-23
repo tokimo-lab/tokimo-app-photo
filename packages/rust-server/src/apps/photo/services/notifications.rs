@@ -156,7 +156,7 @@ fn progress_dedupe_key(library_id: Uuid, task_type: &str) -> String {
 /// Min interval between progress notifications for the same (library, task).
 /// At ~100k child jobs, per-child notifications would flood the WS + the
 /// notification center; we collapse to ~1/sec.
-const PROGRESS_THROTTLE: Duration = Duration::from_millis(1000);
+const PROGRESS_THROTTLE: Duration = Duration::from_secs(1);
 static PROGRESS_THROTTLE_MAP: LazyLock<DashMap<String, Instant>> = LazyLock::new(DashMap::new);
 
 /// Returns true if we should skip this progress tick (i.e. throttled).

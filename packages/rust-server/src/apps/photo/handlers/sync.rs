@@ -77,6 +77,18 @@ pub async fn sync_photo(
 
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
 
+    // Preempt any still-active same-library scans of the 4 kinds this
+    // sync-all endpoint will re-dispatch, so the previous attempt's jobs
+    // don't intermix with the new run.
+    for task_type in [
+        "photo_ocr_scan",
+        "photo_clip_scan",
+        "photo_face_scan",
+        "photo_geocode_scan",
+    ] {
+        crate::apps::photo::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
+    }
+
     let user_id: Uuid = auth
         .user_id
         .parse()

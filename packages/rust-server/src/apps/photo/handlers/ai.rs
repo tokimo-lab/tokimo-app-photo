@@ -80,6 +80,9 @@ pub async fn ocr_scan(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan")
+        .await?;
+
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
         "photo_ocr_scan",
@@ -193,6 +196,9 @@ pub async fn clip_embed(
     PhotoLibraryRepo::get_by_id(&state.db, app_id)
         .await?
         .not_found(format!("photo library {id} not found"))?;
+
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan")
+        .await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
