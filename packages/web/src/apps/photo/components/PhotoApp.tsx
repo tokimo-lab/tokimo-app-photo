@@ -12,6 +12,23 @@ import PhotoSidebar from "./PhotoSidebar";
 
 const STORAGE_KEY = "photo-active-library";
 
+/**
+ * Job types counted by GET /api/apps/photo/{id}/sync-progress.
+ * MUST stay in sync with `packages/rust-server/src/apps/photo/handlers/sync.rs`
+ * (the `job_types` array in `get_sync_progress`).
+ *
+ * Single-item refresh jobs (photo_ocr_single / photo_clip_single /
+ * photo_face_single) are intentionally NOT here — they share appId but
+ * don't contribute to the scan aggregate.
+ */
+const PHOTO_SCAN_JOB_TYPES = [
+  "file_scrape",
+  "photo_ocr_scan",
+  "photo_clip_scan",
+  "photo_face_scan",
+  "photo_geocode_scan",
+] as const;
+
 export default function PhotoApp() {
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
@@ -56,6 +73,7 @@ export default function PhotoApp() {
     libraries,
     progressQueryKey: (id) => api.photo.getSyncProgress.queryKey({ id }),
     fetchProgress: (id) => api.photo.getSyncProgress.fetch({ id }),
+    scanJobTypes: PHOTO_SCAN_JOB_TYPES,
     onContentRefresh: () => {
       api.photo.listPhotos.invalidate(queryClient);
       api.photo.listPhotoAlbums.invalidate(queryClient);
