@@ -121,11 +121,7 @@ export default function PhotoApp() {
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="grid h-full"
-        style={{ gridTemplateColumns: `${sidebarCollapsed ? 48 : 200}px 1fr` }}
-      >
+      <div ref={containerRef} className="relative flex h-full">
         <PhotoSidebar
           libraries={libraries}
           activeId={activeLibraryId}
