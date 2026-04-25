@@ -507,7 +507,7 @@ fn detect_live_video_companion_local(abs_path: &str, rel_path: &str) -> Option<S
     None
 }
 
-async fn detect_live_video_companion_remote(vfs: &next_fs::Vfs, photo_path: &str) -> Option<String> {
+async fn detect_live_video_companion_remote(vfs: &tokimo_vfs::Vfs, photo_path: &str) -> Option<String> {
     let path = StdPath::new(photo_path);
     let stem = path.file_stem()?.to_str()?.to_lowercase();
     let dir = path.parent()?;
