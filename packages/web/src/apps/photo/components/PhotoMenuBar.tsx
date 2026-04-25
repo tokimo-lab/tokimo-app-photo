@@ -16,7 +16,7 @@ import {
 } from "react";
 import { api } from "@/generated/rust-api";
 import type { MenuBarConfig } from "@/system";
-import { useMenuBar, useMessage } from "@/system";
+import { useMenuBar, useMessage, useWindowNav } from "@/system";
 import {
   loadSavedSizeIndex,
   PHOTO_SIZE_LEVELS,
@@ -47,7 +47,8 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
-  const id = localStorage.getItem("photo-active-library") ?? undefined;
+  const { params } = useWindowNav();
+  const id = params.libraryId ?? undefined;
   const message = useMessage();
   const qc = useQueryClient();
 
