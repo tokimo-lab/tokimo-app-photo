@@ -1,14 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Spin } from "@tokimo/ui";
 import { Camera, Plus } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import PhotoLibraryEditor from "@/apps/settings/admin/PhotoLibraryEditor";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
-import { useWindowActions, useWindowId, useWindowNav } from "@/system";
+import { useWindowNav } from "@/system";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
+
+type ViewMode = "photo" | "settings" | "settings-new";
 
 /**
  * Job types counted by GET /api/apps/photo/{id}/sync-progress.
@@ -35,8 +38,7 @@ export default function PhotoApp() {
     "photo",
     containerWidth > 0 && containerWidth < 720,
   );
-  const { openModalWindow } = useWindowActions();
-  const parentWindowId = useWindowId();
+  const [mode, setMode] = useState<ViewMode>("photo");
 
   const activeLibraryId = params.libraryId ?? null;
 
@@ -50,18 +52,37 @@ export default function PhotoApp() {
     replace(`/library/${libraries[0].id}`);
   }, [libraries, params.libraryId, replace]);
 
-  const openSettings = () => {
-    openModalWindow({
-      component: () => import("./PhotoSettingsWindow"),
-      parentWindowId,
-      title: "TokimoPhoto 设置",
-      width: 960,
-      height: 640,
-    });
-  };
+  const openSettings = useCallback(() => {
+    setMode("settings");
+  }, []);
+
+  const openCreate = useCallback(() => {
+    setMode("settings-new");
+  }, []);
 
   const handleSelectLibrary = (id: string) => {
     replace(`/library/${id}`);
+    setMode("photo");
+  };
+
+  const handleSaved = (savedId: string) => {
+    replace(`/library/${savedId}`);
+    setMode("photo");
+  };
+
+  const handleDeleted = () => {
+    const remaining = (libraries ?? []).filter((l) => l.id !== activeLibraryId);
+    const next = remaining[0]?.id;
+    if (next) {
+      replace(`/library/${next}`);
+    } else {
+      replace("/");
+    }
+    setMode("photo");
+  };
+
+  const handleCancel = () => {
+    setMode("photo");
   };
 
   // ── Sync progress tracking (WS-driven + fallback polling) ──
@@ -90,6 +111,29 @@ export default function PhotoApp() {
   }
 
   if (!libraries?.length) {
+    if (mode === "settings-new") {
+      return (
+        <div ref={containerRef} className="relative flex h-full">
+          <PhotoSidebar
+            libraries={[]}
+            activeId={null}
+            onSelect={handleSelectLibrary}
+            collapsed={sidebarCollapsed}
+            onCreateClick={openCreate}
+            onSettingsClick={openSettings}
+            onToggleCollapse={onToggleCollapse}
+            settingsActive
+          />
+          <div className="min-w-0 flex-1 overflow-hidden h-full">
+            <PhotoLibraryEditor
+              key="__new__"
+              onSaved={handleSaved}
+              onCancel={handleCancel}
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
@@ -105,7 +149,7 @@ export default function PhotoApp() {
         </div>
         <button
           type="button"
-          onClick={openSettings}
+          onClick={openCreate}
           className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700"
         >
           <Plus className="h-4 w-4" />
@@ -115,6 +159,8 @@ export default function PhotoApp() {
     );
   }
 
+  const isSettingsView = mode !== "photo";
+
   return (
     <div ref={containerRef} className="relative flex h-full">
       <PhotoSidebar
@@ -122,18 +168,35 @@ export default function PhotoApp() {
         activeId={activeLibraryId}
         onSelect={handleSelectLibrary}
         collapsed={sidebarCollapsed}
-        onCreateClick={openSettings}
+        onCreateClick={openCreate}
         onSettingsClick={openSettings}
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
+        settingsActive={isSettingsView}
       />
       <div className="min-w-0 flex-1 overflow-auto">
-        {activeLibraryId && (
-          <PhotoAppPage
-            key={activeLibraryId}
-            photoLibraryId={activeLibraryId}
-            syncing={!!syncProgress[activeLibraryId]?.isActive}
+        {mode === "settings-new" ? (
+          <PhotoLibraryEditor
+            key="__new__"
+            onSaved={handleSaved}
+            onCancel={handleCancel}
           />
+        ) : mode === "settings" && activeLibraryId ? (
+          <PhotoLibraryEditor
+            key={activeLibraryId}
+            photoId={activeLibraryId}
+            onSaved={handleSaved}
+            onDeleted={handleDeleted}
+            onCancel={handleCancel}
+          />
+        ) : (
+          activeLibraryId && (
+            <PhotoAppPage
+              key={activeLibraryId}
+              photoLibraryId={activeLibraryId}
+              syncing={!!syncProgress[activeLibraryId]?.isActive}
+            />
+          )
         )}
       </div>
     </div>
