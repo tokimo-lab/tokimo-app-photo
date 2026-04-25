@@ -450,7 +450,7 @@ async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();
     let result = tokio::task::spawn_blocking(move || {
-        use ffmpeg_tool::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
+        use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
         let opts = ImageDecodeOptions {
             width: None,

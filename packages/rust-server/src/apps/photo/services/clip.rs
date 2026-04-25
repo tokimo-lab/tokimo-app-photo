@@ -201,7 +201,7 @@ impl PhotoClipService {
         let fname = filename.to_string();
         let bytes = raw_bytes.to_vec();
         tokio::task::spawn_blocking(move || {
-            use ffmpeg_tool::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
+            use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
             let opts = ImageDecodeOptions {
                 width: Some(512),
