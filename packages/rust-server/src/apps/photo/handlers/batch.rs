@@ -361,7 +361,7 @@ async fn rescan_local_photo(
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("heif"))
             {
-                let ffmpeg_bin = rust_hls::resolve_ffmpeg_binary();
+                let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
                 let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
                 let abs_for_probe = abs_path.clone();
                 if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
@@ -436,7 +436,7 @@ async fn rescan_remote_photo(
         && (!got_dims || !got_date)
         && let Ok(full_bytes) = vfs.read_bytes(StdPath::new(path), 0, None).await
     {
-        let ffmpeg_bin = rust_hls::resolve_ffmpeg_binary();
+        let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
         let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
         let tmp_path = format!("/tmp/tokimo_rescan_{photo_id}.heic");
         if tokio::fs::write(&tmp_path, &full_bytes).await.is_ok() {

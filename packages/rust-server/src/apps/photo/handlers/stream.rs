@@ -136,7 +136,7 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
     use std::process::Stdio;
     use uuid::Uuid;
 
-    let ffmpeg_bin = rust_hls::resolve_ffmpeg_binary();
+    let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
     let ext = filename.rsplit('.').next().unwrap_or("heic").to_lowercase();
     let tmp_path = std::env::temp_dir().join(format!("tokimo_heic_{}.{}", Uuid::new_v4(), ext));
 
