@@ -12,16 +12,14 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { api } from "@/generated/rust-api";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
 import type { MenuBarConfig } from "@/system";
 import { useMenuBar, useMessage, useWindowNav } from "@/system";
-import {
-  loadSavedSizeIndex,
-  PHOTO_SIZE_LEVELS,
-  saveSizeIndex,
-} from "./PhotoSizeSlider";
+import { DEFAULT_SIZE_INDEX, PHOTO_SIZE_LEVELS } from "./PhotoSizeSlider";
 
 // ── Shared state context (consumed by PhotoAppPage) ─────────────────────────
 
@@ -54,7 +52,14 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
   // Shared state — provided to page via context
   const [isSelecting, setIsSelecting] = useState(false);
-  const [sizeIndex, setSizeIndex] = useState(loadSavedSizeIndex);
+  const gridSizePref = useComponentPreference<{ index?: number }>(
+    "photo-grid-size",
+  );
+  const gridSizePrefRef = useRef(gridSizePref);
+  gridSizePrefRef.current = gridSizePref;
+  const [sizeIndex, setSizeIndex] = useState(
+    () => gridSizePref.data.index ?? DEFAULT_SIZE_INDEX,
+  );
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncClearData, setSyncClearData] = useState(false);
@@ -95,7 +100,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
       icon: <LayoutGrid size={14} />,
       onClick: () => {
         setSizeIndex(i);
-        saveSizeIndex(i);
+        gridSizePrefRef.current.patch({ index: i });
       },
     }));
 

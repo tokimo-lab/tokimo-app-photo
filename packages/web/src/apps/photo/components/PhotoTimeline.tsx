@@ -13,6 +13,7 @@ import {
   type JustifiedRow,
 } from "@/apps/photo/hooks/useJustifiedLayout";
 import type { PhotoOutput } from "@/generated/rust-api";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
 import { useWindowActions } from "@/system";
 import { getDefaultSize } from "@/system/window/window-sync";
 import { DateHeader } from "./DateHeader";
@@ -64,6 +65,11 @@ export function PhotoTimeline({
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const { openWindow } = useWindowActions();
+  const infoPanelPref = useComponentPreference<{ open?: boolean }>(
+    "photo-viewer-info",
+  );
+  const infoPanelOpenRef = useRef(infoPanelPref.data.open ?? false);
+  infoPanelOpenRef.current = infoPanelPref.data.open ?? false;
 
   const handlePhotoClick = useCallback(
     (photo: PhotoOutput) => {
@@ -75,10 +81,7 @@ export function PhotoTimeline({
       const childSize = getDefaultSize("image");
       // Read info panel state to adjust fly animation target
       let infoW = 0;
-      try {
-        if (localStorage.getItem("photo-viewer-info-panel-open") === "true")
-          infoW = 320;
-      } catch {}
+      if (infoPanelOpenRef.current) infoW = 320;
       let initialX: number | undefined;
       let initialY: number | undefined;
       if (parentRect) {

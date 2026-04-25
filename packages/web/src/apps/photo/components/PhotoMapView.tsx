@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { api } from "@/generated/rust-api";
 import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
 import { useWindowNav } from "@/system";
 import {
   type AMapInstance,
@@ -13,13 +14,9 @@ import {
   amapStyleForTheme,
   computeClusterSelection,
   getEffectiveTheme,
-  getStoredTheme,
-  loadMapCenter,
   type MapClusterSelection,
   type MapPoint,
   type MapTheme,
-  saveMapCenter,
-  saveTheme,
   THUMB_SIZE,
 } from "./map-utils";
 
@@ -40,11 +37,19 @@ export function PhotoMapView({
   const AMapRef = useRef<AMapSDK | null>(null);
   const satelliteLayerRef = useRef<unknown>(null);
 
-  const [mapTheme, setMapTheme] = useState<MapTheme>(getStoredTheme);
+  const mapPref = useComponentPreference<{
+    theme?: MapTheme;
+    center?: string;
+  }>("photo-map");
+  const [mapTheme, setMapTheme] = useState<MapTheme>(
+    () => mapPref.data.theme ?? "auto",
+  );
   const [mapReady, setMapReady] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const initialThemeRef = useRef(mapTheme);
+  const mapPrefRef = useRef(mapPref);
+  mapPrefRef.current = mapPref;
 
   const { openWindow } = useWindowNav();
 
@@ -133,7 +138,10 @@ export function PhotoMapView({
     map.add(newMarkers);
     markersRef.current = newMarkers;
 
-    saveMapCenter(map);
+    const center = map.getCenter();
+    mapPrefRef.current.patch({
+      center: `${center.lng},${center.lat},${zoom}`,
+    });
   }, []);
 
   // ── Supercluster index ───────────────────────────────────────────────
@@ -210,13 +218,24 @@ export function PhotoMapView({
         if (destroyed || !containerRef.current) return;
 
         AMapRef.current = AMap;
-        const saved = loadMapCenter();
+        const savedCenter = (() => {
+          const raw = mapPrefRef.current.data.center;
+          if (!raw) return null;
+          const parts = raw.split(",");
+          if (parts.length !== 3) return null;
+          const lng = Number(parts[0]);
+          const lat = Number(parts[1]);
+          const zoom = Number(parts[2]);
+          if (Number.isNaN(lng) || Number.isNaN(lat) || Number.isNaN(zoom))
+            return null;
+          return { center: [lng, lat] as [number, number], zoom };
+        })();
         const eff = getEffectiveTheme(initialThemeRef.current);
         const isSatellite = eff === "satellite";
 
         const mapOptions: Record<string, unknown> = {
-          zoom: saved?.zoom ?? 5,
-          center: saved?.center ?? [104.07, 30.67],
+          zoom: savedCenter?.zoom ?? 5,
+          center: savedCenter?.center ?? [104.07, 30.67],
           zooms: [3, 20],
           resizeEnable: true,
           mapStyle: amapStyleForTheme(eff),
@@ -291,7 +310,7 @@ export function PhotoMapView({
   const handleSetTheme = useCallback(
     (t: MapTheme) => {
       setMapTheme(t);
-      saveTheme(t);
+      mapPrefRef.current.patch({ theme: t });
       setThemeOpen(false);
       applyTheme(t);
     },

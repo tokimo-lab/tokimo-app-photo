@@ -13,29 +13,6 @@ export const PHOTO_SIZE_LEVELS = [
 
 export const DEFAULT_SIZE_INDEX = 1; // "小"
 
-const STORAGE_KEY = "tokimo:photo-grid-size";
-
-export function loadSavedSizeIndex(): number {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    if (v !== null) {
-      const n = Number.parseInt(v, 10);
-      if (n >= 0 && n < PHOTO_SIZE_LEVELS.length) return n;
-    }
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT_SIZE_INDEX;
-}
-
-export function saveSizeIndex(index: number) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(index));
-  } catch {
-    /* ignore */
-  }
-}
-
 export function PhotoSizeSlider({
   value,
   onChange,
@@ -48,7 +25,6 @@ export function PhotoSizeSlider({
   const handleChange = useCallback(
     (v: number) => {
       onChange(v);
-      saveSizeIndex(v);
     },
     [onChange],
   );

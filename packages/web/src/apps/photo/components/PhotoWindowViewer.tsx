@@ -9,6 +9,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import type { PhotoOutput } from "@/generated/rust-types";
 import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
 import { useWindowActions } from "@/system";
 import type { WindowState } from "@/system/window/window-types";
 import { LivePhotoIcon } from "./LivePhotoIcon";
@@ -30,7 +31,6 @@ import { useViewerImageLoader } from "./use-viewer-image-loader";
 import { useViewerZoomPan } from "./use-viewer-zoom-pan";
 import { ViewerToolbar } from "./ViewerToolbar";
 
-const INFO_PANEL_STORAGE_KEY = "photo-viewer-info-panel-open";
 const preventDrag = (e: React.SyntheticEvent) => e.preventDefault();
 
 interface Props {
@@ -57,22 +57,19 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
   const hasNext = currentIndex < photos.length - 1;
 
   // ── Info panel state ───────────────────────────────────────────
-  const [showInfo, setShowInfo] = useState(() => {
-    try {
-      return localStorage.getItem(INFO_PANEL_STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const infoPanelPref = useComponentPreference<{ open?: boolean }>(
+    "photo-viewer-info",
+  );
+  const [showInfo, setShowInfo] = useState(
+    () => infoPanelPref.data.open ?? false,
+  );
   const toggleInfo = useCallback(() => {
     setShowInfo((v) => {
       const next = !v;
-      try {
-        localStorage.setItem(INFO_PANEL_STORAGE_KEY, String(next));
-      } catch {}
+      infoPanelPref.patch({ open: next });
       return next;
     });
-  }, []);
+  }, [infoPanelPref]);
 
   // ── Queries ────────────────────────────────────────────────────
   const queryClient = useQueryClient();

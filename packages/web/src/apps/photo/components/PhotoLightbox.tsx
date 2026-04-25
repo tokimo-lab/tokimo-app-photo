@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 import { thumbUrl } from "@/lib/thumb";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import {
   ANIM_DURATION,
@@ -50,22 +51,19 @@ export function PhotoLightbox({
   const idx = allPhotos.findIndex((p) => p.id === photo.id);
   const hasPrev = idx > 0;
   const hasNext = idx < allPhotos.length - 1;
-  const [showInfo, setShowInfo] = useState(() => {
-    try {
-      return localStorage.getItem("photo-lightbox-info") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const lightboxInfoPref = useComponentPreference<{ open?: boolean }>(
+    "photo-lightbox-info",
+  );
+  const [showInfo, setShowInfo] = useState(
+    () => lightboxInfoPref.data.open ?? false,
+  );
   const toggleInfo = useCallback(() => {
     setShowInfo((v) => {
       const next = !v;
-      try {
-        localStorage.setItem("photo-lightbox-info", next ? "1" : "0");
-      } catch {}
+      lightboxInfoPref.patch({ open: next });
       return next;
     });
-  }, []);
+  }, [lightboxInfoPref]);
   const [hoveredFaceId, setHoveredFaceId] = useState<number | null>(null);
   const [hoveredOcrId, setHoveredOcrId] = useState<string | null>(null);
   const [ocrSelectionRanges, setOcrSelectionRanges] = useState<

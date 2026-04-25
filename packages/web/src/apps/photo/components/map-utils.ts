@@ -21,20 +21,7 @@ export interface PhotoMapViewProps {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
-const STORAGE_KEY_STYLE = "photo-map-style";
-const STORAGE_KEY_CENTER = "photo-map-center";
 export const THUMB_SIZE = 50;
-
-export function getStoredTheme(): MapTheme {
-  const v = localStorage.getItem(STORAGE_KEY_STYLE);
-  if (v === "light" || v === "dark" || v === "satellite" || v === "auto")
-    return v;
-  return "auto";
-}
-
-export function saveTheme(theme: MapTheme) {
-  localStorage.setItem(STORAGE_KEY_STYLE, theme);
-}
 
 export function getEffectiveTheme(
   theme: MapTheme,
@@ -48,30 +35,6 @@ export function getEffectiveTheme(
 export function amapStyleForTheme(t: "light" | "dark" | "satellite"): string {
   if (t === "dark") return "amap://styles/dark";
   return "amap://styles/normal";
-}
-
-export function saveMapCenter(map: AMapInstance) {
-  const zoom = map.getZoom();
-  const center = map.getCenter();
-  localStorage.setItem(
-    STORAGE_KEY_CENTER,
-    `${center.lng},${center.lat},${zoom}`,
-  );
-}
-
-export function loadMapCenter(): {
-  center: [number, number];
-  zoom: number;
-} | null {
-  const raw = localStorage.getItem(STORAGE_KEY_CENTER);
-  if (!raw) return null;
-  const parts = raw.split(",");
-  if (parts.length !== 3) return null;
-  const lng = Number(parts[0]);
-  const lat = Number(parts[1]);
-  const zoom = Number(parts[2]);
-  if (Number.isNaN(lng) || Number.isNaN(lat) || Number.isNaN(zoom)) return null;
-  return { center: [lng, lat], zoom };
 }
 
 // ── Cluster selection computation ─────────────────────────────────────
