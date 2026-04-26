@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Spin } from "@tokimo/ui";
 import { Camera, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { AnimatedSettingsPane } from "@/apps/_framework/AnimatedSettingsPane";
 import PhotoLibraryEditor from "@/apps/settings/admin/PhotoLibraryEditor";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
@@ -174,34 +175,30 @@ export default function PhotoApp() {
         onToggleCollapse={onToggleCollapse}
         settingsActive={isSettingsView}
       />
-      <div className="min-w-0 flex-1 overflow-auto">
-        {mode === "settings-new" ? (
-          <div className="animate-settings-pane-in h-full">
-            <PhotoLibraryEditor
-              key="__new__"
-              onSaved={handleSaved}
-              onCancel={handleCancel}
-            />
-          </div>
-        ) : mode === "settings" && activeLibraryId ? (
-          <div className="animate-settings-pane-in h-full">
-            <PhotoLibraryEditor
-              key={activeLibraryId}
-              photoId={activeLibraryId}
-              onSaved={handleSaved}
-              onDeleted={handleDeleted}
-              onCancel={handleCancel}
-            />
-          </div>
-        ) : (
-          activeLibraryId && (
-            <PhotoAppPage
-              key={activeLibraryId}
-              photoLibraryId={activeLibraryId}
-              syncing={!!syncProgress[activeLibraryId]?.isActive}
-            />
-          )
+      <div className="relative min-w-0 flex-1 overflow-auto">
+        {activeLibraryId && mode === "photo" && (
+          <PhotoAppPage
+            key={activeLibraryId}
+            photoLibraryId={activeLibraryId}
+            syncing={!!syncProgress[activeLibraryId]?.isActive}
+          />
         )}
+        <AnimatedSettingsPane open={mode === "settings-new"}>
+          <PhotoLibraryEditor
+            key="__new__"
+            onSaved={handleSaved}
+            onCancel={handleCancel}
+          />
+        </AnimatedSettingsPane>
+        <AnimatedSettingsPane open={mode === "settings" && !!activeLibraryId}>
+          <PhotoLibraryEditor
+            key={activeLibraryId ?? "edit"}
+            photoId={activeLibraryId ?? undefined}
+            onSaved={handleSaved}
+            onDeleted={handleDeleted}
+            onCancel={handleCancel}
+          />
+        </AnimatedSettingsPane>
       </div>
     </div>
   );
