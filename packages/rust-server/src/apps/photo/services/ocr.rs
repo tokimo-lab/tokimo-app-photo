@@ -126,7 +126,12 @@ impl PhotoOcrService {
         let (items, debug) = if needs_hybrid {
             let det_model = aux_model_name.unwrap_or("rapid-ocr-rust");
             let items = ai
-                .ocr_hybrid(image_bytes, Some(det_model.to_string()), Some(model.to_string()), request_id)
+                .ocr_hybrid(
+                    image_bytes,
+                    Some(det_model.to_string()),
+                    Some(model.to_string()),
+                    request_id,
+                )
                 .await
                 .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
             (items, None)
@@ -202,10 +207,18 @@ impl PhotoOcrService {
         // so that `cancel_one(job_id, ...)` actually terminates the in-flight
         // ONNX session instead of letting it chew CPU until the batch ends.
         let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo_id);
-        let request_id = cancel_scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+        let request_id = cancel_scope
+            .as_ref()
+            .map(crate::services::ai::AiCancelScope::request_id_owned);
 
-        let (results, debug_info) =
-            Self::ocr_image(&state.ai, image_bytes, Some(&model_name), aux_model_name.as_deref(), request_id).await?;
+        let (results, debug_info) = Self::ocr_image(
+            &state.ai,
+            image_bytes,
+            Some(&model_name),
+            aux_model_name.as_deref(),
+            request_id,
+        )
+        .await?;
         drop(cancel_scope);
         let count = results.len();
 

@@ -64,7 +64,6 @@ pub async fn test_photo_ai_connection(State(state): State<Arc<AppState>>) -> imp
 
 // ── OCR ──
 
-
 /// POST /api/apps/photo/{id}/photos/ocr-scan
 pub async fn ocr_scan(
     State(state): State<Arc<AppState>>,
@@ -80,8 +79,7 @@ pub async fn ocr_scan(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan")
-        .await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -197,8 +195,7 @@ pub async fn clip_embed(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan")
-        .await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -243,10 +240,7 @@ pub async fn refresh_clip(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
-        &state, "photo_clip", photo_id,
-    )
-    .await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_clip", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -261,7 +255,9 @@ pub async fn refresh_clip(
     )
     .await?;
     state.job_notify.notify_waiters();
-    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
+    Ok(ok(
+        serde_json::json!({ "jobId": job.id.to_string(), "status": job.status }),
+    ))
 }
 
 /// POST /api/photos/{id}/refresh-faces
@@ -276,10 +272,7 @@ pub async fn refresh_faces(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
-        &state, "photo_face", photo_id,
-    )
-    .await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_face", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -294,7 +287,9 @@ pub async fn refresh_faces(
     )
     .await?;
     state.job_notify.notify_waiters();
-    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
+    Ok(ok(
+        serde_json::json!({ "jobId": job.id.to_string(), "status": job.status }),
+    ))
 }
 
 /// POST /api/photos/{id}/refresh-ocr
@@ -309,10 +304,7 @@ pub async fn refresh_ocr(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(
-        &state, "photo_ocr", photo_id,
-    )
-    .await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_ocr", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -327,7 +319,9 @@ pub async fn refresh_ocr(
     )
     .await?;
     state.job_notify.notify_waiters();
-    Ok(ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status })))
+    Ok(ok(
+        serde_json::json!({ "jobId": job.id.to_string(), "status": job.status }),
+    ))
 }
 
 /// GET /api/photos/{id}/ocr-results

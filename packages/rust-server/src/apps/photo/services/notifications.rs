@@ -320,10 +320,7 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
             if total == 0 {
                 continue;
             }
-            let done = meta
-                .get("done")
-                .and_then(serde_json::Value::as_i64)
-                .unwrap_or(0);
+            let done = meta.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
                 .payload
                 .get("appId")

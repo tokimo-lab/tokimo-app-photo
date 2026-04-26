@@ -123,7 +123,9 @@ impl PhotoClipService {
         let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
 
         let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo.id);
-        let request_id = cancel_scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+        let request_id = cancel_scope
+            .as_ref()
+            .map(crate::services::ai::AiCancelScope::request_id_owned);
         let vec = Self::embed_image(&state.ai, image_bytes, request_id).await?;
         drop(cancel_scope);
         Self::store_vector(db, photo.id, &vec).await?;

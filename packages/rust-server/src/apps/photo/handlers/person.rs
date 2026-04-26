@@ -29,8 +29,7 @@ pub async fn face_detect(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_face_scan")
-        .await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_face_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,

@@ -10,7 +10,6 @@ use crate::apps::photo::queue::parent_child;
 use crate::apps::photo::services::face::PhotoFaceService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
-
 pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,

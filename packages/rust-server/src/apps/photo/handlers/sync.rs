@@ -104,25 +104,12 @@ pub async fn sync_photo(
         match AppSyncService::execute_photo_sync(&db, &sources, &storage, uid, false, Some(user_id)).await {
             Ok(result) => {
                 info!("photo sync completed, {} jobs dispatched", result.total_jobs);
-                photo_notify::notify_sync_completed(
-                    &state_for_task,
-                    user_id,
-                    uid,
-                    &library_name,
-                    result.total_jobs,
-                )
-                .await;
+                photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)
+                    .await;
             }
             Err(e) => {
                 error!("photo sync failed: {e}");
-                photo_notify::notify_sync_failed(
-                    &state_for_task,
-                    user_id,
-                    uid,
-                    &library_name,
-                    &e.to_string(),
-                )
-                .await;
+                photo_notify::notify_sync_failed(&state_for_task, user_id, uid, &library_name, &e.to_string()).await;
             }
         }
     });

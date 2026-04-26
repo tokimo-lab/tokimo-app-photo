@@ -25,7 +25,10 @@ pub async fn handle(
         PhotoGeoService::process_photo_ids(db, &state.http_client, vec![ctx.photo_id]).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
-        let msg = errors.into_iter().next().unwrap_or_else(|| "photo_geocode failed".to_string());
+        let msg = errors
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "photo_geocode failed".to_string());
         return Err(msg.into());
     }
     Ok(out)

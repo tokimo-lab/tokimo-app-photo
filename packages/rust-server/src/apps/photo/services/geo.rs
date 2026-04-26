@@ -171,10 +171,7 @@ impl PhotoGeoService {
     }
 
     /// List photo IDs missing geo data (have GPS but no province).
-    pub async fn list_pending_photo_ids(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<Uuid>, AppError> {
+    pub async fn list_pending_photo_ids(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<Uuid>, AppError> {
         let settings: PhotoGeoSettings = SystemConfigRepo::get(db).await?;
         if !settings.enabled || !provider_has_key(&settings) {
             return Err(AppError::Internal(
@@ -197,11 +194,7 @@ impl PhotoGeoService {
 
     /// Process explicit photo IDs (used by child batch jobs). Lenient: per-photo
     /// failures don't abort the batch.
-    pub async fn process_photo_ids(
-        db: &DatabaseConnection,
-        http: &Client,
-        ids: Vec<Uuid>,
-    ) -> (u32, u32, Vec<String>) {
+    pub async fn process_photo_ids(db: &DatabaseConnection, http: &Client, ids: Vec<Uuid>) -> (u32, u32, Vec<String>) {
         let mut errors: Vec<String> = Vec::new();
         let settings: PhotoGeoSettings = match SystemConfigRepo::get(db).await {
             Ok(s) => s,
