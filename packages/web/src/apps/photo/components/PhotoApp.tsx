@@ -176,19 +176,23 @@ export default function PhotoApp() {
       />
       <div className="min-w-0 flex-1 overflow-auto">
         {mode === "settings-new" ? (
-          <PhotoLibraryEditor
-            key="__new__"
-            onSaved={handleSaved}
-            onCancel={handleCancel}
-          />
+          <div className="animate-settings-pane-in h-full">
+            <PhotoLibraryEditor
+              key="__new__"
+              onSaved={handleSaved}
+              onCancel={handleCancel}
+            />
+          </div>
         ) : mode === "settings" && activeLibraryId ? (
-          <PhotoLibraryEditor
-            key={activeLibraryId}
-            photoId={activeLibraryId}
-            onSaved={handleSaved}
-            onDeleted={handleDeleted}
-            onCancel={handleCancel}
-          />
+          <div className="animate-settings-pane-in h-full">
+            <PhotoLibraryEditor
+              key={activeLibraryId}
+              photoId={activeLibraryId}
+              onSaved={handleSaved}
+              onDeleted={handleDeleted}
+              onCancel={handleCancel}
+            />
+          </div>
         ) : (
           activeLibraryId && (
             <PhotoAppPage
