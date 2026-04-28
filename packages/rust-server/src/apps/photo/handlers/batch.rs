@@ -8,6 +8,7 @@ use std::{path::Path as StdPath, sync::Arc};
 use uuid::Uuid;
 
 use crate::AppState;
+use tracing::warn;
 use crate::apps::photo::repos::PhotoRepo;
 use crate::common::thread_util::named_spawn_blocking;
 use crate::db::pagination::PageInput;
@@ -317,7 +318,9 @@ async fn rescan_local_photo(
 
     let mut got_dims = false;
     if let Ok(Some(ref exif)) = exif_result {
-        let _ = PhotoRepo::update_exif(db, photo_id, exif).await;
+        if let Err(e) = PhotoRepo::update_exif(db, photo_id, exif).await {
+            warn!("photo batch: failed to persist exif for photo {photo_id}: {e}");
+        }
         got_dims = exif.width.is_some() && exif.height.is_some();
     }
 
@@ -330,15 +333,18 @@ async fn rescan_local_photo(
     if !has_date {
         let filename = path.rsplit('/').next().unwrap_or(path);
         if let Some(date_str) = rust_image_processor::extract_date_from_filename(filename) {
-            let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+            if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
+                warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
+            }
         } else {
             let abs_for_mtime = abs_path.clone();
             if let Ok(Some(date_str)) = named_spawn_blocking("photo-mtime", move || {
                 rust_image_processor::file_mtime_as_date(&abs_for_mtime)
             })
             .await
+                && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
             {
-                let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+                warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }
         }
     }
@@ -351,7 +357,9 @@ async fn rescan_local_photo(
         .await;
 
         if let Ok(Some((w, h))) = dims {
-            let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
+            if let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await {
+                warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
+            }
         } else {
             let lower = path.to_lowercase();
             if std::path::Path::new(&lower)
@@ -368,16 +376,19 @@ async fn rescan_local_photo(
                     rust_image_processor::get_dimensions_via_ffprobe(&ffprobe_bin, &abs_for_probe)
                 })
                 .await
+                    && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
                 {
-                    let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
+                    warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
                 }
             }
         }
     }
 
     let companion = detect_live_video_companion_local(&abs_path, path);
-    if let Some(live_rel) = companion {
-        let _ = PhotoRepo::update_live_video_path(db, photo_id, live_rel).await;
+    if let Some(live_rel) = companion
+        && let Err(e) = PhotoRepo::update_live_video_path(db, photo_id, live_rel).await
+    {
+        warn!("photo batch: failed to persist live_video_path for photo {photo_id}: {e}");
     }
 }
 
@@ -407,7 +418,9 @@ async fn rescan_remote_photo(
     let mut got_dims = false;
     let mut got_date = false;
     if let Ok(Some(ref exif)) = exif_result {
-        let _ = PhotoRepo::update_exif(db, photo_id, exif).await;
+        if let Err(e) = PhotoRepo::update_exif(db, photo_id, exif).await {
+            warn!("photo batch: failed to persist exif for photo {photo_id}: {e}");
+        }
         got_dims = exif.width.is_some() && exif.height.is_some();
         got_date = exif.taken_at.is_some();
     }
@@ -420,7 +433,9 @@ async fn rescan_remote_photo(
         .await;
 
         if let Ok(Some((w, h))) = dims {
-            let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
+            if let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await {
+                warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
+            }
             got_dims = true;
         }
     }
@@ -447,8 +462,9 @@ async fn rescan_remote_photo(
                     rust_image_processor::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
                 })
                 .await
+                    && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
                 {
-                    let _ = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await;
+                    warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
                 }
             }
             if !got_date {
@@ -457,8 +473,9 @@ async fn rescan_remote_photo(
                     rust_image_processor::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
                 })
                 .await
+                    && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
                 {
-                    let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+                    warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
                 }
             }
             let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -468,20 +485,25 @@ async fn rescan_remote_photo(
     if !got_date && !is_heic {
         let filename = path.rsplit('/').next().unwrap_or(path);
         if let Some(date_str) = rust_image_processor::extract_date_from_filename(filename) {
-            let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+            if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
+                warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
+            }
         } else if let Ok(vfs2) = sources.ensure_vfs(&source_id_str).await
             && let Ok(info) = vfs2.stat(StdPath::new(path)).await
             && let Some(modified) = info.modified
         {
             let date_str = modified.format("%Y-%m-%d %H:%M:%S").to_string();
-            let _ = PhotoRepo::update_taken_at(db, photo_id, &date_str).await;
+            if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
+                warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
+            }
         }
     }
 
     if let Ok(vfs3) = sources.ensure_vfs(&source_id_str).await
         && let Some(live_path) = detect_live_video_companion_remote(&vfs3, path).await
+        && let Err(e) = PhotoRepo::update_live_video_path(db, photo_id, live_path).await
     {
-        let _ = PhotoRepo::update_live_video_path(db, photo_id, live_path).await;
+        warn!("photo batch: failed to persist live_video_path for photo {photo_id}: {e}");
     }
 }
 

@@ -365,7 +365,9 @@ impl PhotoClipService {
                         error!("[photo_clip] {msg}");
                         errors.push(msg);
                         let zero_vec = vec![0.0f32; 512];
-                        let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                        if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                        }
                     }
                 }
             }
@@ -380,7 +382,9 @@ impl PhotoClipService {
                     error!("[photo_clip] {msg}");
                     errors.push(msg);
                     let zero_vec = vec![0.0f32; 512];
-                    let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                    if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                        warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                    }
                 }
             }
         }
@@ -504,7 +508,9 @@ impl PhotoClipService {
                         Err(e) => {
                             error!("[photo_clip] Failed for {filename}: {e}");
                             let zero_vec = vec![0.0f32; 512];
-                            let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                            if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                                warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                            }
                         }
                     }
                     Self::maybe_report_progress(db, job_id, processed, total, success).await;
@@ -519,7 +525,9 @@ impl PhotoClipService {
                     Err(e) => {
                         error!("[photo_clip] Failed for {filename}: {e}");
                         let zero_vec = vec![0.0f32; 512];
-                        let _ = Self::store_vector(db, photo_id, &zero_vec).await;
+                        if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                        }
                     }
                 }
                 Self::maybe_report_progress(db, job_id, processed, total, success).await;
@@ -547,7 +555,9 @@ impl PhotoClipService {
                     "total": total,
                     "success": success,
                 });
-                let _ = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(meta)).await;
+                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(meta)).await {
+                    warn!("[photo_clip] job {jid}: failed to update progress: {e}");
+                }
             }
         }
     }
