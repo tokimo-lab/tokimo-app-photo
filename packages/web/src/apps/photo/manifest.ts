@@ -11,6 +11,7 @@ export const manifest: AppManifest = {
   color: "#8b5cf6",
   appName: "dashboard.menu.photo",
   order: 3,
+  component: () => import("./components/PhotoApp"),
   views: {
     "/": () => import("./components/PhotoApp"),
     "/library/:libraryId": () => import("./components/PhotoApp"),
