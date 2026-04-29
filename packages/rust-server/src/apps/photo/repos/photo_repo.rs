@@ -543,7 +543,7 @@ impl PhotoRepo {
     pub async fn update_exif(
         db: &DatabaseConnection,
         photo_id: Uuid,
-        exif: &rust_image_processor::ExifData,
+        exif: &tokimo_package_image::ExifData,
     ) -> Result<(), AppError> {
         let mut active = photos::ActiveModel {
             id: Set(photo_id),

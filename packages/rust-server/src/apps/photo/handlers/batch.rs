@@ -312,7 +312,7 @@ async fn rescan_local_photo(
 
     let abs_for_exif = abs_path.clone();
     let exif_result = named_spawn_blocking("exif-extract", move || {
-        rust_image_processor::extract_exif(&abs_for_exif)
+        tokimo_package_image::extract_exif(&abs_for_exif)
     })
     .await;
 
@@ -332,14 +332,14 @@ async fn rescan_local_photo(
         .is_some();
     if !has_date {
         let filename = path.rsplit('/').next().unwrap_or(path);
-        if let Some(date_str) = rust_image_processor::extract_date_from_filename(filename) {
+        if let Some(date_str) = tokimo_package_image::extract_date_from_filename(filename) {
             if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
                 warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }
         } else {
             let abs_for_mtime = abs_path.clone();
             if let Ok(Some(date_str)) = named_spawn_blocking("photo-mtime", move || {
-                rust_image_processor::file_mtime_as_date(&abs_for_mtime)
+                tokimo_package_image::file_mtime_as_date(&abs_for_mtime)
             })
             .await
                 && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
@@ -352,7 +352,7 @@ async fn rescan_local_photo(
     if !got_dims {
         let abs_for_dims = abs_path.clone();
         let dims = named_spawn_blocking("photo-dims", move || {
-            rust_image_processor::get_image_dimensions(&abs_for_dims)
+            tokimo_package_image::get_image_dimensions(&abs_for_dims)
         })
         .await;
 
@@ -373,7 +373,7 @@ async fn rescan_local_photo(
                 let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
                 let abs_for_probe = abs_path.clone();
                 if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
-                    rust_image_processor::get_dimensions_via_ffprobe(&ffprobe_bin, &abs_for_probe)
+                    tokimo_package_image::get_dimensions_via_ffprobe(&ffprobe_bin, &abs_for_probe)
                 })
                 .await
                     && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
@@ -411,7 +411,7 @@ async fn rescan_remote_photo(
 
     let exif_bytes = bytes.clone();
     let exif_result = named_spawn_blocking("exif-bytes", move || {
-        rust_image_processor::extract_exif_from_bytes(&exif_bytes)
+        tokimo_package_image::extract_exif_from_bytes(&exif_bytes)
     })
     .await;
 
@@ -428,7 +428,7 @@ async fn rescan_remote_photo(
     if !got_dims {
         let dim_bytes = bytes.clone();
         let dims = named_spawn_blocking("photo-dims", move || {
-            rust_image_processor::get_image_dimensions_from_bytes(&dim_bytes)
+            tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
         })
         .await;
 
@@ -459,7 +459,7 @@ async fn rescan_remote_photo(
                 let probe_bin = ffprobe_bin.clone();
                 let tmp_for_dims = tmp_path.clone();
                 if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
-                    rust_image_processor::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
+                    tokimo_package_image::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
                 })
                 .await
                     && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
@@ -470,7 +470,7 @@ async fn rescan_remote_photo(
             if !got_date {
                 let tmp_for_date = tmp_path.clone();
                 if let Ok(Some(date_str)) = named_spawn_blocking("photo-ffprobe", move || {
-                    rust_image_processor::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
+                    tokimo_package_image::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
                 })
                 .await
                     && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
@@ -484,7 +484,7 @@ async fn rescan_remote_photo(
 
     if !got_date && !is_heic {
         let filename = path.rsplit('/').next().unwrap_or(path);
-        if let Some(date_str) = rust_image_processor::extract_date_from_filename(filename) {
+        if let Some(date_str) = tokimo_package_image::extract_date_from_filename(filename) {
             if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
                 warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }
