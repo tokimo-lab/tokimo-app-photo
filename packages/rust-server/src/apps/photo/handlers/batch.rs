@@ -356,31 +356,10 @@ async fn rescan_local_photo(
         })
         .await;
 
-        if let Ok(Some((w, h))) = dims {
-            if let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await {
-                warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
-            }
-        } else {
-            let lower = path.to_lowercase();
-            if std::path::Path::new(&lower)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("heic"))
-                || std::path::Path::new(&lower)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("heif"))
-            {
-                let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
-                let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
-                let abs_for_probe = abs_path.clone();
-                if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
-                    tokimo_package_image::get_dimensions_via_ffprobe(&ffprobe_bin, &abs_for_probe)
-                })
-                .await
-                    && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
-                {
-                    warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
-                }
-            }
+        if let Ok(Some((w, h))) = dims
+            && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
+        {
+            warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
         }
     }
 
@@ -448,35 +427,19 @@ async fn rescan_remote_photo(
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("heif"));
     if is_heic
-        && (!got_dims || !got_date)
+        && !got_dims
         && let Ok(full_bytes) = vfs.read_bytes(StdPath::new(path), 0, None).await
     {
-        let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
-        let ffprobe_bin = ffmpeg_bin.with_file_name("ffprobe");
         let tmp_path = format!("/tmp/tokimo_rescan_{photo_id}.heic");
         if tokio::fs::write(&tmp_path, &full_bytes).await.is_ok() {
-            if !got_dims {
-                let probe_bin = ffprobe_bin.clone();
-                let tmp_for_dims = tmp_path.clone();
-                if let Ok(Some((w, h))) = named_spawn_blocking("photo-ffprobe", move || {
-                    tokimo_package_image::get_dimensions_via_ffprobe(&probe_bin, &tmp_for_dims)
-                })
-                .await
-                    && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
-                {
-                    warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
-                }
-            }
-            if !got_date {
-                let tmp_for_date = tmp_path.clone();
-                if let Ok(Some(date_str)) = named_spawn_blocking("photo-ffprobe", move || {
-                    tokimo_package_image::extract_date_via_ffprobe(&ffprobe_bin, &tmp_for_date)
-                })
-                .await
-                    && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
-                {
-                    warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
-                }
+            let tmp_for_dims = tmp_path.clone();
+            if let Ok(Some((w, h))) = named_spawn_blocking("photo-dims", move || {
+                tokimo_package_image::get_image_dimensions(&tmp_for_dims)
+            })
+            .await
+                && let Err(e) = PhotoRepo::update_exif_dimensions(db, photo_id, w, h).await
+            {
+                warn!("photo batch: failed to persist dimensions for photo {photo_id}: {e}");
             }
             let _ = tokio::fs::remove_file(&tmp_path).await;
         }
