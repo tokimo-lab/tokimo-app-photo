@@ -1,18 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Spin } from "@tokimo/ui";
-import { Camera, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { AnimatedSettingsPane } from "@/apps/_framework/AnimatedSettingsPane";
-import PhotoLibraryEditor from "@/apps/settings/admin/PhotoLibraryEditor";
+import { AppSetupGuide, Spin } from "@tokimo/ui";
+import { FolderSearch, Image, Plus, Upload } from "lucide-react";
+import { useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
-import { useWindowNav } from "@/system";
+import { useWindowActions, useWindowId, useWindowNav } from "@/system";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
-
-type ViewMode = "photo" | "settings" | "settings-new";
 
 /**
  * Job types counted by GET /api/apps/photo/{id}/sync-progress.
@@ -32,6 +29,7 @@ const PHOTO_SCAN_JOB_TYPES = [
 ] as const;
 
 export default function PhotoApp() {
+  const { t } = useTranslation();
   const { params, replace } = useWindowNav();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
@@ -39,7 +37,9 @@ export default function PhotoApp() {
     "photo",
     containerWidth > 0 && containerWidth < 720,
   );
-  const [mode, setMode] = useState<ViewMode>("photo");
+
+  const windowId = useWindowId();
+  const { openModalWindow } = useWindowActions();
 
   const activeLibraryId = params.libraryId ?? null;
 
@@ -53,37 +53,29 @@ export default function PhotoApp() {
     replace(`/library/${libraries[0].id}`);
   }, [libraries, params.libraryId, replace]);
 
-  const openSettings = useCallback(() => {
-    setMode("settings");
-  }, []);
-
-  const openCreate = useCallback(() => {
-    setMode("settings-new");
-  }, []);
+  const openEditorModal = useCallback(
+    (opts: { photoId?: string } = {}) => {
+      openModalWindow({
+        component: () =>
+          import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
+        parentWindowId: windowId,
+        title: opts.photoId
+          ? `TokimoPhoto · 设置`
+          : "TokimoPhoto · 新建图库",
+        width: 720,
+        height: 640,
+        noResize: true,
+        noMinimize: true,
+        metadata: opts.photoId
+          ? ({ photoId: opts.photoId } as Record<string, unknown>)
+          : undefined,
+      });
+    },
+    [openModalWindow, windowId],
+  );
 
   const handleSelectLibrary = (id: string) => {
     replace(`/library/${id}`);
-    setMode("photo");
-  };
-
-  const handleSaved = (savedId: string) => {
-    replace(`/library/${savedId}`);
-    setMode("photo");
-  };
-
-  const handleDeleted = () => {
-    const remaining = (libraries ?? []).filter((l) => l.id !== activeLibraryId);
-    const next = remaining[0]?.id;
-    if (next) {
-      replace(`/library/${next}`);
-    } else {
-      replace("/");
-    }
-    setMode("photo");
-  };
-
-  const handleCancel = () => {
-    setMode("photo");
   };
 
   // ── Sync progress tracking (WS-driven + fallback polling) ──
@@ -112,55 +104,26 @@ export default function PhotoApp() {
   }
 
   if (!libraries?.length) {
-    if (mode === "settings-new") {
-      return (
-        <div ref={containerRef} className="relative flex h-full">
-          <PhotoSidebar
-            libraries={[]}
-            activeId={null}
-            onSelect={handleSelectLibrary}
-            collapsed={sidebarCollapsed}
-            onCreateClick={openCreate}
-            onSettingsClick={openSettings}
-            onToggleCollapse={onToggleCollapse}
-            settingsActive
-          />
-          <div className="min-w-0 flex-1 overflow-hidden h-full">
-            <PhotoLibraryEditor
-              key="__new__"
-              onSaved={handleSaved}
-              onCancel={handleCancel}
-            />
-          </div>
-        </div>
-      );
-    }
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
-          <Camera className="h-8 w-8" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-fg-primary">
-            开始使用 TokimoPhoto
-          </h2>
-          <p className="mt-1 text-sm text-fg-muted">
-            创建一个图库来管理你的照片与截图
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700"
-        >
-          <Plus className="h-4 w-4" />
-          新建图库
-        </button>
-      </div>
+      <AppSetupGuide
+        imageSrc="/page-icons/photo.png"
+        accentColor="violet"
+        title={t("common.setupGuide.getStarted", { name: "TokimoPhoto" })}
+        description={t("common.setupGuide.photoTagline")}
+        features={(
+          t("common.setupGuide.photoFeatures", {
+            returnObjects: true,
+          }) as string[]
+        ).map((label, i) => ({
+          icon: [Upload, Image, FolderSearch][i],
+          label,
+        }))}
+        actionLabel={t("common.setupGuide.photoAction")}
+        actionIcon={Plus}
+        onAction={() => openEditorModal()}
+      />
     );
   }
-
-  const isSettingsView = mode !== "photo";
 
   return (
     <div ref={containerRef} className="relative flex h-full">
@@ -169,36 +132,21 @@ export default function PhotoApp() {
         activeId={activeLibraryId}
         onSelect={handleSelectLibrary}
         collapsed={sidebarCollapsed}
-        onCreateClick={openCreate}
-        onSettingsClick={openSettings}
+        onCreateClick={() => openEditorModal()}
+        onSettingsClick={() =>
+          activeLibraryId && openEditorModal({ photoId: activeLibraryId })
+        }
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
-        settingsActive={isSettingsView}
       />
       <div className="relative min-w-0 flex-1 overflow-auto">
-        {activeLibraryId && mode === "photo" && (
+        {activeLibraryId && (
           <PhotoAppPage
             key={activeLibraryId}
             photoLibraryId={activeLibraryId}
             syncing={!!syncProgress[activeLibraryId]?.isActive}
           />
         )}
-        <AnimatedSettingsPane open={mode === "settings-new"}>
-          <PhotoLibraryEditor
-            key="__new__"
-            onSaved={handleSaved}
-            onCancel={handleCancel}
-          />
-        </AnimatedSettingsPane>
-        <AnimatedSettingsPane open={mode === "settings" && !!activeLibraryId}>
-          <PhotoLibraryEditor
-            key={activeLibraryId ?? "edit"}
-            photoId={activeLibraryId ?? undefined}
-            onSaved={handleSaved}
-            onDeleted={handleDeleted}
-            onCancel={handleCancel}
-          />
-        </AnimatedSettingsPane>
       </div>
     </div>
   );
