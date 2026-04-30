@@ -7,6 +7,7 @@ use crate::config::PhotoAiSettings;
 use crate::db::entities::photos;
 use crate::error::AppError;
 use crate::error::OptionExt;
+use crate::handlers::media::utils::local_driver_root;
 
 // ── ClipSearchResult ─────────────────────────────────────────────────────────
 
@@ -149,7 +150,8 @@ impl PhotoClipService {
         // Resolve via pre-cached source base path
         if let Some(source_id) = photo.source_id {
             if let Some(base) = source_base_paths.get(&source_id) {
-                let abs = format!("{}/{}", base.trim_end_matches('/'), photo.path.trim_start_matches('/'));
+                let combined = format!("{}/{}", base.trim_end_matches('/'), photo.path.trim_start_matches('/'));
+                let abs = tokimo_package_utils::path::internal_to_native(&combined);
                 if let Ok(bytes) = tokio::fs::read(&abs).await {
                     return Self::maybe_decode_heic(bytes, &photo.filename).await;
                 }
@@ -238,15 +240,9 @@ impl PhotoClipService {
         let mut map = std::collections::HashMap::new();
         for source_id in source_ids.into_iter().flatten() {
             if let Some(fs) = vfs::Entity::find_by_id(source_id).one(db).await?
-                && fs.r#type == "local"
-                && let Some(base) = fs
-                    .config
-                    .as_ref()
-                    .and_then(|c| c.as_object())
-                    .and_then(|o| o.get("root_folder_path").or_else(|| o.get("rootPath")))
-                    .and_then(|v| v.as_str())
+                && let Some(base) = local_driver_root(&fs)
             {
-                map.insert(source_id, base.to_string());
+                map.insert(source_id, base);
             }
         }
         Ok(map)

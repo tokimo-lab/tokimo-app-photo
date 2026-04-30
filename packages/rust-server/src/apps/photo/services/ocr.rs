@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::*;
 use serde::Serialize;
+use tokimo_package_utils::is_local_source;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -422,19 +423,8 @@ pub(crate) async fn load_raw_bytes(
     if let Some(source_id) = photo.source_id {
         let fs = vfs::Entity::find_by_id(source_id).one(db).await?;
         if let Some(fs_model) = fs {
-            if fs_model.r#type == "local" {
-                let base_path = fs_model
-                    .config
-                    .as_ref()
-                    .and_then(|c: &serde_json::Value| c.as_object())
-                    .and_then(|o| o.get("root_folder_path").or_else(|| o.get("rootPath")))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let abs_path = format!(
-                    "{}/{}",
-                    base_path.trim_end_matches('/'),
-                    photo.path.trim_start_matches('/')
-                );
+            if is_local_source(&fs_model.r#type) {
+                let abs_path = crate::handlers::media::utils::resolve_local_path(&photo.path, fs_model.config.as_ref());
                 if let Ok(bytes) = tokio::fs::read(&abs_path).await {
                     return Ok(bytes);
                 }
