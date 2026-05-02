@@ -258,7 +258,7 @@ pub async fn rescan(
 
                 handles.push(tokio::spawn(async move {
                     let fs = fs_cache.get(&source_id);
-                    let is_local = fs.is_some_and(|f| is_local_source(&f.r#type));
+                    let is_local = fs.is_some_and(|f| f.r#type == "local");
 
                     if is_local {
                         rescan_local_photo(&db, &path, photo_id, fs).await;
@@ -529,7 +529,7 @@ pub async fn refresh_exif(
     let path = photo.path.clone();
 
     let fs = PhotoRepo::get_file_system_by_id(&state.db, source_id).await?;
-    let is_local = fs.as_ref().is_some_and(|f| is_local_source(&f.r#type));
+    let is_local = fs.as_ref().is_some_and(|f| f.r#type == "local");
 
     if is_local {
         rescan_local_photo(&state.db, &path, photo_id, fs.as_ref()).await;

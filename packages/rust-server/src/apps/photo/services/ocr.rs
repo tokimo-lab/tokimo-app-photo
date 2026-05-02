@@ -422,7 +422,7 @@ pub(crate) async fn load_raw_bytes(
     if let Some(source_id) = photo.source_id {
         let fs = vfs::Entity::find_by_id(source_id).one(db).await?;
         if let Some(fs_model) = fs {
-            if is_local_source(&fs_model.r#type) {
+            if fs_model.r#type == "local" {
                 let abs_path = crate::handlers::media::utils::resolve_local_path(&photo.path, fs_model.config.as_ref());
                 if let Ok(bytes) = tokio::fs::read(&abs_path).await {
                     return Ok(bytes);
