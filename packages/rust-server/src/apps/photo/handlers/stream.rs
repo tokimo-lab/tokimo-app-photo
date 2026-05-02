@@ -15,7 +15,6 @@ use crate::apps::photo::repos::PhotoRepo;
 use crate::handlers::media::stream::mime_for;
 use crate::handlers::media::utils::resolve_local_path;
 use crate::handlers::{err404, err500};
-use tokimo_package_utils::is_local_source;
 
 const PHOTO_SERVE_CHUNK_SIZE: usize = 512 * 1024;
 const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
@@ -111,7 +110,7 @@ async fn load_photo_bytes(
     state: &Arc<AppState>,
     target: &crate::apps::photo::models::PhotoStreamTarget,
 ) -> Result<Vec<u8>, String> {
-    if target.source_type.as_deref().is_some_and(is_local_source) {
+    if target.source_type.as_deref().is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
         return tokio::fs::read(&abs_path)
             .await
@@ -247,7 +246,7 @@ async fn serve_vfs_file(
 ) -> Response {
     let content_type = mime_type.unwrap_or_else(|| mime_for(&path));
 
-    if source_type.is_some_and(is_local_source) {
+    if source_type.is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&path, source_config);
         let response = match ServeFile::new(&abs_path)
             .with_buf_chunk_size(PHOTO_SERVE_CHUNK_SIZE)

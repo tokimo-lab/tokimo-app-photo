@@ -14,7 +14,6 @@ use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ApiResponse, ok};
-use tokimo_package_utils::is_local_source;
 use tracing::warn;
 
 use super::parse_uuid;
