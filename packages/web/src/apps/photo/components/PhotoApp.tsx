@@ -59,9 +59,7 @@ export default function PhotoApp() {
         component: () =>
           import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
         parentWindowId: windowId,
-        title: opts.photoId
-          ? `TokimoPhoto · 设置`
-          : "TokimoPhoto · 新建图库",
+        title: opts.photoId ? `TokimoPhoto · 设置` : "TokimoPhoto · 新建图库",
         width: 720,
         height: 640,
         noResize: true,
