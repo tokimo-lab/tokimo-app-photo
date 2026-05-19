@@ -55,16 +55,11 @@ pub async fn create_photo_library(
         avatar: body.avatar,
         poster_path: None,
         scrape_enabled: body.scrape_enabled,
-        scrape_agents: body.scrape_agents,
         settings: None,
         sources: None,
     };
 
-    if update_fields.avatar.is_some()
-        || update_fields.description.is_some()
-        || update_fields.scrape_enabled.is_some()
-        || update_fields.scrape_agents.is_some()
-    {
+    if update_fields.avatar.is_some() || update_fields.description.is_some() || update_fields.scrape_enabled.is_some() {
         needs_update = true;
     }
 
@@ -109,7 +104,6 @@ pub async fn update_photo_library(
         avatar: body.avatar,
         poster_path: None,
         scrape_enabled: body.scrape_enabled,
-        scrape_agents: body.scrape_agents,
         settings: body.settings,
         sources: None,
     };
