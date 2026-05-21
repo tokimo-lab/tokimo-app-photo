@@ -129,7 +129,7 @@ impl PhotoFaceService {
     pub async fn detect_faces(
         db: &DatabaseConnection,
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+        sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         photo_id: Uuid,
     ) -> Result<usize, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
@@ -215,7 +215,7 @@ impl PhotoFaceService {
     pub async fn detect_app(
         db: &DatabaseConnection,
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+        sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         app_id: Uuid,
     ) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, ai, app_id).await?;
@@ -262,7 +262,7 @@ impl PhotoFaceService {
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+        sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         ids: Vec<Uuid>,
     ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;

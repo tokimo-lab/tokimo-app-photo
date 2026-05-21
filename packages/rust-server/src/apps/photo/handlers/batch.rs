@@ -374,7 +374,7 @@ async fn rescan_local_photo(
 /// Rescan a single remote (SMB/NFS) photo: EXIF + dimension fallback.
 async fn rescan_remote_photo(
     db: &DatabaseConnection,
-    sources: &crate::services::media::source::SourceRegistry,
+    sources: &crate::services::source::SourceRegistry,
     path: &str,
     photo_id: Uuid,
     source_id: &Uuid,

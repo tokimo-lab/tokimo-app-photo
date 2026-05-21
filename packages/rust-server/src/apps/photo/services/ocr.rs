@@ -389,7 +389,7 @@ pub struct OcrSearchResult {
 /// RAW, etc.) to JPEG via `FFmpeg` so downstream AI services can decode them.
 pub(crate) async fn load_photo_bytes(
     db: &DatabaseConnection,
-    sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+    sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
     photo: &photos::Model,
     path: &str,
 ) -> Result<Vec<u8>, AppError> {
@@ -407,7 +407,7 @@ pub(crate) async fn load_photo_bytes(
 /// Load raw file bytes from local filesystem or VFS.
 pub(crate) async fn load_raw_bytes(
     db: &DatabaseConnection,
-    sources: &std::sync::Arc<crate::services::media::source::SourceRegistry>,
+    sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
     photo: &photos::Model,
     path: &str,
 ) -> Result<Vec<u8>, AppError> {

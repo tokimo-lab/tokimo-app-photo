@@ -11,7 +11,7 @@ use crate::apps::photo::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ApiResponse, ok, ok_empty};
-use crate::services::media::source::normalize_source_path;
+use crate::services::source::normalize_source_path;
 
 use super::{
     CreatePhotoLibraryInput, PhotoLibraryReorderInput, UpdatePhotoLibraryInput, parse_uuid, sources_to_json,

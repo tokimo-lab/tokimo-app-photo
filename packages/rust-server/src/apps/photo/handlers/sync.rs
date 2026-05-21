@@ -14,7 +14,7 @@ use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
-use crate::services::media::app_sync::AppSyncService;
+use crate::services::app_sync::AppSyncService;
 
 use super::parse_uuid;
 
