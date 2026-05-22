@@ -8,6 +8,7 @@ import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
 import { useWindowActions, useWindowId, useWindowNav } from "@/system";
+import { PickCancelled, pickWithBridge } from "@/system/window-bridge";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
 
@@ -54,22 +55,31 @@ export default function PhotoApp() {
   }, [libraries, params.libraryId, replace]);
 
   const openEditorModal = useCallback(
-    (opts: { photoId?: string } = {}) => {
-      openModalWindow({
-        component: () =>
-          import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
-        parentWindowId: windowId,
-        title: opts.photoId ? `TokimoPhoto · 设置` : "TokimoPhoto · 新建图库",
-        width: 720,
-        height: 640,
-        noResize: true,
-        noMinimize: true,
-        metadata: opts.photoId
-          ? ({ photoId: opts.photoId } as Record<string, unknown>)
-          : undefined,
-      });
+    async (opts: { photoId?: string } = {}) => {
+      const isEdit = !!opts.photoId;
+      try {
+        const created = await pickWithBridge<{ id: string }>(openModalWindow, {
+          component: () =>
+            import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
+          parentWindowId: windowId,
+          title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
+          width: 720,
+          height: 640,
+          noResize: true,
+          noMinimize: true,
+          metadata: isEdit
+            ? ({ photoId: opts.photoId } as Record<string, unknown>)
+            : undefined,
+        });
+        if (!isEdit) {
+          replace(`/library/${created.id}`);
+        }
+      } catch (err) {
+        if (err instanceof PickCancelled) return;
+        throw err;
+      }
     },
-    [openModalWindow, windowId],
+    [openModalWindow, windowId, replace],
   );
 
   const handleSelectLibrary = (id: string) => {
@@ -118,7 +128,9 @@ export default function PhotoApp() {
         }))}
         actionLabel={t("common.setupGuide.photoAction")}
         actionIcon={Plus}
-        onAction={() => openEditorModal()}
+        onAction={() => {
+          void openEditorModal();
+        }}
       />
     );
   }
@@ -130,10 +142,14 @@ export default function PhotoApp() {
         activeId={activeLibraryId}
         onSelect={handleSelectLibrary}
         collapsed={sidebarCollapsed}
-        onCreateClick={() => openEditorModal()}
-        onSettingsClick={() =>
-          activeLibraryId && openEditorModal({ photoId: activeLibraryId })
-        }
+        onCreateClick={() => {
+          void openEditorModal();
+        }}
+        onSettingsClick={() => {
+          if (activeLibraryId) {
+            void openEditorModal({ photoId: activeLibraryId });
+          }
+        }}
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
       />

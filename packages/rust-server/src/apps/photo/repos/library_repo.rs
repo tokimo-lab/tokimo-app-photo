@@ -15,7 +15,6 @@ pub struct UpdatePhotoLibraryFields {
     pub avatar: Option<serde_json::Value>,
     pub poster_path: Option<String>,
     pub scrape_enabled: Option<bool>,
-    pub scrape_agents: Option<Vec<String>>,
     pub settings: Option<serde_json::Value>,
     pub sources: Option<serde_json::Value>,
 }
@@ -92,9 +91,6 @@ impl PhotoLibraryRepo {
         }
         if let Some(scrape_enabled) = input.scrape_enabled {
             active.scrape_enabled = Set(scrape_enabled);
-        }
-        if let Some(scrape_agents) = input.scrape_agents {
-            active.scrape_agents = Set(Some(scrape_agents));
         }
         if let Some(settings) = input.settings {
             active.settings = Set(Some(settings));

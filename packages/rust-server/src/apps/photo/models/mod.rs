@@ -196,7 +196,6 @@ pub struct PhotoLibraryOutput {
     pub description: Option<String>,
     pub poster_path: Option<String>,
     pub scrape_enabled: bool,
-    pub scrape_agents: Option<Vec<String>>,
     pub sort_order: i32,
     pub settings: Option<serde_json::Value>,
     pub sync_status: String,
