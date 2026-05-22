@@ -130,7 +130,7 @@ where
             )
         })
         .collect();
-    let inserted = JobRepo::create_child_jobs_batch(db, children).await?;
+    let inserted = JobRepo::create_child_jobs_batch(db, children, None).await?;
     info!("[{task_type}_scan] enqueued {inserted} child jobs (one per photo)");
 
     // Fire an immediate 0/total progress notification so the user sees the
