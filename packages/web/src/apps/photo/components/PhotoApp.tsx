@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { AppSetupGuide, Spin } from "@tokimo/ui";
 import { FolderSearch, Image, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect } from "react";
@@ -6,28 +5,11 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
-import { useJobProgress } from "@/shared/hooks/use-sync-progress";
 import { useWindowActions, useWindowId, useWindowNav } from "@/system";
 import { PickCancelled, pickWithBridge } from "@/system/window-bridge";
+import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
-
-/**
- * Job types counted by GET /api/apps/photo/{id}/sync-progress.
- * MUST stay in sync with `packages/rust-server/src/apps/photo/handlers/sync.rs`
- * (the `job_types` array in `get_sync_progress`).
- *
- * Single-item refresh jobs (photo_ocr_single / photo_clip_single /
- * photo_face_single) are intentionally NOT here — they share appId but
- * don't contribute to the scan aggregate.
- */
-const PHOTO_SCAN_JOB_TYPES = [
-  "file_scrape",
-  "photo_ocr_scan",
-  "photo_clip_scan",
-  "photo_face_scan",
-  "photo_geocode_scan",
-] as const;
 
 export default function PhotoApp() {
   const { t } = useTranslation();
@@ -86,22 +68,7 @@ export default function PhotoApp() {
     replace(`/library/${id}`);
   };
 
-  // ── Job progress tracking (WS-driven + fallback polling) ──
-  const queryClient = useQueryClient();
-
-  const syncProgress = useJobProgress({
-    libraries,
-    progressQueryKey: (id) => api.photo.getSyncProgress.queryKey({ id }),
-    fetchProgress: (id) => api.photo.getSyncProgress.fetch({ id }),
-    scanJobTypes: PHOTO_SCAN_JOB_TYPES,
-    onContentRefresh: () => {
-      api.photo.listPhotos.invalidate(queryClient);
-      api.photo.listPhotoAlbums.invalidate(queryClient);
-    },
-    onLibraryRefresh: () => {
-      api.photo.list.invalidate(queryClient);
-    },
-  });
+  const syncProgress = useLibraryItemProgress(libraries);
 
   if (isLoading) {
     return (
