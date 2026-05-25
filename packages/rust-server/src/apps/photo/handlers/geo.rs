@@ -35,7 +35,7 @@ pub async fn reverse_geocode(
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
         "photo_geocode_scan",
-        serde_json::json!({ "appId": app_id.to_string() }),
+        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
         None,
         Some(user_id),
     )

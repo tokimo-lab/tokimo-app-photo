@@ -34,7 +34,7 @@ pub async fn face_detect(
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
         "photo_face_scan",
-        serde_json::json!({ "appId": app_id.to_string() }),
+        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
         None,
         Some(user_id),
     )

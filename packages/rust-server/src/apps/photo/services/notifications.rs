@@ -323,7 +323,7 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
             let done = payload.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
                 .params
-                .get("appId")
+                .get("photoLibraryId")
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok());
             let Some(app_id) = app_id else { continue };

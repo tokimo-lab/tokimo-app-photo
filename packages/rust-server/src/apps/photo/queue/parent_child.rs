@@ -67,9 +67,9 @@ where
     F: AsyncFnOnce(Uuid) -> Result<Vec<Uuid>, crate::error::AppError>,
 {
     let app_id = params
-        .get("appId")
+        .get("photoLibraryId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing appId in params")?;
+        .ok_or("Missing photoLibraryId in params")?;
     let app_uuid = Uuid::parse_str(app_id)?;
     let lib_name = library_name(db, app_uuid).await;
 
@@ -114,7 +114,7 @@ where
         .iter()
         .map(|photo_id| {
             let params = json!({
-                "appId": app_uuid.to_string(),
+                "photoLibraryId": app_uuid.to_string(),
                 "photoId": photo_id.to_string(),
                 "libraryName": lib_name,
                 "parentJobId": job_id.to_string(),
@@ -142,7 +142,7 @@ where
     Ok(Some(parent_payload_waiting(total, &lib_name, task_type)))
 }
 
-/// Extract `(appId, photoId, libraryName, parentJobId, taskType)` from a
+/// Extract `(photoLibraryId, photoId, libraryName, parentJobId, taskType)` from a
 /// child job's params. Returns parsed UUIDs.
 pub struct ChildContext {
     pub app_id: Uuid,
@@ -154,9 +154,9 @@ pub struct ChildContext {
 
 pub fn parse_child_params(params: &JsonValue) -> Result<ChildContext, DynErr> {
     let app_id = params
-        .get("appId")
+        .get("photoLibraryId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing appId in child params")?;
+        .ok_or("Missing photoLibraryId in child params")?;
     let app_uuid = Uuid::parse_str(app_id)?;
 
     let photo_id_str = params

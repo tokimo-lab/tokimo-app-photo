@@ -84,7 +84,7 @@ pub async fn ocr_scan(
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
         "photo_ocr_scan",
-        serde_json::json!({ "appId": app_id.to_string() }),
+        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
         None,
         Some(user_id),
     )
@@ -200,7 +200,7 @@ pub async fn clip_embed(
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
         "photo_clip_scan",
-        serde_json::json!({ "appId": app_id.to_string() }),
+        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
         None,
         Some(user_id),
     )
