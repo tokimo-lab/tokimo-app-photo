@@ -25,9 +25,9 @@ use crate::db::repos::job_repo::JobRepo;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
 
-/// Build the parent payload JSON returned to the worker. Includes the magic
+/// Build the parent data JSON returned to the worker. Includes the magic
 /// `_phase: "waiting"` key so the worker calls `mark_waiting`.
-fn parent_payload_waiting(total: i64, library_name: &str, task_type: &str) -> JsonValue {
+fn parent_data_waiting(total: i64, library_name: &str, task_type: &str) -> JsonValue {
     json!({
         "_phase": "waiting",
         "totalChildren": total,
@@ -49,7 +49,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 }
 
 /// Run the "scan" half of a parent/child photo job: list pending photo IDs,
-/// enqueue one child job per photo, and return a payload blob that flips
+/// enqueue one child job per photo, and return a data blob that flips
 /// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
@@ -76,18 +76,18 @@ where
     // Idempotency: if a previous (crashed) run already enqueued children,
     // skip the enqueue phase and just transition to waiting again.
     if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id).one(db).await
-        && self_job.payload.get("totalChildren").is_some()
+        && self_job.data.get("totalChildren").is_some()
     {
         info!("[{task_type}_scan] resuming parent {job_id}: children already enqueued");
         let total = self_job
-            .payload
+            .data
             .get("totalChildren")
             .and_then(serde_json::Value::as_i64)
             .unwrap_or(0);
         if total == 0 {
             return Ok(Some(json!({ "processed": 0, "libraryName": lib_name })));
         }
-        return Ok(Some(parent_payload_waiting(total, &lib_name, task_type)));
+        return Ok(Some(parent_data_waiting(total, &lib_name, task_type)));
     }
 
     let pending = list_pending_ids(app_uuid).await?;
@@ -106,10 +106,10 @@ where
     }
 
     // One child job per photo. parentJobId + taskType travel in the params
-    // so the dispatch (which doesn't pass payload) can surface them to child
+    // so the dispatch can surface them to child
     // handlers. They are ALSO persisted into dedicated `parent_job_id` and
     // `task_type` columns (via create_child_jobs_batch) so DB queries can
-    // rely on stable indexed columns even if handlers overwrite `payload`.
+    // rely on stable indexed columns even if handlers overwrite `data`.
     let children: Vec<_> = pending
         .iter()
         .map(|photo_id| {
@@ -139,7 +139,7 @@ where
         photo_notify::notify_processing_progress(state, uid, app_uuid, &lib_name, task_type, 0, total).await;
     }
 
-    Ok(Some(parent_payload_waiting(total, &lib_name, task_type)))
+    Ok(Some(parent_data_waiting(total, &lib_name, task_type)))
 }
 
 /// Extract `(photoLibraryId, photoId, libraryName, parentJobId, taskType)` from a
