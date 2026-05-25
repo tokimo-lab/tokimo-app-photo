@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
-import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
+import { useJobProgress } from "@/shared/hooks/use-sync-progress";
 import { useWindowActions, useWindowId, useWindowNav } from "@/system";
 import { PickCancelled, pickWithBridge } from "@/system/window-bridge";
 import PhotoAppPage from "../pages/PhotoAppPage";
@@ -86,10 +86,10 @@ export default function PhotoApp() {
     replace(`/library/${id}`);
   };
 
-  // ── Sync progress tracking (WS-driven + fallback polling) ──
+  // ── Job progress tracking (WS-driven + fallback polling) ──
   const queryClient = useQueryClient();
 
-  const syncProgress = useSyncProgress({
+  const syncProgress = useJobProgress({
     libraries,
     progressQueryKey: (id) => api.photo.getSyncProgress.queryKey({ id }),
     fetchProgress: (id) => api.photo.getSyncProgress.fetch({ id }),
