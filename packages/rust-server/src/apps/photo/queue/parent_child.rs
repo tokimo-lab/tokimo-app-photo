@@ -25,9 +25,9 @@ use crate::db::repos::job_repo::JobRepo;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
 
-/// Build the parent meta JSON returned to the worker. Includes the magic
+/// Build the parent payload JSON returned to the worker. Includes the magic
 /// `_phase: "waiting"` key so the worker calls `mark_waiting`.
-fn parent_meta_waiting(total: i64, library_name: &str, task_type: &str) -> JsonValue {
+fn parent_payload_waiting(total: i64, library_name: &str, task_type: &str) -> JsonValue {
     json!({
         "_phase": "waiting",
         "totalChildren": total,
@@ -49,7 +49,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 }
 
 /// Run the "scan" half of a parent/child photo job: list pending photo IDs,
-/// enqueue one child job per photo, and return a meta blob that flips
+/// enqueue one child job per photo, and return a payload blob that flips
 /// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
@@ -57,7 +57,7 @@ pub async fn run_scan<F>(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
     job_id: Uuid,
-    payload: &JsonValue,
+    params: &JsonValue,
     user_id: Option<Uuid>,
     task_type: &str,
     child_job_type: &str,
@@ -66,28 +66,28 @@ pub async fn run_scan<F>(
 where
     F: AsyncFnOnce(Uuid) -> Result<Vec<Uuid>, crate::error::AppError>,
 {
-    let app_id = payload
+    let app_id = params
         .get("appId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing appId in payload")?;
+        .ok_or("Missing appId in params")?;
     let app_uuid = Uuid::parse_str(app_id)?;
     let lib_name = library_name(db, app_uuid).await;
 
     // Idempotency: if a previous (crashed) run already enqueued children,
     // skip the enqueue phase and just transition to waiting again.
     if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id).one(db).await
-        && let Some(meta) = &self_job.meta
-        && meta.get("totalChildren").is_some()
+        && let Some(payload) = &self_job.payload
+        && payload.get("totalChildren").is_some()
     {
         info!("[{task_type}_scan] resuming parent {job_id}: children already enqueued");
-        let total = meta
+        let total = payload
             .get("totalChildren")
             .and_then(serde_json::Value::as_i64)
             .unwrap_or(0);
         if total == 0 {
             return Ok(Some(json!({ "processed": 0, "libraryName": lib_name })));
         }
-        return Ok(Some(parent_meta_waiting(total, &lib_name, task_type)));
+        return Ok(Some(parent_payload_waiting(total, &lib_name, task_type)));
     }
 
     let pending = list_pending_ids(app_uuid).await?;
@@ -105,15 +105,15 @@ where
         })));
     }
 
-    // One child job per photo. parentJobId + taskType travel in the payload
-    // so the dispatch (which doesn't pass meta) can surface them to child
+    // One child job per photo. parentJobId + taskType travel in the params
+    // so the dispatch (which doesn't pass payload) can surface them to child
     // handlers. They are ALSO persisted into dedicated `parent_job_id` and
     // `task_type` columns (via create_child_jobs_batch) so DB queries can
-    // rely on stable indexed columns even if handlers overwrite `meta`.
+    // rely on stable indexed columns even if handlers overwrite `payload`.
     let children: Vec<_> = pending
         .iter()
         .map(|photo_id| {
-            let payload = json!({
+            let params = json!({
                 "appId": app_uuid.to_string(),
                 "photoId": photo_id.to_string(),
                 "libraryName": lib_name,
@@ -122,7 +122,7 @@ where
             });
             (
                 child_job_type,
-                payload,
+                params,
                 None::<JsonValue>,
                 user_id,
                 job_id,
@@ -139,11 +139,11 @@ where
         photo_notify::notify_processing_progress(state, uid, app_uuid, &lib_name, task_type, 0, total).await;
     }
 
-    Ok(Some(parent_meta_waiting(total, &lib_name, task_type)))
+    Ok(Some(parent_payload_waiting(total, &lib_name, task_type)))
 }
 
 /// Extract `(appId, photoId, libraryName, parentJobId, taskType)` from a
-/// child job's payload. Returns parsed UUIDs.
+/// child job's params. Returns parsed UUIDs.
 pub struct ChildContext {
     pub app_id: Uuid,
     pub photo_id: Uuid,
@@ -152,30 +152,30 @@ pub struct ChildContext {
     pub task_type: String,
 }
 
-pub fn parse_child_payload(payload: &JsonValue) -> Result<ChildContext, DynErr> {
-    let app_id = payload
+pub fn parse_child_params(params: &JsonValue) -> Result<ChildContext, DynErr> {
+    let app_id = params
         .get("appId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing appId in child payload")?;
+        .ok_or("Missing appId in child params")?;
     let app_uuid = Uuid::parse_str(app_id)?;
 
-    let photo_id_str = payload
+    let photo_id_str = params
         .get("photoId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing photoId in child payload")?;
+        .ok_or("Missing photoId in child params")?;
     let photo_id = Uuid::parse_str(photo_id_str)?;
 
-    let library_name = payload
+    let library_name = params
         .get("libraryName")
         .and_then(|v| v.as_str())
         .unwrap_or(app_id)
         .to_string();
-    let parent_id = payload
+    let parent_id = params
         .get("parentJobId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing parentJobId in child payload")?;
+        .ok_or("Missing parentJobId in child params")?;
     let parent_job_id = Uuid::parse_str(parent_id)?;
-    let task_type = payload
+    let task_type = params
         .get("taskType")
         .and_then(|v| v.as_str())
         .unwrap_or("photo_unknown")

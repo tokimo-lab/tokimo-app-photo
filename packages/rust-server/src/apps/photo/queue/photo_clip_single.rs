@@ -13,15 +13,15 @@ pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
     _job_id: Uuid,
-    payload: &JsonValue,
+    params: &JsonValue,
     _user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let photo_id = payload
+    let photo_id = params
         .get("photoId")
         .and_then(|v| v.as_str())
-        .ok_or("Missing photoId in payload")?;
+        .ok_or("Missing photoId in params")?;
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
     PhotoClipService::embed_photo(db, state, photo_uuid).await?;

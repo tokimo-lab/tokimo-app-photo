@@ -546,12 +546,13 @@ impl PhotoClipService {
             let pct = ((f64::from(processed) / f64::from(total)) * 100.0).min(100.0) as i32;
             info!("[photo_clip] Progress: {processed}/{total} ({pct}%), {success} succeeded");
             if let Some(jid) = job_id {
-                let meta = serde_json::json!({
+                let payload = serde_json::json!({
                     "processed": processed,
                     "total": total,
                     "success": success,
                 });
-                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(meta)).await {
+                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(payload)).await
+                {
                     warn!("[photo_clip] job {jid}: failed to update progress: {e}");
                 }
             }

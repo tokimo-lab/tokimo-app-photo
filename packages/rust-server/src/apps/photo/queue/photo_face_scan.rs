@@ -14,7 +14,7 @@ pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
     job_id: Uuid,
-    payload: &JsonValue,
+    params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
@@ -24,7 +24,7 @@ pub async fn handle(
         db,
         state,
         job_id,
-        payload,
+        params,
         user_id,
         "photo_face_detect",
         "photo_face",

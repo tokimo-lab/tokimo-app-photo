@@ -155,9 +155,12 @@ pub async fn get_photo_sync_progress(
             let (total_items, processed_items) = if row.job_type == "file_scrape" {
                 let t = row.completed + row.running + row.pending + row.failed;
                 (t, row.completed)
-            } else if let Some(ref meta) = row.running_meta {
-                let t = meta.get("total").and_then(sea_orm::JsonValue::as_i64).unwrap_or(0);
-                let p = meta.get("processed").and_then(sea_orm::JsonValue::as_i64).unwrap_or(0);
+            } else if let Some(ref payload) = row.running_payload {
+                let t = payload.get("total").and_then(sea_orm::JsonValue::as_i64).unwrap_or(0);
+                let p = payload
+                    .get("processed")
+                    .and_then(sea_orm::JsonValue::as_i64)
+                    .unwrap_or(0);
                 (t, p)
             } else {
                 (0, 0)

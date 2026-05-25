@@ -14,12 +14,12 @@ pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
     _job_id: Uuid,
-    payload: &JsonValue,
+    params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let ctx = parent_child::parse_child_payload(payload)?;
+    let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
     let (success, failures, errors) =
         PhotoGeoService::process_photo_ids(db, &state.http_client, vec![ctx.photo_id]).await;

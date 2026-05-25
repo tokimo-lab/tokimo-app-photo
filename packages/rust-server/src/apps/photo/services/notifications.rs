@@ -312,22 +312,22 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
 
         for parent in parents {
             let Some(uid) = parent.user_id else { continue };
-            let Some(meta) = &parent.meta else { continue };
-            let total = meta
+            let Some(payload) = &parent.payload else { continue };
+            let total = payload
                 .get("totalChildren")
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(0);
             if total == 0 {
                 continue;
             }
-            let done = meta.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let done = payload.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
-                .payload
+                .params
                 .get("appId")
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok());
             let Some(app_id) = app_id else { continue };
-            let lib_name = meta
+            let lib_name = payload
                 .get("libraryName")
                 .and_then(|v| v.as_str())
                 .map_or_else(String::new, std::string::ToString::to_string);

@@ -15,12 +15,12 @@ pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
     _job_id: Uuid,
-    payload: &JsonValue,
+    params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let ctx = parent_child::parse_child_payload(payload)?;
+    let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
     let (success, failures, errors) = PhotoOcrService::process_photo_ids(db, state, vec![ctx.photo_id]).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
