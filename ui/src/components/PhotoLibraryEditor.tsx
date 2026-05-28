@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AvatarData,
+  type AvatarData,
   AvatarPicker,
   Button,
   Form,
@@ -9,9 +9,10 @@ import {
   Modal,
   parseAvatar,
   ScrollArea,
+  Select,
   SettingGroup,
   SettingRow,
-  StorageBinding,
+  type StorageBinding,
   StorageBindingsField,
   Switch,
   useToast,
@@ -21,6 +22,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { PhotoLibraryOutput } from "../lib/types";
 import PhotoReprocessTools from "./PhotoReprocessTools";
+
+const PHOTO_TYPES = [
+  { value: "photo", label: "照片" },
+  { value: "screenshot", label: "截图" },
+] as const;
 
 interface PhotoLibraryEditorProps {
   photoId?: string;
@@ -62,6 +68,7 @@ export default function PhotoLibraryEditor({
       const settings =
         (library.settings as Record<string, unknown> | null) ?? {};
       form.setFieldsValue({
+        type: library.type,
         name: library.name,
         description: library.description ?? "",
         autoOcr: (settings.autoOcr as boolean | undefined) ?? true,
@@ -80,6 +87,7 @@ export default function PhotoLibraryEditor({
     } else {
       form.resetFields();
       form.setFieldsValue({
+        type: "photo",
         autoOcr: true,
         autoClip: true,
         autoFace: true,
@@ -151,7 +159,7 @@ export default function PhotoLibraryEditor({
     } else {
       await createMutation.mutateAsync({
         name: values.name as string,
-        type: "photo",
+        type: (values.type as string) || "photo",
         avatar: avatar as Record<string, unknown> | null,
         description: (values.description as string) || null,
         settings: mergedSettings,
@@ -183,6 +191,21 @@ export default function PhotoLibraryEditor({
             <div className="mb-5">
               <AvatarPicker value={avatar} onChange={setAvatar} size={80} />
             </div>
+
+            {!library && (
+              <Form.Item
+                name="type"
+                label="库类型"
+                rules={[{ required: true, message: "请选择类型" }]}
+              >
+                <Select
+                  options={PHOTO_TYPES.map((t) => ({
+                    label: t.label,
+                    value: t.value,
+                  }))}
+                />
+              </Form.Item>
+            )}
 
             <Form.Item
               name="name"
