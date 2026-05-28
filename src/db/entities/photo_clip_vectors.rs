@@ -1,0 +1,37 @@
+//! `SeaORM` Entity — photo_clip_vectors table.
+//! The `vec` column is a pgvector `vector` type; marked `#[sea_orm(ignore)]`.
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "photo_clip_vectors")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(unique)]
+    pub photo_id: Uuid,
+    #[sea_orm(ignore)]
+    pub vec: String,
+    pub created_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::photos::Entity",
+        from = "Column::PhotoId",
+        to = "super::photos::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Photos,
+}
+
+impl Related<super::photos::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Photos.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}

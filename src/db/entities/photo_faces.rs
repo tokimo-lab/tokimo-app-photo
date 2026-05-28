@@ -1,0 +1,61 @@
+//! `SeaORM` Entity — photo_faces table.
+//! The `vec` column is a pgvector `vector` type; marked `#[sea_orm(ignore)]` so Sea-ORM skips it.
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "photo_faces")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub photo_id: Uuid,
+    pub person_id: Option<Uuid>,
+    #[sea_orm(column_type = "Double")]
+    pub x: f64,
+    #[sea_orm(column_type = "Double")]
+    pub y: f64,
+    #[sea_orm(column_type = "Double")]
+    pub w: f64,
+    #[sea_orm(column_type = "Double")]
+    pub h: f64,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub confidence: Option<f64>,
+    #[sea_orm(ignore)]
+    pub vec: Option<String>,
+    pub created_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::photo_persons::Entity",
+        from = "Column::PersonId",
+        to = "super::photo_persons::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    PhotoPersons,
+    #[sea_orm(
+        belongs_to = "super::photos::Entity",
+        from = "Column::PhotoId",
+        to = "super::photos::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Photos,
+}
+
+impl Related<super::photo_persons::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoPersons.def()
+    }
+}
+
+impl Related<super::photos::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Photos.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}

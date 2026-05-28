@@ -1,0 +1,143 @@
+//! `SeaORM` Entity — photos table.
+//! Note: `source_id` FK points to the VFS table in the public schema; we model it as a plain UUID.
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "photos")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    #[sea_orm(unique_key = "photos_app_id_source_id_path_key")]
+    pub app_id: Uuid,
+    #[sea_orm(unique_key = "photos_app_id_source_id_path_key")]
+    pub source_id: Option<Uuid>,
+    #[sea_orm(column_type = "Text")]
+    pub filename: String,
+    #[sea_orm(column_type = "Text", unique_key = "photos_app_id_source_id_path_key")]
+    pub path: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub title: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub description: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub file_size: Option<i64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub mime_type: Option<String>,
+    pub taken_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub camera_make: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub camera_model: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub lens_model: Option<String>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub focal_length: Option<f64>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub aperture: Option<f64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub shutter_speed: Option<String>,
+    pub iso: Option<i32>,
+    pub orientation: Option<i32>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub exif_data: Option<Json>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub gps_latitude: Option<f64>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub gps_longitude: Option<f64>,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub gps_altitude: Option<f64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub location_name: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_province: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_city: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_district: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_township: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_adcode: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub geo_address: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub thumbnail_path: Option<String>,
+    pub is_favorite: bool,
+    pub is_hidden: bool,
+    pub photo_album_id: Option<Uuid>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub live_video_path: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub color_dominant: Option<String>,
+    pub ocr_scanned_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub ocr_debug_info: Option<Json>,
+    pub deleted_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub checksum: Option<String>,
+    pub scanned_at: Option<DateTimeWithTimeZone>,
+    pub created_at: Option<DateTimeWithTimeZone>,
+    pub updated_at: Option<DateTimeWithTimeZone>,
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::photo_albums::Entity",
+        from = "Column::PhotoAlbumId",
+        to = "super::photo_albums::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    PhotoAlbums,
+    #[sea_orm(has_one = "super::photo_clip_vectors::Entity")]
+    PhotoClipVectors,
+    #[sea_orm(has_many = "super::photo_faces::Entity")]
+    PhotoFaces,
+    #[sea_orm(
+        belongs_to = "super::photo_libraries::Entity",
+        from = "Column::AppId",
+        to = "super::photo_libraries::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    PhotoLibraries,
+    #[sea_orm(has_many = "super::photo_ocr_results::Entity")]
+    PhotoOcrResults,
+}
+
+impl Related<super::photo_albums::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoAlbums.def()
+    }
+}
+
+impl Related<super::photo_clip_vectors::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoClipVectors.def()
+    }
+}
+
+impl Related<super::photo_faces::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoFaces.def()
+    }
+}
+
+impl Related<super::photo_libraries::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoLibraries.def()
+    }
+}
+
+impl Related<super::photo_ocr_results::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoOcrResults.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}

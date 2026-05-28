@@ -1,0 +1,29 @@
+[app]
+id          = "photo"
+display     = "Photo"
+version     = "0.1.0"
+description = "TokimoPhoto — 照片库管理器，本地 / 远程 VFS、时间线、人物识别、地理标注"
+
+[runtime]
+lifecycle    = "resident"
+binary       = "tokimo-app-photo"
+ui_dist      = "ui/dist"
+
+[ui]
+entry        = "assets/index.js"
+window_type  = "photo"
+category     = "system"
+icon         = "Camera"
+image        = "icon.png"
+color        = "#3b82f6"
+width        = 1400
+height       = 900
+
+[cli]
+name        = "tokimo-app-photo"
+description = "Manage photo libraries."
+
+[database]
+schema         = "photo"
+migrations_dir = "migrations"
+driver         = "postgres"

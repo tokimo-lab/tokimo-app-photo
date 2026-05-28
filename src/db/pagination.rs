@@ -1,0 +1,55 @@
+use serde::{Deserialize, Serialize};
+
+/// Standard pagination input.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PageInput {
+    pub page: u64,
+    pub page_size: u64,
+}
+
+impl Default for PageInput {
+    fn default() -> Self {
+        Self { page: 1, page_size: 20 }
+    }
+}
+
+impl PageInput {
+    #[allow(dead_code)]
+    pub fn offset(&self) -> u64 {
+        self.page.saturating_sub(1) * self.page_size
+    }
+
+    #[allow(dead_code)]
+    pub fn limit(&self) -> u64 {
+        self.page_size
+    }
+}
+
+/// Standard paginated response.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Page<T: Serialize> {
+    pub items: Vec<T>,
+    pub total: i64,
+    pub page: u64,
+    pub page_size: u64,
+    pub total_pages: u64,
+}
+
+impl<T: Serialize> Page<T> {
+    pub fn new(items: Vec<T>, total: i64, input: &PageInput) -> Self {
+        let total_pages = if input.page_size == 0 {
+            0
+        } else {
+            total.unsigned_abs().div_ceil(input.page_size)
+        };
+        Self {
+            items,
+            total,
+            page: input.page,
+            page_size: input.page_size,
+            total_pages,
+        }
+    }
+}

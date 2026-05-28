@@ -1,0 +1,53 @@
+//! `SeaORM` Entity — photo_persons table.
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "photo_persons")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub app_id: Uuid,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub name: Option<String>,
+    pub avatar_face_id: Option<i32>,
+    pub face_count: i32,
+    pub is_hidden: bool,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::photo_faces::Entity",
+        from = "Column::AvatarFaceId",
+        to = "super::photo_faces::Column::Id",
+        on_update = "Cascade",
+        on_delete = "SetNull"
+    )]
+    PhotoFaces,
+    #[sea_orm(
+        belongs_to = "super::photo_libraries::Entity",
+        from = "Column::AppId",
+        to = "super::photo_libraries::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    PhotoLibraries,
+}
+
+impl Related<super::photo_faces::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoFaces.def()
+    }
+}
+
+impl Related<super::photo_libraries::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhotoLibraries.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
