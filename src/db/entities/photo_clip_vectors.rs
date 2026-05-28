@@ -11,7 +11,7 @@ pub struct Model {
     pub id: i32,
     #[sea_orm(unique)]
     pub photo_id: Uuid,
-    #[sea_orm(ignore)]
+    #[sea_orm(ignore, column_type = "custom(\"vector\")", select_as = "text")]
     pub vec: String,
     pub created_at: DateTimeWithTimeZone,
 }

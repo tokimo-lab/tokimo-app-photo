@@ -11,6 +11,7 @@ pub struct Model {
     pub app_id: Uuid,
     #[sea_orm(column_type = "Text", nullable)]
     pub name: Option<String>,
+    #[sea_orm(unique)]
     pub avatar_face_id: Option<i32>,
     pub face_count: i32,
     pub is_hidden: bool,

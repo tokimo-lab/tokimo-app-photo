@@ -13,6 +13,7 @@ pub struct Model {
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
+    #[sea_orm(unique)]
     pub cover_photo_id: Option<Uuid>,
     #[sea_orm(column_type = "Text")]
     pub album_type: String,

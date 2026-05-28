@@ -1,5 +1,7 @@
 -- Photo app schema. Initial migration.
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE photo_libraries (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
@@ -23,7 +25,7 @@ CREATE TABLE photo_albums (
     app_id          UUID NOT NULL REFERENCES photo_libraries(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
     description     TEXT,
-    cover_photo_id  UUID,
+    cover_photo_id  UUID UNIQUE,
     album_type      TEXT NOT NULL DEFAULT 'manual',
     photo_count     INTEGER NOT NULL DEFAULT 0,
     sort_order      INTEGER NOT NULL DEFAULT 0,
@@ -37,7 +39,7 @@ CREATE TABLE photo_persons (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     app_id          UUID NOT NULL REFERENCES photo_libraries(id) ON DELETE CASCADE,
     name            TEXT,
-    avatar_face_id  INTEGER,
+    avatar_face_id  INTEGER UNIQUE,
     face_count      INTEGER NOT NULL DEFAULT 0,
     is_hidden       BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -110,6 +112,7 @@ CREATE TABLE photo_faces (
     w               DOUBLE PRECISION NOT NULL,
     h               DOUBLE PRECISION NOT NULL,
     confidence      DOUBLE PRECISION,
+    vec             vector(512),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX photo_faces_photo_id_idx  ON photo_faces (photo_id);
@@ -141,6 +144,7 @@ CREATE INDEX photo_ocr_results_photo_id_idx ON photo_ocr_results (photo_id);
 CREATE TABLE photo_clip_vectors (
     id              SERIAL PRIMARY KEY,
     photo_id        UUID NOT NULL UNIQUE REFERENCES photos(id) ON DELETE CASCADE,
+    vec             vector(512) NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
