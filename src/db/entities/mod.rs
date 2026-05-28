@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod photo_albums;
 pub mod photo_clip_vectors;
 pub mod photo_faces;

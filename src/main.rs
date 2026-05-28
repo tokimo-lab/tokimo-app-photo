@@ -6,6 +6,7 @@ mod app_server;
 mod assets;
 mod bus_clients;
 mod bus_services;
+mod config;
 mod ctx;
 mod db;
 mod error;

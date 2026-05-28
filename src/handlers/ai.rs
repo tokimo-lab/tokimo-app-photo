@@ -1,11 +1,16 @@
-//! AI handler stubs — OCR, CLIP, face detection. All return empty/success
-//! since the perception worker is not linked in this sidecar binary.
+//! AI handler — settings get/update/test wired to `AppSettingsRepo`.
+//!
+//! Non-settings endpoints (OCR scan, CLIP search, face detect, refresh-*,
+//! create/update OCR result, etc.) remain stubbed pending the AI services
+//! port (clip / face / ocr) and tokimo-perception linkage.
 
 use std::sync::Arc;
 
 use axum::{Json, extract::{Path, State}};
 
+use crate::config::{PhotoAiSettings, PhotoGeoSettings};
 use crate::ctx::AppCtx;
+use crate::db::repos::app_settings_repo::AppSettingsRepo;
 use crate::db::repos::photo_repo::PhotoRepo;
 use crate::error::AppError;
 
@@ -40,17 +45,83 @@ ai_stub!(clear_thumbnails, path);
 ai_stub!(clip_embed, path);
 ai_stub!(clip_search, path);
 ai_stub!(face_detect, path);
-ai_stub!(get_photo_ai_settings);
-ai_stub!(update_photo_ai_settings);
-ai_stub!(test_photo_ai_connection);
-ai_stub!(get_photo_geo_settings);
-ai_stub!(update_photo_geo_settings);
-ai_stub!(test_photo_geo_connection);
 ai_stub!(refresh_exif, path);
 ai_stub!(refresh_thumbnail, path);
 ai_stub!(refresh_faces, path);
 ai_stub!(refresh_ocr, path);
 ai_stub!(refresh_clip, path);
+
+// ── Settings: photo-ai ───────────────────────────────────────────────────────
+
+/// GET /settings/ai
+pub async fn get_photo_ai_settings(
+    State(ctx): State<Arc<AppCtx>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let settings: PhotoAiSettings = AppSettingsRepo::get(&ctx.db).await?;
+    ok(settings)
+}
+
+/// PUT /settings/ai
+pub async fn update_photo_ai_settings(
+    State(ctx): State<Arc<AppCtx>>,
+    Json(body): Json<PhotoAiSettings>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    AppSettingsRepo::set(&ctx.db, &body).await?;
+    ok(body)
+}
+
+/// POST /settings/ai/test
+///
+/// Reports whether the perception worker has loaded the required models.
+/// Until the worker is linked into this sidecar (see status report), this
+/// always reports "Models not downloaded" — matching the presplit response
+/// shape so the UI handles it gracefully.
+pub async fn test_photo_ai_connection(
+    State(_ctx): State<Arc<AppCtx>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let results = serde_json::json!([{
+        "name": "aiService",
+        "success": false,
+        "detail": "Models not downloaded",
+        "modelsReady": false,
+    }]);
+    ok(serde_json::json!({ "results": results }))
+}
+
+// ── Settings: photo-geo ──────────────────────────────────────────────────────
+
+/// GET /settings/geo
+pub async fn get_photo_geo_settings(
+    State(ctx): State<Arc<AppCtx>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let settings: PhotoGeoSettings = AppSettingsRepo::get(&ctx.db).await?;
+    ok(settings)
+}
+
+/// PUT /settings/geo
+pub async fn update_photo_geo_settings(
+    State(ctx): State<Arc<AppCtx>>,
+    Json(body): Json<PhotoGeoSettings>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    AppSettingsRepo::set(&ctx.db, &body).await?;
+    ok(body)
+}
+
+/// POST /settings/geo/test
+///
+/// Until the geo service is ported (see status report), this returns a stub
+/// result so the UI's settings page doesn't break.
+pub async fn test_photo_geo_connection(
+    State(ctx): State<Arc<AppCtx>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let settings: PhotoGeoSettings = AppSettingsRepo::get(&ctx.db).await?;
+    let result = serde_json::json!({
+        "success": false,
+        "provider": settings.provider,
+        "detail": "geo service not yet ported in sidecar",
+    });
+    ok(result)
+}
 
 /// Clear all OCR results across all photos (library-level).
 pub async fn clear_all_ocr_results(
