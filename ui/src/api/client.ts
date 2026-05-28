@@ -86,6 +86,26 @@ export interface VfsDto {
   id: string;
   name: string;
   type: string;
+  config?: unknown;
+}
+
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+}
+
+export interface BrowseDirectoryResponse {
+  currentPath: string;
+  parentPath: string | null;
+  entries: BrowseEntry[];
+}
+
+export interface SourceStatEntry {
+  path: string;
+  size: number | null;
+  modifiedAt: string | null;
+  mode: string | null;
 }
 
 async function vfsFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -976,6 +996,35 @@ const vfsApi = {
     invalidate: (qc: ReturnType<typeof useQueryClient>) =>
       qc.invalidateQueries({ queryKey: ["vfs", "list"] }),
   },
+  browse: (
+    fileSystemId: string | undefined,
+    path: string,
+  ): Promise<BrowseDirectoryResponse> =>
+    fileSystemId
+      ? vfsFetch<BrowseDirectoryResponse>(
+          `/${encodeURIComponent(fileSystemId)}/browse?path=${encodeURIComponent(path)}`,
+        )
+      : vfsFetch<BrowseDirectoryResponse>(
+          `/local/browse?path=${encodeURIComponent(path)}`,
+        ),
+  stat: (
+    paths: string[],
+    fileSystemId: string | undefined,
+  ): Promise<SourceStatEntry[]> =>
+    fileSystemId
+      ? vfsFetch<SourceStatEntry[]>(
+          `/${encodeURIComponent(fileSystemId)}/stat`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paths }),
+          },
+        )
+      : vfsFetch<SourceStatEntry[]>("/local/stat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths }),
+        }),
 } as const;
 
 export const api = { photo: photoApi, vfs: vfsApi } as const;

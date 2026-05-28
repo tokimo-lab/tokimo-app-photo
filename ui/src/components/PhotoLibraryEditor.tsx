@@ -1,4 +1,9 @@
+/**
+ * PhotoLibraryEditor — inline editor for creating / editing a photo library.
+ */
+
 import { useQueryClient } from "@tanstack/react-query";
+import type { ShellApi } from "@tokimo/sdk";
 import {
   type AvatarData,
   AvatarPicker,
@@ -12,15 +17,15 @@ import {
   Select,
   SettingGroup,
   SettingRow,
-  type StorageBinding,
   StorageBindingsField,
   Switch,
   useToast,
+  type VideoBinding,
 } from "@tokimo/ui";
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../api/client";
-import type { PhotoLibraryOutput } from "../lib/types";
+import { api, type PhotoLibraryOutput } from "../api/client";
+import { useVfsBrowse } from "../hooks/useVfsBrowse";
 import PhotoReprocessTools from "./PhotoReprocessTools";
 
 const PHOTO_TYPES = [
@@ -30,6 +35,7 @@ const PHOTO_TYPES = [
 
 interface PhotoLibraryEditorProps {
   photoId?: string;
+  shell: ShellApi;
   onSaved?: (savedId: string) => void;
   onDeleted?: () => void;
   onCancel?: () => void;
@@ -37,11 +43,13 @@ interface PhotoLibraryEditorProps {
 
 export default function PhotoLibraryEditor({
   photoId,
+  shell,
   onSaved,
   onDeleted,
   onCancel,
 }: PhotoLibraryEditorProps) {
   const toast = useToast();
+  const onBrowse = useVfsBrowse(shell);
   const qc = useQueryClient();
   const [form] = Form.useForm();
 
@@ -52,7 +60,6 @@ export default function PhotoLibraryEditor({
   const [avatar, setAvatar] = useState<AvatarData | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteInput, setDeleteInput] = useState("");
-  const [bindings, setBindings] = useState<StorageBinding[]>([]);
 
   const prevId = useRef(photoId);
   useEffect(() => {
@@ -77,13 +84,6 @@ export default function PhotoLibraryEditor({
         autoGeo: (settings.autoGeo as boolean | undefined) ?? true,
       });
       setAvatar(parseAvatar(library.avatar));
-      setBindings(
-        library.sources.map((s) => ({
-          sourceId: s.sourceId,
-          rootPath: s.rootPath,
-          isDefaultDownload: s.isDefaultDownload,
-        })),
-      );
     } else {
       form.resetFields();
       form.setFieldsValue({
@@ -94,7 +94,6 @@ export default function PhotoLibraryEditor({
         autoGeo: true,
       });
       setAvatar({ type: "icon", icon: "lucide:camera", color: "#8b5cf6" });
-      setBindings([]);
     }
   }, [library, form]);
 
@@ -128,7 +127,9 @@ export default function PhotoLibraryEditor({
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
-    const sources = bindings
+    const rawBindings =
+      (form.getFieldValue("bindings") as VideoBinding[] | undefined) ?? [];
+    const sources = rawBindings
       .filter((b) => b.sourceId && b.rootPath)
       .map((b, i) => ({
         sourceId: b.sourceId,
@@ -166,7 +167,7 @@ export default function PhotoLibraryEditor({
         sources,
       });
     }
-  }, [form, library, avatar, bindings, createMutation, updateMutation]);
+  }, [form, library, avatar, createMutation, updateMutation]);
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
@@ -226,19 +227,20 @@ export default function PhotoLibraryEditor({
             </h4>
             <StorageBindingsField
               sources={vfsSources}
-              value={bindings}
-              onChange={setBindings}
+              form={form}
+              initialSources={library?.sources}
+              onBrowse={onBrowse}
             />
           </div>
 
           <div className="rounded-lg border border-border-base p-5">
             <SettingGroup
               title="AI 自动处理"
-              desc='控制同步后自动执行的 AI 处理任务,关闭后可在下方"数据管理"中手动触发'
+              desc="控制同步后自动执行的 AI 处理任务，关闭后可在下方“数据管理”中手动触发"
             >
               <SettingRow
                 label="自动 OCR 文字识别"
-                desc="同步后自动识别照片中的文字,可用于搜索"
+                desc="同步后自动识别照片中的文字，可用于搜索"
               >
                 <Form.Item name="autoOcr" valuePropName="checked" noStyle>
                   <Switch />
@@ -246,7 +248,7 @@ export default function PhotoLibraryEditor({
               </SettingRow>
               <SettingRow
                 label="自动 CLIP 图像识别"
-                desc="同步后自动生成图像向量,支持以文搜图"
+                desc="同步后自动生成图像向量，支持以文搜图"
               >
                 <Form.Item name="autoClip" valuePropName="checked" noStyle>
                   <Switch />
@@ -342,7 +344,7 @@ function DeleteConfirmModal({
         <p className="text-sm text-fg-secondary">
           此操作将永久删除{" "}
           <span className="font-semibold text-fg-primary">{library.name}</span>{" "}
-          及其所有数据,
+          及其所有数据，
           <span className="font-semibold text-red-500">不可恢复</span>。
         </p>
         <Input

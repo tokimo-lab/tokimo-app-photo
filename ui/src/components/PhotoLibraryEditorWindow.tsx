@@ -39,6 +39,7 @@ export default function PhotoLibraryEditorWindow({
         <ToastProvider>
           <PhotoLibraryEditor
             photoId={bridge.photoId}
+            shell={bridge.shell}
             onSaved={handleSaved}
             onDeleted={handleDeleted}
             onCancel={handleCancel}
