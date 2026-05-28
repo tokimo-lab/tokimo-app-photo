@@ -10,17 +10,18 @@ import {
 import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { AppCtxProvider } from "./AppContext";
-import PhotoContent from "./PhotoContent";
+import PhotoApp from "./components/PhotoApp";
+import PhotoMenuBar from "./components/PhotoMenuBar";
 import "./index.css";
 
 export default defineApp({
   id: "photo",
   manifest: {
     id: "photo",
-    appName: "Photos",
-    icon: "Camera",
+    appName: "Photo",
+    icon: "Image",
     image: "icon.png",
-    color: "#3b82f6",
+    color: "#10b981",
     windowType: "photo",
     defaultSize: { width: 1400, height: 900 },
     category: "system",
@@ -38,7 +39,9 @@ export default defineApp({
           <QueryClientProvider client={queryClient}>
             <ConfigProvider locale={locale}>
               <ToastProvider>
-                <PhotoContent />
+                <PhotoMenuBar>
+                  <PhotoApp />
+                </PhotoMenuBar>
               </ToastProvider>
             </ConfigProvider>
           </QueryClientProvider>
