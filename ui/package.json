@@ -1,0 +1,26 @@
+{
+  "name": "@tokimo-app/photo-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.100.5",
+    "@tokimo/sdk": "github:tokimo-lab/tokimo-package-sdk#e06d282611cf9cbf6f2dcf8e53fc3e8b31cacd1b",
+    "@tokimo/ui": "github:tokimo-lab/tokimo-ui#ce11e88ab475a7933fe284966dac1f9fd09cca72",
+    "lucide-react": "^1.11.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@tokimo/app-builder": "github:tokimo-lab/tokimo-app-builder#2232b1ba4fb9b7d61645c6588c579106bf6821dd",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  }
+}

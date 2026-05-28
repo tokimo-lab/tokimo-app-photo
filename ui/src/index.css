@@ -1,0 +1,4 @@
+/* See packages/ui/src/bundle.css for the full rationale. */
+@import "@tokimo/ui/bundle.css";
+
+@source "./**/*.{ts,tsx}";
