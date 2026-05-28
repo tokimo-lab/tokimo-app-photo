@@ -82,6 +82,16 @@ export async function apiFetchBlob(
   return res;
 }
 
+export interface VfsDto {
+  id: string;
+  name: string;
+  type: string;
+}
+
+async function vfsFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  return callApi<T>(rustUrl(`/api/vfs${path}`), init);
+}
+
 interface RouteConfig {
   method?: string;
   path?: string;
@@ -951,4 +961,21 @@ export const photoApi = {
   }),
 } as const;
 
-export const api = { photo: photoApi } as const;
+const vfsApi = {
+  list: {
+    queryKey: ["vfs", "list"] as const,
+    useQuery: (
+      opts?: Partial<UseQueryOptions<VfsDto[], Error, VfsDto[], QueryKey>>,
+    ) =>
+      useQuery<VfsDto[], Error, VfsDto[], QueryKey>({
+        queryKey: ["vfs", "list"],
+        queryFn: () => vfsFetch<VfsDto[]>("/"),
+        ...opts,
+      }),
+    fetch: () => vfsFetch<VfsDto[]>("/"),
+    invalidate: (qc: ReturnType<typeof useQueryClient>) =>
+      qc.invalidateQueries({ queryKey: ["vfs", "list"] }),
+  },
+} as const;
+
+export const api = { photo: photoApi, vfs: vfsApi } as const;

@@ -3,6 +3,7 @@ import type { ShellApi } from "@tokimo/sdk";
 interface SettingsBridge {
   kind: "settings";
   shell: ShellApi;
+  photoId?: string;
   onMutated: () => void;
 }
 
