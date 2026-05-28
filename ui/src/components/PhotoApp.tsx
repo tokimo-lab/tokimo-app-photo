@@ -7,6 +7,8 @@ import { useContainerWidth } from "@/shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
 import { useWindowActions, useWindowId } from "@/system";
+import { useAppCtx } from "../AppContext";
+import { registerBridge } from "../modal-bridge";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
 
@@ -30,6 +32,7 @@ const PHOTO_SCAN_JOB_TYPES = [
 ] as const;
 
 export default function PhotoApp() {
+  const ctx = useAppCtx();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
   const { collapsed: sidebarCollapsed, onToggleCollapse } = useSidebarCollapsed(
@@ -40,14 +43,21 @@ export default function PhotoApp() {
   const { openModalWindow } = useWindowActions();
   const parentWindowId = useWindowId();
   const initialized = useRef(false);
+  const queryClient = useQueryClient();
 
   const openSettings = () => {
+    const bridgeId = registerBridge({
+      kind: "settings",
+      shell: ctx.shell,
+      onMutated: () => api.photo.list.invalidate(queryClient),
+    });
     openModalWindow({
       component: () => import("./PhotoSettingsWindow"),
       parentWindowId,
       title: "TokimoPhoto 设置",
       width: 960,
       height: 640,
+      metadata: { bridgeId },
     });
   };
 
@@ -67,7 +77,6 @@ export default function PhotoApp() {
   };
 
   // ── Sync progress tracking (WS-driven + fallback polling) ──
-  const queryClient = useQueryClient();
 
   const syncProgress = useSyncProgress({
     libraries,

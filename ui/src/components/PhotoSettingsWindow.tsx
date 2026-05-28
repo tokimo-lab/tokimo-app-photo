@@ -1,11 +1,15 @@
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
+import type { ShellApi, ShellWindowHandle } from "@tokimo/sdk";
 import { Button, Empty, Spin } from "@tokimo/ui";
 import { FolderOpen, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { useAppCtx } from "../AppContext";
 import { api } from "../generated/rust-api";
 import type { PhotoLibraryOutput } from "../lib/types";
-import type { WindowState } from "../system/window/window-types";
+import { getBridge } from "../modal-bridge";
 
 interface DraftSource {
   sourceId: string;
@@ -18,10 +22,19 @@ function sourceLabel(source: DraftSource): string {
   return source.sourceName || source.rootPath || source.sourceId;
 }
 
-function LibraryRow({ library }: { library: PhotoLibraryOutput }) {
+function LibraryRow({
+  library,
+  onMutated,
+}: {
+  library: PhotoLibraryOutput;
+  onMutated: () => void;
+}) {
   const qc = useQueryClient();
   const deleteMutation = api.photo.delete.useMutation({
-    onSuccess: () => api.photo.list.invalidate(qc),
+    onSuccess: () => {
+      api.photo.list.invalidate(qc);
+      onMutated();
+    },
   });
   return (
     <div className="flex items-center justify-between rounded-xl border border-border-subtle bg-bg-secondary px-4 py-3">
@@ -35,7 +48,7 @@ function LibraryRow({ library }: { library: PhotoLibraryOutput }) {
         type="button"
         className="cursor-pointer rounded-lg p-2 text-fg-muted hover:bg-red-500/10 hover:text-red-500"
         onClick={() => {
-          if (window.confirm(`删除图库“${library.name}”？`)) {
+          if (window.confirm(`删除图库"${library.name}"？`)) {
             deleteMutation.mutate(library.id);
           }
         }}
@@ -46,8 +59,37 @@ function LibraryRow({ library }: { library: PhotoLibraryOutput }) {
   );
 }
 
-export default function PhotoSettingsWindow(_: { win: WindowState }) {
-  const ctx = useAppCtx();
+export default function PhotoSettingsWindow({
+  win,
+}: {
+  win: ShellWindowHandle;
+}) {
+  const bridgeId =
+    typeof win.metadata.bridgeId === "string" ? win.metadata.bridgeId : "";
+  // Snapshot once; do not clear via effect cleanup because StrictMode remounts.
+  const [bridge] = useState(() =>
+    bridgeId ? getBridge(bridgeId) : undefined,
+  );
+  const [queryClient] = useState(() => new QueryClient());
+
+  if (bridge?.kind !== "settings") {
+    return null;
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <PhotoSettingsContent shell={bridge.shell} onMutated={bridge.onMutated} />
+    </QueryClientProvider>
+  );
+}
+
+function PhotoSettingsContent({
+  shell,
+  onMutated,
+}: {
+  shell: ShellApi;
+  onMutated: () => void;
+}) {
   const qc = useQueryClient();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [name, setName] = useState("");
@@ -57,11 +99,12 @@ export default function PhotoSettingsWindow(_: { win: WindowState }) {
       setName("");
       setSource(null);
       api.photo.list.invalidate(qc);
+      onMutated();
     },
   });
 
   const pickSource = async () => {
-    const picked = await ctx.shell.pickStorageBinding({
+    const picked = await shell.pickStorageBinding({
       title: "选择照片目录",
     });
     if (!picked) return;
@@ -140,7 +183,11 @@ export default function PhotoSettingsWindow(_: { win: WindowState }) {
         ) : libraries && libraries.length > 0 ? (
           <div className="space-y-3">
             {libraries.map((library) => (
-              <LibraryRow key={library.id} library={library} />
+              <LibraryRow
+                key={library.id}
+                library={library}
+                onMutated={onMutated}
+              />
             ))}
           </div>
         ) : (
