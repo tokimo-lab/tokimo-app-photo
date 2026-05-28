@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Spin } from "@tokimo/ui";
-import { Camera, Plus } from "lucide-react";
+import { AppSetupGuide, Spin } from "@tokimo/ui";
+import { Camera, Image, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
 import { useContainerWidth } from "@/shared/hooks/use-container-width";
@@ -102,28 +102,39 @@ export default function PhotoApp() {
   }
 
   if (!libraries?.length) {
+    const isZh = ctx.locale.startsWith("zh");
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
-          <Camera className="h-8 w-8" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-fg-primary">
-            开始使用 TokimoPhoto
-          </h2>
-          <p className="mt-1 text-sm text-fg-muted">
-            创建一个图库来管理你的照片与截图
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openSettings}
-          className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700"
-        >
-          <Plus className="h-4 w-4" />
-          新建图库
-        </button>
-      </div>
+      <AppSetupGuide
+        imageSrc="icon.png"
+        accentColor="violet"
+        title={isZh ? "开始使用 TokimoPhoto" : "Get Started with TokimoPhoto"}
+        description={
+          isZh
+            ? "创建一个图库来管理你的照片与截图"
+            : "Create a library to organize your photos and screenshots"
+        }
+        features={[
+          {
+            icon: Image,
+            label: isZh ? "导入照片与截图" : "Import photos and screenshots",
+          },
+          {
+            icon: Camera,
+            label: isZh
+              ? "按相册和时间线智能整理"
+              : "Organize by album and timeline",
+          },
+          {
+            icon: Search,
+            label: isZh
+              ? "快速搜索，回忆精选"
+              : "Quick search, curated memories",
+          },
+        ]}
+        actionLabel={isZh ? "新建图库" : "New Photo Library"}
+        actionIcon={Plus}
+        onAction={openSettings}
+      />
     );
   }
 
