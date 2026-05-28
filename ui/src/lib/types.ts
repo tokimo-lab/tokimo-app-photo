@@ -75,7 +75,10 @@ export interface PhotoDetailOutput extends PhotoOutput {
   ocrScannedAt?: string | null;
   ocrDebugInfo?: Record<string, unknown> | null;
   createdAt?: string | null;
-  exifData?: Record<string, string | number | boolean | null | undefined> | null;
+  exifData?: Record<
+    string,
+    string | number | boolean | null | undefined
+  > | null;
 }
 
 export interface PhotoAlbumOutput {
@@ -138,4 +141,8 @@ export interface WsJobEvent {
 }
 
 export type RepeatMode = "off" | "one" | "all";
-export interface CreditOutput { id: string; name: string; role?: string | null; }
+export interface CreditOutput {
+  id: string;
+  name: string;
+  role?: string | null;
+}

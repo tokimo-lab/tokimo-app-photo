@@ -77,7 +77,8 @@ export async function apiFetchBlob(
   init?: RequestInit,
 ): Promise<Response> {
   const res = await fetch(url, { credentials: "include", ...init });
-  if (!res.ok) throw new PhotoApiError(`${res.status} ${res.statusText}`, res.status);
+  if (!res.ok)
+    throw new PhotoApiError(`${res.status} ${res.statusText}`, res.status);
   return res;
 }
 
@@ -102,9 +103,11 @@ export function createQuery<TInput, TOutput>(cfg: QueryRouteConfig<TInput>) {
   }
   function queryFn(input?: TInput): () => Promise<TOutput> {
     return () => {
-      const actualPath = cfg.pathFn && input != null ? cfg.pathFn(input) : (cfg.path ?? "");
+      const actualPath =
+        cfg.pathFn && input != null ? cfg.pathFn(input) : (cfg.path ?? "");
       if (method === "GET") {
-        const params = cfg.paramsFn && input != null ? cfg.paramsFn(input) : undefined;
+        const params =
+          cfg.paramsFn && input != null ? cfg.paramsFn(input) : undefined;
         const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
         return callApi<TOutput>(rustUrl(`${actualPath}${qs}`));
       }
@@ -119,14 +122,22 @@ export function createQuery<TInput, TOutput>(cfg: QueryRouteConfig<TInput>) {
     useQuery: (
       ...args: TInput extends void
         ? [opts?: Partial<UseQueryOptions<TOutput, Error, TOutput, QueryKey>>]
-        : [input: TInput, opts?: Partial<UseQueryOptions<TOutput, Error, TOutput, QueryKey>>]
+        : [
+            input: TInput,
+            opts?: Partial<UseQueryOptions<TOutput, Error, TOutput, QueryKey>>,
+          ]
     ) => {
       const [inputOrOpts, maybeOpts] = args as [unknown, unknown];
       const firstLooksLikeOpts =
         typeof inputOrOpts === "object" &&
         inputOrOpts !== null &&
-        ("enabled" in inputOrOpts || "queryKey" in inputOrOpts || "staleTime" in inputOrOpts);
-      const input = inputOrOpts === undefined || firstLooksLikeOpts ? undefined : (inputOrOpts as TInput);
+        ("enabled" in inputOrOpts ||
+          "queryKey" in inputOrOpts ||
+          "staleTime" in inputOrOpts);
+      const input =
+        inputOrOpts === undefined || firstLooksLikeOpts
+          ? undefined
+          : (inputOrOpts as TInput);
       const opts = (firstLooksLikeOpts ? inputOrOpts : maybeOpts) as
         | Partial<UseQueryOptions<TOutput, Error, TOutput, QueryKey>>
         | undefined;
@@ -149,7 +160,9 @@ export function createQuery<TInput, TOutput>(cfg: QueryRouteConfig<TInput>) {
   };
 }
 
-export function createMutation<TInput, TOutput>(cfg: MutationRouteConfig<TInput>) {
+export function createMutation<TInput, TOutput>(
+  cfg: MutationRouteConfig<TInput>,
+) {
   const method = cfg.method ?? "POST";
   function mutationFn(input: TInput): Promise<TOutput> {
     const actualPath = cfg.pathFn ? cfg.pathFn(input) : cfg.path;
@@ -166,7 +179,9 @@ export function createMutation<TInput, TOutput>(cfg: MutationRouteConfig<TInput>
   };
 }
 
-export function createPathMutation<TInput, TOutput>(cfg: MutationRouteConfig<TInput>) {
+export function createPathMutation<TInput, TOutput>(
+  cfg: MutationRouteConfig<TInput>,
+) {
   return createMutation<TInput, TOutput>(cfg);
 }
 
@@ -935,6 +950,5 @@ export const photoApi = {
     path: "/api/apps/photo/settings/ai/test",
   }),
 } as const;
-
 
 export const api = { photo: photoApi } as const;

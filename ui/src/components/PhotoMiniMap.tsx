@@ -3,8 +3,19 @@
 import AMapLoader from "@amap/amap-jsapi-loader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Supercluster from "supercluster";
+
 type SuperclusterIndex = InstanceType<typeof Supercluster>;
-type ClusterFeatureLike = { id?: number; geometry: { coordinates: [number, number] }; properties: { cluster?: boolean; city?: string | null; point_count?: number; [key: string]: unknown } };
+type ClusterFeatureLike = {
+  id?: number;
+  geometry: { coordinates: [number, number] };
+  properties: {
+    cluster?: boolean;
+    city?: string | null;
+    point_count?: number;
+    [key: string]: unknown;
+  };
+};
+
 import { api } from "@/generated/rust-api";
 import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import type { MapClusterSelection } from "./PhotoMapView";

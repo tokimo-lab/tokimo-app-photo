@@ -1,4 +1,9 @@
-import type { MenuBarConfig, OpenWindowParams, ShellJobEvent, ShellModalWindowParams } from "@tokimo/sdk";
+import type {
+  MenuBarConfig,
+  OpenWindowParams,
+  ShellJobEvent,
+  ShellModalWindowParams,
+} from "@tokimo/sdk";
 import {
   useShellAppearance,
   useShellMenuBar,
@@ -54,7 +59,12 @@ function toJobEvent(event: ShellJobEvent): WsJobEvent | null {
   const id = jobSource.id;
   const type = jobSource.type;
   const status = jobSource.status;
-  if (typeof id !== "string" || typeof type !== "string" || typeof status !== "string") return null;
+  if (
+    typeof id !== "string" ||
+    typeof type !== "string" ||
+    typeof status !== "string"
+  )
+    return null;
   return {
     type: event.type,
     appId: typeof event.appId === "string" ? event.appId : null,
@@ -62,7 +72,8 @@ function toJobEvent(event: ShellJobEvent): WsJobEvent | null {
       id,
       type,
       status,
-      progress: typeof jobSource.progress === "number" ? jobSource.progress : null,
+      progress:
+        typeof jobSource.progress === "number" ? jobSource.progress : null,
       appId: typeof jobSource.appId === "string" ? jobSource.appId : null,
       error: typeof jobSource.error === "string" ? jobSource.error : null,
       metadata: isRecord(jobSource.metadata) ? jobSource.metadata : null,
@@ -78,7 +89,10 @@ export function useMessage() {
 export function useWindowNav(): WindowNavResult {
   const ctx = useAppCtx();
   const shellNav = useShellWindowNav(ctx);
-  const params = useMemo(() => parseRouteParams(shellNav.route), [shellNav.route]);
+  const params = useMemo(
+    () => parseRouteParams(shellNav.route),
+    [shellNav.route],
+  );
   const metadata = useMemo<Record<string, unknown>>(
     () => ({ appId: params.appId, sourceId: params.photoId, ...params }),
     [params],
@@ -131,9 +145,15 @@ export function useWindowActions() {
   };
   const updateTitle = (idOrTitle: string, maybeTitle?: string) => {
     const title = maybeTitle ?? idOrTitle;
-    ctx.shell.windowManager.updateMetadata(maybeTitle ? idOrTitle : ctx.windowId, { title });
+    ctx.shell.windowManager.updateMetadata(
+      maybeTitle ? idOrTitle : ctx.windowId,
+      { title },
+    );
   };
-  const updateMetadata = (idOrMetadata: string | Record<string, unknown>, maybeMetadata?: Record<string, unknown>) => {
+  const updateMetadata = (
+    idOrMetadata: string | Record<string, unknown>,
+    maybeMetadata?: Record<string, unknown>,
+  ) => {
     if (typeof idOrMetadata === "string") {
       ctx.shell.windowManager.updateMetadata(idOrMetadata, maybeMetadata ?? {});
       return;
@@ -150,32 +170,53 @@ export function useWindowActions() {
 }
 
 export function useDateFormat() {
-  const formatLong = (value: string | number | Date) => new Date(value).toLocaleString();
-  return { format: DEFAULT_LONG_FORMAT, longFormat: DEFAULT_LONG_FORMAT, formatLong };
+  const formatLong = (value: string | number | Date) =>
+    new Date(value).toLocaleString();
+  return {
+    format: DEFAULT_LONG_FORMAT,
+    longFormat: DEFAULT_LONG_FORMAT,
+    formatLong,
+  };
 }
 
 export function useAppEntityEvents(options?: {
   appId?: string;
   kind?: string;
   scope?: string;
-  onEvent?: (event: { appId?: string | null; kind?: string | null; scope?: string | null; entityId?: string | null }) => void;
+  onEvent?: (event: {
+    appId?: string | null;
+    kind?: string | null;
+    scope?: string | null;
+    entityId?: string | null;
+  }) => void;
   enabled?: boolean;
 }) {
   const ctx = useAppCtx();
   const callbackRef = useRef(options?.onEvent);
   callbackRef.current = options?.onEvent;
   useEffect(() => {
-    if (options?.enabled === false || !options?.appId || !callbackRef.current) return undefined;
+    if (options?.enabled === false || !options?.appId || !callbackRef.current)
+      return undefined;
     return ctx.shell.appEntityEvents.subscribe({
       enabled: true,
       onEvent: (event) => {
         if (event.appId !== options.appId) return;
         if (options.kind && event.kind !== options.kind) return;
         if (options.scope && event.scope !== options.scope) return;
-        callbackRef.current?.({ appId: event.appId, kind: event.kind, scope: event.scope });
+        callbackRef.current?.({
+          appId: event.appId,
+          kind: event.kind,
+          scope: event.scope,
+        });
       },
     });
-  }, [ctx.shell.appEntityEvents, options?.appId, options?.enabled, options?.kind, options?.scope]);
+  }, [
+    ctx.shell.appEntityEvents,
+    options?.appId,
+    options?.enabled,
+    options?.kind,
+    options?.scope,
+  ]);
 }
 
 export function useJobEvents(options?: {
@@ -194,7 +235,12 @@ export function useJobEvents(options?: {
       onEvent: (event) => {
         const normalized = toJobEvent(event);
         if (!normalized) return;
-        if (jobTypes && jobTypes.length > 0 && !jobTypes.includes(normalized.job.type)) return;
+        if (
+          jobTypes &&
+          jobTypes.length > 0 &&
+          !jobTypes.includes(normalized.job.type)
+        )
+          return;
         callbackRef.current?.(normalized);
       },
     });

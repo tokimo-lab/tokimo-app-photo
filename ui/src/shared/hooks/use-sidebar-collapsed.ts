@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-export function useSidebarCollapsed(componentId: string, autoCollapsed: boolean) {
+export function useSidebarCollapsed(
+  componentId: string,
+  autoCollapsed: boolean,
+) {
   const key = `${componentId}:sidebarCollapsed`;
   const [manual, setManual] = useState(false);
   useEffect(() => {

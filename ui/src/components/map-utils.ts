@@ -76,8 +76,18 @@ export function loadMapCenter(): {
 
 // ── Cluster selection computation ─────────────────────────────────────
 import Supercluster from "supercluster";
+
 type SuperclusterIndex = InstanceType<typeof Supercluster>;
-type ClusterFeatureLike = { id?: number; geometry: { coordinates: [number, number] }; properties: { cluster?: boolean; city?: string | null; point_count?: number; [key: string]: unknown } };
+type ClusterFeatureLike = {
+  id?: number;
+  geometry: { coordinates: [number, number] };
+  properties: {
+    cluster?: boolean;
+    city?: string | null;
+    point_count?: number;
+    [key: string]: unknown;
+  };
+};
 
 /** Compute cluster/point selection info (bbox + label) for a map click. */
 export function computeClusterSelection(

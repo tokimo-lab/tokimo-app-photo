@@ -8,11 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
+import type { PhotoOutput } from "@/generated/rust-api";
 import {
   computeJustifiedRows,
   type JustifiedRow,
 } from "@/hooks/useJustifiedLayout";
-import type { PhotoOutput } from "@/generated/rust-api";
 import { useWindowActions } from "@/system";
 import { getDefaultSize } from "@/system/window/window-sync";
 import { DateHeader } from "./DateHeader";

@@ -61,7 +61,9 @@ export default function PhotoSettingsWindow(_: { win: WindowState }) {
   });
 
   const pickSource = async () => {
-    const picked = await ctx.shell.pickStorageBinding({ title: "选择照片目录" });
+    const picked = await ctx.shell.pickStorageBinding({
+      title: "选择照片目录",
+    });
     if (!picked) return;
     setSource({
       sourceId: picked.sourceId,
@@ -104,12 +106,17 @@ export default function PhotoSettingsWindow(_: { win: WindowState }) {
             placeholder="图库名称"
             className="rounded-lg border border-border-subtle bg-bg-primary px-3 py-2 text-sm outline-none focus:border-emerald-500"
           />
-          <Button onClick={pickSource} icon={<FolderOpen className="h-4 w-4" />}>
+          <Button
+            onClick={pickSource}
+            icon={<FolderOpen className="h-4 w-4" />}
+          >
             选择目录
           </Button>
         </div>
         <div className="mt-3 text-sm text-fg-muted">
-          {source ? `已选择：${sourceLabel(source)}` : "可先创建空图库，稍后再绑定来源。"}
+          {source
+            ? `已选择：${sourceLabel(source)}`
+            : "可先创建空图库，稍后再绑定来源。"}
         </div>
         <div className="mt-4">
           <Button
@@ -127,10 +134,14 @@ export default function PhotoSettingsWindow(_: { win: WindowState }) {
       <section className="min-h-0 flex-1">
         <h2 className="mb-3 text-base font-semibold">图库列表</h2>
         {isLoading ? (
-          <div className="flex h-32 items-center justify-center"><Spin /></div>
+          <div className="flex h-32 items-center justify-center">
+            <Spin />
+          </div>
         ) : libraries && libraries.length > 0 ? (
           <div className="space-y-3">
-            {libraries.map((library) => <LibraryRow key={library.id} library={library} />)}
+            {libraries.map((library) => (
+              <LibraryRow key={library.id} library={library} />
+            ))}
           </div>
         ) : (
           <Empty description="暂无图库" />

@@ -1,7 +1,10 @@
 import { useMemo, useRef } from "react";
 import type { PhotoOcrResultItem } from "@/generated/rust-api";
 import type { ImgRect } from "./photo-overlays";
-import { isOrientationSwapped, transformBboxForOrientation } from "./photo-utils";
+import {
+  isOrientationSwapped,
+  transformBboxForOrientation,
+} from "./photo-utils";
 
 export interface OcrTextAnchor {
   blockIdx: number;
@@ -21,8 +24,18 @@ export interface OcrBlockRect {
 interface OcrEngineLike {
   visualRank: (blockIdx: number) => number;
   getVisualOrder: () => number[];
-  extractText: (aBlock: number, aChar: number, bBlock: number, bChar: number) => string;
-  computeHighlights: (aBlock: number, aChar: number, bBlock: number, bChar: number) => number[];
+  extractText: (
+    aBlock: number,
+    aChar: number,
+    bBlock: number,
+    bChar: number,
+  ) => string;
+  computeHighlights: (
+    aBlock: number,
+    aChar: number,
+    bBlock: number,
+    bChar: number,
+  ) => number[];
   hitTest: (x: number, y: number, anchorIdx: number) => OcrTextAnchor | null;
   recomputeVisualOrder: (anchorIdx: number) => void;
   setBlocks: (blocks: OcrBlockRect[], texts: string[]) => void;
@@ -36,10 +49,12 @@ class JsOcrEngine implements OcrEngineLike {
   setBlocks(blocks: OcrBlockRect[], texts: string[]) {
     this.blocks = blocks;
     this.texts = texts;
-    this.order = blocks.map((_, index) => index).sort((a, b) => {
-      const dy = blocks[a].y - blocks[b].y;
-      return Math.abs(dy) > 8 ? dy : blocks[a].x - blocks[b].x;
-    });
+    this.order = blocks
+      .map((_, index) => index)
+      .sort((a, b) => {
+        const dy = blocks[a].y - blocks[b].y;
+        return Math.abs(dy) > 8 ? dy : blocks[a].x - blocks[b].x;
+      });
   }
 
   visualRank(blockIdx: number) {
@@ -56,7 +71,11 @@ class JsOcrEngine implements OcrEngineLike {
   }
 
   extractText(aBlock: number, aChar: number, bBlock: number, bChar: number) {
-    const range = normalizeOcrAnchors(this, { blockIdx: aBlock, charIdx: aChar }, { blockIdx: bBlock, charIdx: bChar });
+    const range = normalizeOcrAnchors(
+      this,
+      { blockIdx: aBlock, charIdx: aChar },
+      { blockIdx: bBlock, charIdx: bChar },
+    );
     const chunks: string[] = [];
     for (let rank = range.sRank; rank <= range.eRank; rank++) {
       const idx = this.order[rank];
@@ -68,8 +87,17 @@ class JsOcrEngine implements OcrEngineLike {
     return chunks.join("\n");
   }
 
-  computeHighlights(aBlock: number, aChar: number, bBlock: number, bChar: number) {
-    const range = normalizeOcrAnchors(this, { blockIdx: aBlock, charIdx: aChar }, { blockIdx: bBlock, charIdx: bChar });
+  computeHighlights(
+    aBlock: number,
+    aChar: number,
+    bBlock: number,
+    bChar: number,
+  ) {
+    const range = normalizeOcrAnchors(
+      this,
+      { blockIdx: aBlock, charIdx: aChar },
+      { blockIdx: bBlock, charIdx: bChar },
+    );
     const out: number[] = [];
     for (let rank = range.sRank; rank <= range.eRank; rank++) {
       const idx = this.order[rank];
@@ -87,10 +115,22 @@ class JsOcrEngine implements OcrEngineLike {
   }
 
   hitTest(x: number, y: number) {
-    const idx = this.blocks.findIndex((block) => x >= block.x && x <= block.x + block.w && y >= block.y && y <= block.y + block.h);
+    const idx = this.blocks.findIndex(
+      (block) =>
+        x >= block.x &&
+        x <= block.x + block.w &&
+        y >= block.y &&
+        y <= block.y + block.h,
+    );
     if (idx < 0) return null;
     const block = this.blocks[idx];
-    const charIdx = Math.max(0, Math.min(block.charCount, Math.round(((x - block.x) / Math.max(block.w, 1)) * block.charCount)));
+    const charIdx = Math.max(
+      0,
+      Math.min(
+        block.charCount,
+        Math.round(((x - block.x) / Math.max(block.w, 1)) * block.charCount),
+      ),
+    );
     return { blockIdx: idx, charIdx };
   }
 }
@@ -103,9 +143,23 @@ export function normalizeOcrAnchors(
   const aRank = engine.visualRank(a.blockIdx);
   const bRank = engine.visualRank(b.blockIdx);
   if (aRank < bRank || (aRank === bRank && a.charIdx <= b.charIdx)) {
-    return { sBlock: a.blockIdx, sChar: a.charIdx, eBlock: b.blockIdx, eChar: b.charIdx, sRank: aRank, eRank: bRank };
+    return {
+      sBlock: a.blockIdx,
+      sChar: a.charIdx,
+      eBlock: b.blockIdx,
+      eChar: b.charIdx,
+      sRank: aRank,
+      eRank: bRank,
+    };
   }
-  return { sBlock: b.blockIdx, sChar: b.charIdx, eBlock: a.blockIdx, eChar: a.charIdx, sRank: bRank, eRank: aRank };
+  return {
+    sBlock: b.blockIdx,
+    sChar: b.charIdx,
+    eBlock: a.blockIdx,
+    eChar: a.charIdx,
+    sRank: bRank,
+    eRank: aRank,
+  };
 }
 
 export function useOcrEngine(
@@ -128,10 +182,20 @@ export function useOcrEngine(
     const scY = imgRect.h / dispH;
     const sorted = [...ocrResults]
       .filter((r) => r.x != null && r.y != null && r.w != null && r.h != null)
-      .sort((a, b) => Math.abs((a.y ?? 0) - (b.y ?? 0)) > 5 ? (a.y ?? 0) - (b.y ?? 0) : (a.x ?? 0) - (b.x ?? 0));
+      .sort((a, b) =>
+        Math.abs((a.y ?? 0) - (b.y ?? 0)) > 5
+          ? (a.y ?? 0) - (b.y ?? 0)
+          : (a.x ?? 0) - (b.x ?? 0),
+      );
     const rects = sorted.map((r) => {
       const db = transformBboxForOrientation(
-        { x: r.x ?? 0, y: r.y ?? 0, w: r.w ?? 0, h: r.h ?? 0, angle: r.angle ?? 0 },
+        {
+          x: r.x ?? 0,
+          y: r.y ?? 0,
+          w: r.w ?? 0,
+          h: r.h ?? 0,
+          angle: r.angle ?? 0,
+        },
         photoWidth,
         photoHeight,
         orientation,
@@ -146,7 +210,10 @@ export function useOcrEngine(
         charCount: Array.from(r.text).length,
       };
     });
-    engineRef.current?.setBlocks(rects, sorted.map((r) => r.text));
+    engineRef.current?.setBlocks(
+      rects,
+      sorted.map((r) => r.text),
+    );
     return rects;
   }, [ocrResults, imgRect, dispW, dispH, photoWidth, photoHeight, orientation]);
 

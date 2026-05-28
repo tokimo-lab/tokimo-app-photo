@@ -4,7 +4,9 @@ import { Empty, Spin } from "@tokimo/ui";
 import { Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
+
 type SuperclusterIndex = InstanceType<typeof Supercluster>;
+
 import { api } from "@/generated/rust-api";
 import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import { useWindowNav } from "@/system";
