@@ -653,10 +653,10 @@ export const photoApi = {
   getLocationStats: createQuery<
     { id: string },
     Array<{
-      province: string | null;
-      city: string | null;
-      district: string | null;
-      photoCount: number;
+      geoProvince: string | null;
+      geoCity: string | null;
+      geoDistrict: string | null;
+      count: number;
     }>
   >({
     path: "/api/apps/photo/{id}/photos/locations",

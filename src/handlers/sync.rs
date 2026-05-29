@@ -93,5 +93,17 @@ pub async fn sync_photo(
         }
     }
 
+    // Notify frontend that sync has started
+    if let Some(client) = ctx.client.get() {
+        let _ = crate::bus_clients::app_events::emit_entity(
+            client,
+            caller_user_id,
+            "photo_library",
+            Some(format!("library:{uid}")),
+            serde_json::json!({ "id": uid.to_string(), "operation": "syncing", "libraryId": uid.to_string() }),
+        )
+        .await;
+    }
+
     ok(serde_json::json!({ "success": true }))
 }

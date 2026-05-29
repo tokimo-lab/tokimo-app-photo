@@ -77,9 +77,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
   const syncMutation = api.photo.sync.useMutation({
     onSuccess: () => {
       message.success(t("syncStarted"));
-      api.photo.list.invalidate(qc);
-      api.photo.listPhotos.invalidate(qc);
-      api.photo.listPhotoAlbums.invalidate(qc);
+      qc.refetchQueries({ queryKey: ["photo"], type: "all" });
     },
     onError: (e) => message.error(e.message || t("syncFailed")),
   });
