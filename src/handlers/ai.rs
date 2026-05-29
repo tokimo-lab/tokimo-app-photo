@@ -2,15 +2,18 @@
 //! OCR / CLIP search, result-clearing, OCR CRUD, and AI / geo settings.
 //!
 //! Scan + refresh endpoints enqueue jobs over the bus (`jobs.create`) using the
-//! sidecar convention: there is no auth/user context, so every job is enqueued
-//! with `photo_caller(None)` and no `user_id`.
+//! authenticated request user as the caller context.
 //!
 //! Three endpoints remain documented stubs (`clear_thumbnails`,
 //! `refresh_thumbnail`, `refresh_exif`) — see the comment above them.
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
+use uuid::Uuid;
 
 use crate::bus_clients::jobs::{self, CreateJobRequest, photo_caller};
 use crate::config::{PhotoAiSettings, PhotoGeoSettings};
@@ -18,6 +21,7 @@ use crate::ctx::AppCtx;
 use crate::db::repos::app_settings_repo::AppSettingsRepo;
 use crate::db::repos::photo_repo::PhotoRepo;
 use crate::error::AppError;
+use crate::handlers::user::AuthUser;
 use crate::services::clip::PhotoClipService;
 use crate::services::ocr::PhotoOcrService;
 use crate::services::preempt;
@@ -30,30 +34,46 @@ use super::{ok, ok_simple, parse_uuid};
 pub async fn ocr_scan(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_library_scan(&ctx, &id, "photo_ocr_scan").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_library_scan(&ctx, &id, "photo_ocr_scan", caller_user_id).await
 }
 
 /// Enqueue a library-wide CLIP embedding scan.
 pub async fn clip_embed(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_library_scan(&ctx, &id, "photo_clip_scan").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_library_scan(&ctx, &id, "photo_clip_scan", caller_user_id).await
 }
 
 /// Enqueue a library-wide face detection scan.
 pub async fn face_detect(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_library_scan(&ctx, &id, "photo_face_scan").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_library_scan(&ctx, &id, "photo_face_scan", caller_user_id).await
 }
 
 async fn enqueue_library_scan(
     ctx: &Arc<AppCtx>,
     id: &str,
     scan_job_type: &str,
+    caller_user_id: Uuid,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let app_id = parse_uuid(id)?;
     preempt::preempt_scan_for(ctx, app_id, scan_job_type).await?;
@@ -61,7 +81,7 @@ async fn enqueue_library_scan(
         scan_job_type,
         serde_json::json!({ "photoLibraryId": app_id.to_string() }),
     );
-    jobs::create(&ctx.client(), photo_caller(None), req).await?;
+    jobs::create(&ctx.client(), photo_caller(Some(caller_user_id)), req).await?;
     ok(serde_json::json!({ "status": "started" }))
 }
 
@@ -71,24 +91,39 @@ async fn enqueue_library_scan(
 pub async fn refresh_clip(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_photo_refresh(&ctx, &id, "photo_clip", "photo_clip_single").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_photo_refresh(&ctx, &id, "photo_clip", "photo_clip_single", caller_user_id).await
 }
 
 /// Refresh face detection for a single photo (user-priority).
 pub async fn refresh_faces(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_photo_refresh(&ctx, &id, "photo_face", "photo_face_single").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_photo_refresh(&ctx, &id, "photo_face", "photo_face_single", caller_user_id).await
 }
 
 /// Refresh OCR for a single photo (user-priority).
 pub async fn refresh_ocr(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    enqueue_photo_refresh(&ctx, &id, "photo_ocr", "photo_ocr_single").await
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
+    enqueue_photo_refresh(&ctx, &id, "photo_ocr", "photo_ocr_single", caller_user_id).await
 }
 
 async fn enqueue_photo_refresh(
@@ -96,6 +131,7 @@ async fn enqueue_photo_refresh(
     id: &str,
     child_task_type: &str,
     single_job_type: &str,
+    caller_user_id: Uuid,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let photo_id = parse_uuid(id)?;
     preempt::preempt_scan_child_for_photo(ctx, child_task_type, photo_id).await?;
@@ -107,7 +143,7 @@ async fn enqueue_photo_refresh(
     // 1000 == host `JobPriority::UserAction` — user-initiated refreshes jump the queue.
     req.priority = Some(1000);
     req.task_type = Some(single_job_type.to_string());
-    let job = jobs::create(&ctx.client(), photo_caller(None), req).await?;
+    let job = jobs::create(&ctx.client(), photo_caller(Some(caller_user_id)), req).await?;
     ok(serde_json::json!({ "jobId": job.id.to_string(), "status": job.status }))
 }
 

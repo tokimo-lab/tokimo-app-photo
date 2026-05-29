@@ -2,13 +2,17 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, State}};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::ctx::AppCtx;
 use crate::db::repos::library_repo::PhotoLibraryRepo;
 use crate::error::{AppError, OptionExt};
+use crate::handlers::user::AuthUser;
 
 use super::{ok, parse_uuid};
 
@@ -21,16 +25,25 @@ pub struct PhotoSyncInput {
 pub async fn sync_photo(
     State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
+    auth: AuthUser,
     body: Option<Json<PhotoSyncInput>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let caller_user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
     let uid: Uuid = parse_uuid(&id)?;
 
     let library = PhotoLibraryRepo::get_by_id(&ctx.db, uid)
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    if library.sync_status == "syncing" && !body.as_ref().and_then(|b| b.clear_data).unwrap_or(false) {
-        return Err(AppError::Conflict("Photo library is already syncing".into()));
+    if library.sync_status == "syncing"
+        && !body.as_ref().and_then(|b| b.clear_data).unwrap_or(false)
+    {
+        return Err(AppError::Conflict(
+            "Photo library is already syncing".into(),
+        ));
     }
 
     // Mark library as pending sync
@@ -42,7 +55,13 @@ pub async fn sync_photo(
         "photo_scan",
         serde_json::json!({ "libraryId": uid.to_string() }),
     );
-    match crate::bus_clients::jobs::create(&client, crate::bus_clients::jobs::photo_caller(None), req).await {
+    match crate::bus_clients::jobs::create(
+        &client,
+        crate::bus_clients::jobs::photo_caller(Some(caller_user_id)),
+        req,
+    )
+    .await
+    {
         Ok(job) => {
             tracing::info!("dispatched photo_scan job {:?} for library {}", job.id, uid);
         }
@@ -50,7 +69,9 @@ pub async fn sync_photo(
             tracing::warn!("failed to dispatch photo_scan job: {e}");
             // Revert to idle so the user can retry
             let _ = PhotoLibraryRepo::update_sync_status(&ctx.db, uid, "idle", None).await;
-            return Err(AppError::Internal(format!("failed to dispatch sync job: {e}")));
+            return Err(AppError::Internal(format!(
+                "failed to dispatch sync job: {e}"
+            )));
         }
     }
 

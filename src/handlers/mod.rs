@@ -9,6 +9,7 @@ pub mod geo;
 pub mod person;
 pub mod stream;
 pub mod sync;
+pub mod user;
 
 pub use ai::*;
 pub use album::*;
