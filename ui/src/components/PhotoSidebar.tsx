@@ -1,6 +1,7 @@
 import { AppSidebar, CircularProgress, Tooltip } from "@tokimo/ui";
 import { PanelLeft, PanelLeftClose, Plus, Settings } from "lucide-react";
 import type { PhotoLibraryOutput } from "@/generated/rust-api";
+import { usePhotoI18n } from "@/i18n";
 import { getAvatarColor, getAvatarIcon } from "@/shared/avatar-utils";
 import { AppIcon } from "@/shared/components/icons";
 
@@ -23,6 +24,7 @@ export default function PhotoSidebar({
   syncProgress?: Record<string, { isActive: boolean; pct: number }>;
   onToggleCollapse?: () => void;
 }) {
+  const { t } = usePhotoI18n();
   const sections = [
     {
       items: libraries.map((lib) => {
@@ -71,7 +73,7 @@ export default function PhotoSidebar({
 
   const collapsedFooter = (
     <div className="flex flex-col items-center gap-1">
-      <Tooltip title="新建图库" placement="right">
+      <Tooltip title={t("sidebarCreateLibrary")} placement="right">
         <button
           type="button"
           onClick={onCreateClick}
@@ -80,7 +82,7 @@ export default function PhotoSidebar({
           <Plus className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title="图库设置" placement="right">
+      <Tooltip title={t("sidebarSettings")} placement="right">
         <button
           type="button"
           onClick={onSettingsClick}
@@ -89,7 +91,7 @@ export default function PhotoSidebar({
           <Settings className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title="展开侧边栏" placement="right">
+      <Tooltip title={t("sidebarExpand")} placement="right">
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -103,7 +105,7 @@ export default function PhotoSidebar({
 
   const fullFooter = (
     <div className="flex items-center gap-1">
-      <Tooltip title="新建图库">
+      <Tooltip title={t("sidebarCreateLibrary")}>
         <button
           type="button"
           onClick={onCreateClick}
@@ -112,7 +114,7 @@ export default function PhotoSidebar({
           <Plus className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title="图库设置">
+      <Tooltip title={t("sidebarSettings")}>
         <button
           type="button"
           onClick={onSettingsClick}
@@ -121,7 +123,7 @@ export default function PhotoSidebar({
           <Settings className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title="收起侧边栏">
+      <Tooltip title={t("sidebarCollapse")}>
         <button
           type="button"
           onClick={onToggleCollapse}

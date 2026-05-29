@@ -8,6 +8,7 @@ import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
 import { useSyncProgress } from "@/shared/hooks/use-sync-progress";
 import { useWindowActions, useWindowId } from "@/system";
 import { useAppCtx } from "../AppContext";
+import { usePhotoI18n } from "../i18n";
 import { registerBridge } from "../modal-bridge";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
@@ -33,6 +34,7 @@ const PHOTO_SCAN_JOB_TYPES = [
 
 export default function PhotoApp() {
   const ctx = useAppCtx();
+  const { t } = usePhotoI18n();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
   const { collapsed: sidebarCollapsed, onToggleCollapse } = useSidebarCollapsed(
@@ -50,12 +52,13 @@ export default function PhotoApp() {
       kind: "settings",
       shell: ctx.shell,
       photoId: opts?.photoId,
+      locale: ctx.locale,
       onMutated: () => api.photo.list.invalidate(queryClient),
     });
     openModalWindow({
       component: () => import("./PhotoSettingsWindow"),
       parentWindowId,
-      title: opts?.photoId ? "图库设置" : "TokimoPhoto 设置",
+      title: opts?.photoId ? t("settingsTitle") : t("settingsWindowTitle"),
       width: 960,
       height: 640,
       metadata: { bridgeId },
@@ -102,36 +105,27 @@ export default function PhotoApp() {
   }
 
   if (!libraries?.length) {
-    const isZh = ctx.locale.startsWith("zh");
     return (
       <AppSetupGuide
         imageSrc="/api/apps/photo/assets/icon.png"
         accentColor="violet"
-        title={isZh ? "开始使用 TokimoPhoto" : "Get Started with TokimoPhoto"}
-        description={
-          isZh
-            ? "创建一个图库来管理你的照片与截图"
-            : "Create a library to organize your photos and screenshots"
-        }
+        title={t("setupTitle")}
+        description={t("setupDescription")}
         features={[
           {
             icon: Image,
-            label: isZh ? "导入照片与截图" : "Import photos and screenshots",
+            label: t("setupFeatureImport"),
           },
           {
             icon: Camera,
-            label: isZh
-              ? "按相册和时间线智能整理"
-              : "Organize by album and timeline",
+            label: t("setupFeatureOrganize"),
           },
           {
             icon: Search,
-            label: isZh
-              ? "快速搜索，回忆精选"
-              : "Quick search, curated memories",
+            label: t("setupFeatureSearch"),
           },
         ]}
-        actionLabel={isZh ? "新建图库" : "New Photo Library"}
+        actionLabel={t("setupAction")}
         actionIcon={Plus}
         onAction={openSettings}
       />

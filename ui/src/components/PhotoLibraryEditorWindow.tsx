@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ShellWindowHandle } from "@tokimo/sdk";
-import { ConfigProvider, ToastProvider, zhCN } from "@tokimo/ui";
+import { ConfigProvider, ToastProvider } from "@tokimo/ui";
 import { useState } from "react";
+import { getPhotoI18n } from "../i18n";
 import { getBridge } from "../modal-bridge";
 import PhotoLibraryEditor from "./PhotoLibraryEditor";
 
@@ -19,6 +20,8 @@ export default function PhotoLibraryEditorWindow({
     return null;
   }
 
+  const { uiLocale } = getPhotoI18n(bridge.locale);
+
   const handleSaved = () => {
     bridge.onMutated();
     win.close();
@@ -35,11 +38,12 @@ export default function PhotoLibraryEditorWindow({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider locale={uiLocale}>
         <ToastProvider>
           <PhotoLibraryEditor
             photoId={bridge.photoId}
             shell={bridge.shell}
+            locale={bridge.locale}
             onSaved={handleSaved}
             onDeleted={handleDeleted}
             onCancel={handleCancel}

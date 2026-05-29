@@ -7,26 +7,11 @@ import {
   ConfigProvider,
   type FileBrowserVfsApi,
   FileBrowserWindow,
-  zhCN,
 } from "@tokimo/ui";
 import { useState } from "react";
 import { api } from "../api/client";
+import { getPhotoI18n } from "../i18n";
 import { clearBrowseBridge, getBrowseBridge } from "../shared/browse-bridge";
-
-function t(key: string): string {
-  const dict: Record<string, string> = {
-    "pathSelector.refresh": "刷新",
-    "pathSelector.selectDirectory": "选择此目录",
-    "pathSelector.emptyDirectory": "该目录为空",
-    "pathSelector.colName": "名称",
-    "pathSelector.colPermissions": "权限",
-    "pathSelector.colSize": "大小",
-    "pathSelector.colModified": "修改时间",
-    "pathSelector.cannotAccess": "无法访问该目录",
-    "common.cancel": "取消",
-  };
-  return dict[key] ?? key;
-}
 
 function formatLong(value: string | null | undefined): string {
   if (!value) return "";
@@ -55,6 +40,35 @@ export default function VfsBrowserWindow({ win }: { win: ShellWindowHandle }) {
 
   if (!bridge) return null;
 
+  const locale = bridge.locale;
+  const { t, uiLocale } = getPhotoI18n(locale);
+
+  // Map @tokimo/ui keys to PhotoI18n keys
+  const tMap = (key: string): string => {
+    switch (key) {
+      case "pathSelector.refresh":
+        return t("pathRefresh");
+      case "pathSelector.selectDirectory":
+        return t("pathSelectDirectory");
+      case "pathSelector.emptyDirectory":
+        return t("pathEmptyDirectory");
+      case "pathSelector.colName":
+        return t("pathColName");
+      case "pathSelector.colPermissions":
+        return t("pathColPermissions");
+      case "pathSelector.colSize":
+        return t("pathColSize");
+      case "pathSelector.colModified":
+        return t("pathColModified");
+      case "pathSelector.cannotAccess":
+        return t("pathCannotAccess");
+      case "common.cancel":
+        return t("commonCancel");
+      default:
+        return key;
+    }
+  };
+
   const finish = (path: string | null) => {
     bridge.resolve(path);
     clearBrowseBridge(bridgeId);
@@ -62,13 +76,13 @@ export default function VfsBrowserWindow({ win }: { win: ShellWindowHandle }) {
   };
 
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={uiLocale}>
       <FileBrowserWindow
         initialPath={bridge.initialPath}
         sourceId={bridge.sourceId}
         protocolPrefix={bridge.protocolPrefix}
         vfsApi={vfsApi}
-        t={t}
+        t={tMap}
         formatLong={formatLong}
         onConfirm={(path) => finish(path)}
         onCancel={() => finish(null)}

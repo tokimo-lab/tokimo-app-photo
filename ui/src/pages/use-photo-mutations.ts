@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
+import { usePhotoI18n } from "../i18n";
 
 interface UsePhotoMutationsParams {
   id: string | undefined;
@@ -25,6 +26,7 @@ export function usePhotoMutations({
   refetchAlbums,
   resetTrash,
 }: UsePhotoMutationsParams) {
+  const { t } = usePhotoI18n();
   const [isRestoring, setIsRestoring] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
@@ -41,6 +43,8 @@ export function usePhotoMutations({
   messageRef.current = message;
   const clearSelectionRef = useRef(clearSelection);
   clearSelectionRef.current = clearSelection;
+  const tRef = useRef(t);
+  tRef.current = t;
 
   // ── Favorite toggle ─────────────────────────────────────────────────────
   const toggleFavMutation = api.photo.togglePhotoFavorite.useMutation({
@@ -59,24 +63,24 @@ export function usePhotoMutations({
   // ── Batch operations ──────────────────────────────────────────────────
   const batchFavMutation = api.photo.batchFavorite.useMutation({
     onSuccess: (data) => {
-      messageRef.current.success(`已更新 ${data.updated} 张照片`);
+      messageRef.current.success(tRef.current("mutationUpdated", { count: data.updated }));
       clearSelectionRef.current();
       void refetchPhotosRef.current();
       void refetchFavRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || "操作失败"),
+    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationFailed")),
   });
 
   const addToAlbumMutation = api.photo.addPhotosToAlbum.useMutation({
     onMutate: () => setIsAddingToAlbum(true),
     onSettled: () => setIsAddingToAlbum(false),
     onSuccess: () => {
-      messageRef.current.success("已添加到相册");
+      messageRef.current.success(tRef.current("albumAddedSuccess"));
       clearSelectionRef.current();
       setShowAlbumPicker(false);
       void refetchAlbums();
     },
-    onError: (e) => messageRef.current.error(e.message || "操作失败"),
+    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationFailed")),
   });
 
   const handleBatchFavorite = useCallback(() => {
@@ -118,7 +122,7 @@ export function usePhotoMutations({
       { id: id, photoIds: [...selectedIds], hidden: true },
       {
         onSuccess: () => {
-          messageRef.current.success(`已隐藏 ${selectedIds.size} 张照片`);
+          messageRef.current.success(tRef.current("mutationHidden", { count: selectedIds.size }));
           clearSelectionRef.current();
           refetchPhotosRef.current();
           refetchFavRef.current();
@@ -134,14 +138,14 @@ export function usePhotoMutations({
 
   const handleTrash = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    if (!window.confirm(`确定要将 ${selectedIds.size} 张照片移到回收站吗？`))
+    if (!window.confirm(tRef.current("mutationTrashConfirm", { count: selectedIds.size })))
       return;
     trashMutateRef.current(
       { id: id, photoIds: [...selectedIds] },
       {
         onSuccess: () => {
           messageRef.current.success(
-            `已将 ${selectedIds.size} 张照片移到回收站`,
+            tRef.current("mutationTrashed", { count: selectedIds.size }),
           );
           clearSelectionRef.current();
           refetchPhotosRef.current();
@@ -156,25 +160,25 @@ export function usePhotoMutations({
     onMutate: () => setIsRestoring(true),
     onSettled: () => setIsRestoring(false),
     onSuccess: (data) => {
-      messageRef.current.success(`已恢复 ${data.restored} 张照片`);
+      messageRef.current.success(tRef.current("mutationRestored", { count: data.restored }));
       clearSelectionRef.current();
       resetTrash();
       void refetchTrashedRef.current();
       void refetchPhotosRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || "恢复失败"),
+    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationRestoreFailed")),
   });
 
   const permanentDeleteMutation = api.photo.permanentDelete.useMutation({
     onMutate: () => setIsDeleting(true),
     onSettled: () => setIsDeleting(false),
     onSuccess: (data) => {
-      messageRef.current.success(`已永久删除 ${data.deleted} 张照片`);
+      messageRef.current.success(tRef.current("mutationDeleted", { count: data.deleted }));
       clearSelectionRef.current();
       resetTrash();
       void refetchTrashedRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || "删除失败"),
+    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationDeleteFailed")),
   });
 
   const handleRestore = useCallback(() => {
@@ -184,7 +188,7 @@ export function usePhotoMutations({
 
   const handlePermanentDelete = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    if (!window.confirm("永久删除选中的照片？此操作不可恢复！")) return;
+    if (!window.confirm(tRef.current("mutationDeleteConfirm"))) return;
     permanentDeleteMutation.mutate({
       id: id,
       photoIds: [...selectedIds],

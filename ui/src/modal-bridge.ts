@@ -4,6 +4,7 @@ interface SettingsBridge {
   kind: "settings";
   shell: ShellApi;
   photoId?: string;
+  locale?: string;
   onMutated: () => void;
 }
 

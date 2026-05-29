@@ -17,6 +17,7 @@ import {
 import { api } from "@/generated/rust-api";
 import type { MenuBarConfig } from "@/system";
 import { useMenuBar, useMessage } from "@/system";
+import { usePhotoI18n } from "../i18n";
 import {
   loadSavedSizeIndex,
   PHOTO_SIZE_LEVELS,
@@ -48,6 +49,7 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
 
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
   const id = localStorage.getItem("photo-active-library") ?? undefined;
+  const { t } = usePhotoI18n();
   const message = useMessage();
   const qc = useQueryClient();
 
@@ -72,12 +74,12 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
   const syncMutation = api.photo.sync.useMutation({
     onSuccess: () => {
-      message.success("同步已开始");
+      message.success(t("syncStarted"));
       api.photo.list.invalidate(qc);
       api.photo.listPhotos.invalidate(qc);
       api.photo.listPhotoAlbums.invalidate(qc);
     },
-    onError: (e) => message.error(e.message || "同步失败"),
+    onError: (e) => message.error(e.message || t("syncFailed")),
   });
 
   const handleRefresh = useCallback(() => {
@@ -100,27 +102,27 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
     return {
       menus: [
-        { key: "view", label: "显示", items: sizeItems },
+        { key: "view", label: t("menuView"), items: sizeItems },
         {
           key: "actions",
-          label: "操作",
+          label: t("menuActions"),
           items: [
             {
               key: "select",
-              label: isSelecting ? "取消选择" : "选择",
+              label: isSelecting ? t("menuDeselect") : t("menuSelect"),
               icon: <MousePointerClick size={14} />,
               onClick: toggleSelectMode,
             },
             { type: "divider" as const },
             {
               key: "refresh",
-              label: "刷新",
+              label: t("menuRefresh"),
               icon: <RefreshCw size={14} />,
               onClick: handleRefresh,
             },
             {
               key: "sync",
-              label: "同步资料库",
+              label: t("menuSyncLibrary"),
               icon: <FolderSync size={14} />,
               onClick: () => {
                 setSyncClearData(false);
@@ -133,12 +135,12 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
       search: {
         appId: id,
         searchType: "photo" as const,
-        placeholder: "搜索照片…",
+        placeholder: t("menuSearchPlaceholder"),
         onSelect: () => {},
         recentItems: [],
       },
     };
-  }, [id, isSelecting, sizeIndex, toggleSelectMode, handleRefresh]);
+  }, [id, isSelecting, sizeIndex, t, toggleSelectMode, handleRefresh]);
 
   useMenuBar(menuBarConfig);
 
@@ -159,9 +161,9 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
       <Modal
         open={syncModalOpen}
-        title="同步资料库"
-        okText="开始同步"
-        cancelText="取消"
+        title={t("syncModalTitle")}
+        okText={t("syncModalOk")}
+        cancelText={t("commonCancel")}
         confirmLoading={syncMutation.isPending}
         onCancel={() => setSyncModalOpen(false)}
         onOk={async () => {
@@ -180,10 +182,10 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
           checked={syncClearData}
           onChange={(e) => setSyncClearData(e.target.checked)}
         >
-          清空数据重新同步
+          {t("syncModalClearData")}
         </Checkbox>
         <p className="mt-2 text-xs text-[var(--text-muted)]">
-          勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。
+          {t("syncModalHint")}
         </p>
       </Modal>
     </PhotoMenuBarContext.Provider>

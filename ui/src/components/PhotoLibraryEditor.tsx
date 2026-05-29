@@ -26,16 +26,13 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type PhotoLibraryOutput } from "../api/client";
 import { useVfsBrowse } from "../hooks/useVfsBrowse";
+import { getPhotoI18n } from "../i18n";
 import PhotoReprocessTools from "./PhotoReprocessTools";
-
-const PHOTO_TYPES = [
-  { value: "photo", label: "照片" },
-  { value: "screenshot", label: "截图" },
-] as const;
 
 interface PhotoLibraryEditorProps {
   photoId?: string;
   shell: ShellApi;
+  locale?: string;
   onSaved?: (savedId: string) => void;
   onDeleted?: () => void;
   onCancel?: () => void;
@@ -44,12 +41,14 @@ interface PhotoLibraryEditorProps {
 export default function PhotoLibraryEditor({
   photoId,
   shell,
+  locale,
   onSaved,
   onDeleted,
   onCancel,
 }: PhotoLibraryEditorProps) {
   const toast = useToast();
-  const onBrowse = useVfsBrowse(shell);
+  const { t } = getPhotoI18n(locale);
+  const onBrowse = useVfsBrowse(shell, locale);
   const qc = useQueryClient();
   const [form] = Form.useForm();
 
@@ -97,32 +96,37 @@ export default function PhotoLibraryEditor({
     }
   }, [library, form]);
 
+  const PHOTO_TYPES = [
+    { value: "photo", label: t("libraryTypePhoto") },
+    { value: "screenshot", label: t("libraryTypeScreenshot") },
+  ] as const;
+
   const createMutation = api.photo.create.useMutation({
     onSuccess: (created) => {
-      toast.success("图库已创建");
+      toast.success(t("libraryCreated"));
       api.photo.list.invalidate(qc);
       onSaved?.(created.id);
     },
-    onError: (e) => toast.error(e.message || "创建失败"),
+    onError: (e) => toast.error(e.message || t("libraryCreateFailed")),
   });
 
   const updateMutation = api.photo.update.useMutation({
     onSuccess: (_data, variables) => {
-      toast.success("已保存");
+      toast.success(t("librarySaved"));
       api.photo.list.invalidate(qc);
       onSaved?.(variables.id);
     },
-    onError: (e) => toast.error(e.message || "保存失败"),
+    onError: (e) => toast.error(e.message || t("librarySaveFailed")),
   });
 
   const deleteMutation = api.photo.delete.useMutation({
     onSuccess: () => {
-      toast.success("图库已删除");
+      toast.success(t("libraryDeleted"));
       api.photo.list.invalidate(qc);
       setDeleteOpen(false);
       onDeleted?.();
     },
-    onError: (e) => toast.error(e.message || "删除失败"),
+    onError: (e) => toast.error(e.message || t("libraryDeleteFailed")),
   });
 
   const handleSave = useCallback(async () => {
@@ -186,7 +190,7 @@ export default function PhotoLibraryEditor({
         >
           <div className="rounded-lg border border-border-base p-5">
             <h4 className="mb-4 text-sm font-semibold text-fg-primary">
-              基本信息
+              {t("editorBasicInfo")}
             </h4>
 
             <div className="mb-5">
@@ -196,13 +200,13 @@ export default function PhotoLibraryEditor({
             {!library && (
               <Form.Item
                 name="type"
-                label="库类型"
-                rules={[{ required: true, message: "请选择类型" }]}
+                label={t("editorLibraryType")}
+                rules={[{ required: true, message: t("editorSelectType") }]}
               >
                 <Select
-                  options={PHOTO_TYPES.map((t) => ({
-                    label: t.label,
-                    value: t.value,
+                  options={PHOTO_TYPES.map((tp) => ({
+                    label: tp.label,
+                    value: tp.value,
                   }))}
                 />
               </Form.Item>
@@ -210,20 +214,20 @@ export default function PhotoLibraryEditor({
 
             <Form.Item
               name="name"
-              label="名称"
-              rules={[{ required: true, message: "请输入图库名称" }]}
+              label={t("editorName")}
+              rules={[{ required: true, message: t("editorNameRequired") }]}
             >
-              <Input placeholder="如：我的照片" size="large" />
+              <Input placeholder={t("editorNamePlaceholder")} size="large" />
             </Form.Item>
 
-            <Form.Item name="description" label="描述" className="!mb-0">
-              <Input.TextArea placeholder="可选描述" rows={3} />
+            <Form.Item name="description" label={t("editorDescription")} className="!mb-0">
+              <Input.TextArea placeholder={t("editorDescriptionPlaceholder")} rows={3} />
             </Form.Item>
           </div>
 
           <div className="rounded-lg border border-border-base p-5">
             <h4 className="mb-4 text-sm font-semibold text-fg-primary">
-              路径配置
+              {t("editorPathConfig")}
             </h4>
             <StorageBindingsField
               sources={vfsSources}
@@ -235,36 +239,36 @@ export default function PhotoLibraryEditor({
 
           <div className="rounded-lg border border-border-base p-5">
             <SettingGroup
-              title="AI 自动处理"
-              desc="控制同步后自动执行的 AI 处理任务，关闭后可在下方“数据管理”中手动触发"
+              title={t("editorAiServices")}
+              desc={t("editorAiServicesDesc")}
             >
               <SettingRow
-                label="自动 OCR 文字识别"
-                desc="同步后自动识别照片中的文字，可用于搜索"
+                label={t("editorAutoOcr")}
+                desc={t("editorAutoOcrDesc")}
               >
                 <Form.Item name="autoOcr" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
               </SettingRow>
               <SettingRow
-                label="自动 CLIP 图像识别"
-                desc="同步后自动生成图像向量，支持以文搜图"
+                label={t("editorAutoClip")}
+                desc={t("editorAutoClipDesc")}
               >
                 <Form.Item name="autoClip" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
               </SettingRow>
               <SettingRow
-                label="自动人脸识别"
-                desc="同步后自动检测和识别照片中的人脸"
+                label={t("editorAutoFace")}
+                desc={t("editorAutoFaceDesc")}
               >
                 <Form.Item name="autoFace" valuePropName="checked" noStyle>
                   <Switch />
                 </Form.Item>
               </SettingRow>
               <SettingRow
-                label="自动地理位置解析"
-                desc="同步后自动将 EXIF GPS 坐标转为可读地名"
+                label={t("editorAutoGeo")}
+                desc={t("editorAutoGeoDesc")}
               >
                 <Form.Item name="autoGeo" valuePropName="checked" noStyle>
                   <Switch />
@@ -276,9 +280,9 @@ export default function PhotoLibraryEditor({
           {library && (
             <div className="rounded-lg border border-border-base p-5">
               <h4 className="mb-4 text-sm font-semibold text-fg-primary">
-                数据管理
+                {t("editorDataManagement")}
               </h4>
-              <PhotoReprocessTools appId={library.id} />
+              <PhotoReprocessTools appId={library.id} locale={locale} />
             </div>
           )}
         </ScrollArea>
@@ -288,16 +292,16 @@ export default function PhotoLibraryEditor({
             {library && (
               <Button variant="danger" onClick={() => setDeleteOpen(true)}>
                 <Trash2 size={14} className="mr-1" />
-                删除
+                {t("deleteButton")}
               </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="default" onClick={onCancel}>
-              取消
+              {t("commonCancel")}
             </Button>
             <Button loading={isPending} onClick={() => void handleSave()}>
-              {library ? "保存" : "创建"}
+              {library ? t("commonSave") : t("commonCreate")}
             </Button>
           </div>
         </div>
@@ -306,6 +310,7 @@ export default function PhotoLibraryEditor({
       {library && (
         <DeleteConfirmModal
           library={library}
+          locale={locale}
           open={deleteOpen}
           deleteInput={deleteInput}
           setDeleteInput={setDeleteInput}
@@ -323,6 +328,7 @@ export default function PhotoLibraryEditor({
 
 function DeleteConfirmModal({
   library,
+  locale,
   open,
   deleteInput,
   setDeleteInput,
@@ -331,6 +337,7 @@ function DeleteConfirmModal({
   loading,
 }: {
   library: PhotoLibraryOutput;
+  locale?: string;
   open: boolean;
   deleteInput: string;
   setDeleteInput: (v: string) => void;
@@ -338,14 +345,15 @@ function DeleteConfirmModal({
   onConfirm: () => void;
   loading: boolean;
 }) {
+  const { t } = getPhotoI18n(locale);
   return (
-    <Modal title="⚠️ 删除图库" open={open} onCancel={onCancel} footer={null}>
+    <Modal title={t("deleteLibraryTitle")} open={open} onCancel={onCancel} footer={null}>
       <div className="space-y-4 pt-1">
         <p className="text-sm text-fg-secondary">
-          此操作将永久删除{" "}
-          <span className="font-semibold text-fg-primary">{library.name}</span>{" "}
-          及其所有数据，
-          <span className="font-semibold text-red-500">不可恢复</span>。
+          {t("deleteLibraryMessage", {
+            name: library.name,
+            irreversible: t("irreversible"),
+          })}
         </p>
         <Input
           value={deleteInput}
@@ -357,7 +365,7 @@ function DeleteConfirmModal({
         />
         <div className="flex justify-end gap-2">
           <Button variant="default" onClick={onCancel}>
-            取消
+            {t("commonCancel")}
           </Button>
           <Button
             variant="danger"
@@ -365,7 +373,7 @@ function DeleteConfirmModal({
             loading={loading}
             onClick={onConfirm}
           >
-            确认删除
+            {t("confirmDelete")}
           </Button>
         </div>
       </div>

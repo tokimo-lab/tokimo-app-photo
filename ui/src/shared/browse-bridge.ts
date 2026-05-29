@@ -6,6 +6,7 @@ export interface BrowseBridge {
   initialPath: string;
   sourceId?: string;
   protocolPrefix?: string;
+  locale?: string;
   resolve: (path: string | null) => void;
 }
 
