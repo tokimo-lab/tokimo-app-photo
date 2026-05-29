@@ -16,6 +16,8 @@ import type {
   PhotoTagsResponse,
 } from "../lib/types";
 
+export type { PhotoLibraryOutput };
+
 export function rustUrl(path: string): string {
   return path;
 }
