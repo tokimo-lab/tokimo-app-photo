@@ -199,6 +199,31 @@ pub async fn get_photo_ocr_results(
     ok(results)
 }
 
+// ── OCR CRUD inputs ──────────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOcrResultInput {
+    pub text: Option<String>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub w: Option<f64>,
+    pub h: Option<f64>,
+    pub angle: Option<f64>,
+    pub corners: Option<Vec<[f64; 2]>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateOcrResultInput {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub corners: Option<Vec<[f64; 2]>>,
+}
+
 /// POST /api/apps/photo/{photoId}/ocr
 pub async fn create_ocr_result(
     State(_ctx): State<Arc<AppCtx>>,

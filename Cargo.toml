@@ -14,7 +14,10 @@ tokimo-bus-cli      = { git = "https://github.com/tokimo-lab/tokimo-bus.git", re
 tokimo-vfs          = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "17e3c7a9" }
 rust-client-api     = { path = "../../packages/rust-client-api" }
 tokimo-perception   = { path = "../../packages/tokimo-perception" }
+tokimo-package-ffmpeg = { path = "../../packages/tokimo-package-ffmpeg" }
+tokimo-package-utils  = { path = "../../packages/tokimo-package-utils" }
 dashmap             = "6"
+futures-util        = "0.3"
 
 clap              = { version = "4", features = ["derive", "env"] }
 tokio             = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
