@@ -990,10 +990,10 @@ const vfsApi = {
     ) =>
       useQuery<VfsDto[], Error, VfsDto[], QueryKey>({
         queryKey: ["vfs", "list"],
-        queryFn: () => vfsFetch<VfsDto[]>("/"),
+        queryFn: () => vfsFetch<VfsDto[]>(""),
         ...opts,
       }),
-    fetch: () => vfsFetch<VfsDto[]>("/"),
+    fetch: () => vfsFetch<VfsDto[]>(""),
     invalidate: (qc: ReturnType<typeof useQueryClient>) =>
       qc.invalidateQueries({ queryKey: ["vfs", "list"] }),
   },
