@@ -105,7 +105,7 @@ export default function PhotoApp() {
     const isZh = ctx.locale.startsWith("zh");
     return (
       <AppSetupGuide
-        imageSrc="icon.png"
+        imageSrc="/api/apps/photo/assets/icon.png"
         accentColor="violet"
         title={isZh ? "开始使用 TokimoPhoto" : "Get Started with TokimoPhoto"}
         description={
