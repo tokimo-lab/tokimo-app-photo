@@ -59,6 +59,8 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncClearData, setSyncClearData] = useState(false);
+  const [syncTargetId, setSyncTargetId] = useState<string | null>(null);
+  const [syncTargetName, setSyncTargetName] = useState<string>("");
 
   const clearSelection = useCallback(() => {
     setIsSelecting(false);
@@ -81,6 +83,9 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
     },
     onError: (e) => message.error(e.message || t("syncFailed")),
   });
+
+  const librariesQuery = api.photo.list.useQuery();
+  const libraries = librariesQuery.data ?? [];
 
   const handleRefresh = useCallback(() => {
     api.photo.listPhotos.invalidate(qc);
@@ -120,15 +125,22 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
               icon: <RefreshCw size={14} />,
               onClick: handleRefresh,
             },
-            {
-              key: "sync",
-              label: t("menuSyncLibrary"),
-              icon: <FolderSync size={14} />,
-              onClick: () => {
-                setSyncClearData(false);
-                setSyncModalOpen(true);
-              },
-            },
+            ...(libraries.length > 0
+              ? [
+                  { type: "divider" as const },
+                  ...libraries.map((lib) => ({
+                    key: `sync-${lib.id}`,
+                    label: t("menuSyncNamedLibrary", { name: lib.name }),
+                    icon: <FolderSync size={14} />,
+                    onClick: () => {
+                      setSyncTargetId(lib.id);
+                      setSyncTargetName(lib.name);
+                      setSyncClearData(false);
+                      setSyncModalOpen(true);
+                    },
+                  })),
+                ]
+              : []),
           ],
         },
       ],
@@ -140,7 +152,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
         recentItems: [],
       },
     };
-  }, [id, isSelecting, sizeIndex, t, toggleSelectMode, handleRefresh]);
+  }, [id, isSelecting, sizeIndex, t, toggleSelectMode, handleRefresh, libraries]);
 
   useMenuBar(menuBarConfig);
 
@@ -161,16 +173,16 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
 
       <Modal
         open={syncModalOpen}
-        title={t("syncModalTitle")}
+        title={t("menuSyncNamedLibrary", { name: syncTargetName })}
         okText={t("syncModalOk")}
         cancelText={t("commonCancel")}
         confirmLoading={syncMutation.isPending}
         onCancel={() => setSyncModalOpen(false)}
         onOk={async () => {
-          if (!id) return;
+          if (!syncTargetId) return;
           try {
             await syncMutation.mutateAsync({
-              id,
+              id: syncTargetId,
               clearData: syncClearData,
             });
           } finally {
