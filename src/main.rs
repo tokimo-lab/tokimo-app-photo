@@ -12,6 +12,7 @@ mod db;
 mod error;
 mod handlers;
 mod models;
+mod queue;
 mod services;
 
 use std::sync::{Arc, OnceLock};
@@ -50,12 +51,32 @@ async fn run_server() -> anyhow::Result<()> {
     let db = db::init_pool().await?;
     info!("photo: db connected");
 
+    let ai_settings: crate::config::PhotoAiWorkerSettings =
+        crate::db::repos::app_settings_repo::AppSettingsRepo::get(&db)
+            .await
+            .unwrap_or_default();
+    let data_local_path = std::env::var("TOKIMO_DATA_LOCAL_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("./.data/local"));
+    let perception_settings = tokimo_perception::worker::client::AiWorkerSettings {
+        mode: ai_settings.mode,
+        remote_url: ai_settings.remote_url,
+        keepalive_always: ai_settings.keepalive_always,
+        idle_timeout_secs: ai_settings.idle_timeout_secs,
+        worker_binary: ai_settings.worker_binary,
+        socket_path: ai_settings.socket_path,
+        models_dir: None,
+    };
+    let ai =
+        tokimo_perception::worker::client::AiWorkerClient::from_settings(&perception_settings, &data_local_path);
+
     let client_slot: Arc<OnceLock<Arc<BusClient>>> = Arc::new(OnceLock::new());
     let sources = Arc::new(SourceRegistry::new(Arc::clone(&client_slot)));
     let context = Arc::new(ctx::AppCtx {
         db: db.clone(),
         client: Arc::clone(&client_slot),
         sources,
+        ai,
     });
 
     let app_socket = app_server::spawn("photo", Arc::clone(&context))

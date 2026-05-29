@@ -2,6 +2,7 @@ use std::sync::{Arc, OnceLock};
 
 use sea_orm::DatabaseConnection;
 use tokimo_bus_client::BusClient;
+use tokimo_perception::worker::client::AiWorkerClient;
 
 use crate::services::source::SourceRegistry;
 
@@ -11,6 +12,8 @@ pub struct AppCtx {
     /// Filled in after the bus client is built; read via `client()`.
     pub client: Arc<OnceLock<Arc<BusClient>>>,
     pub sources: Arc<SourceRegistry>,
+    /// Perception worker client (OCR / CLIP / face inference).
+    pub ai: Arc<AiWorkerClient>,
 }
 
 impl AppCtx {

@@ -50,7 +50,7 @@ impl CreateJobRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryJobsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

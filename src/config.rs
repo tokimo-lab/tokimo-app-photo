@@ -93,6 +93,52 @@ impl AppSettingsSection for PhotoAiSettings {
     }
 }
 
+// ── PhotoAiWorkerSettings ────────────────────────────────────────────────────
+
+/// Perception worker connection settings for the photo sidecar.
+///
+/// Mirrors the subset of [`tokimo_perception::worker::client::AiWorkerSettings`]
+/// that is configurable from the photo app's settings table. Stored under the
+/// `photo.ai_worker` key. `idle_timeout_secs` is `Option<u32>` to match the
+/// perception client's settings type (the worker uses `u32` seconds).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoAiWorkerSettings {
+    #[serde(default)]
+    pub mode: tokimo_perception::worker::client::AiWorkerMode,
+    #[serde(default)]
+    pub remote_url: Option<String>,
+    #[serde(default)]
+    pub keepalive_always: bool,
+    #[serde(default)]
+    pub idle_timeout_secs: Option<u32>,
+    #[serde(default)]
+    pub worker_binary: Option<String>,
+    #[serde(default)]
+    pub socket_path: Option<String>,
+}
+
+impl Default for PhotoAiWorkerSettings {
+    fn default() -> Self {
+        Self {
+            mode: tokimo_perception::worker::client::AiWorkerMode::Auto,
+            remote_url: None,
+            keepalive_always: false,
+            idle_timeout_secs: None,
+            worker_binary: None,
+            socket_path: None,
+        }
+    }
+}
+
+impl AppSettingsSection for PhotoAiWorkerSettings {
+    const KEY: &'static str = "photo.ai_worker";
+
+    fn default_value() -> Self {
+        Self::default()
+    }
+}
+
 impl PhotoAiSettings {
     /// Resolve effective AI settings for a specific app.
     /// Per-app flags override globals; missing keys fall back to global.

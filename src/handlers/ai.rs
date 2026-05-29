@@ -73,17 +73,28 @@ pub async fn update_photo_ai_settings(
 /// POST /settings/ai/test
 ///
 /// Reports whether the perception worker has loaded the required models.
-/// Until the worker is linked into this sidecar (see status report), this
-/// always reports "Models not downloaded" — matching the presplit response
-/// shape so the UI handles it gracefully.
+/// Faithful port of the presplit `test_photo_ai_connection`: reads live model
+/// readiness from the linked [`AiWorkerClient`].
 pub async fn test_photo_ai_connection(
-    State(_ctx): State<Arc<AppCtx>>,
+    State(ctx): State<Arc<AppCtx>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let models_ready = ctx.ai.models_ready();
+    let ocr_ready = models_ready && ctx.ai.is_ocr_enabled();
+    let clip_ready = models_ready && ctx.ai.is_clip_enabled();
+    let face_ready = models_ready && ctx.ai.is_face_enabled();
+
+    let detail = format!(
+        "OCR: {}, CLIP: {}, Face: {}",
+        if ocr_ready { "✓" } else { "✗" },
+        if clip_ready { "✓" } else { "✗" },
+        if face_ready { "✓" } else { "✗" },
+    );
+
     let results = serde_json::json!([{
         "name": "aiService",
-        "success": false,
-        "detail": "Models not downloaded",
-        "modelsReady": false,
+        "success": models_ready,
+        "detail": if models_ready { detail } else { "Models not downloaded".to_string() },
+        "modelsReady": models_ready,
     }]);
     ok(serde_json::json!({ "results": results }))
 }
