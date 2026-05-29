@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Dispose } from "@tokimo/sdk";
-import { defineApp } from "@tokimo/sdk";
+import { defineApp, RuntimeProvider } from "@tokimo/sdk";
 import { ConfigProvider, ToastProvider } from "@tokimo/ui";
 import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -31,17 +31,19 @@ export default defineApp({
 
     root.render(
       <StrictMode>
-        <AppCtxProvider value={ctx}>
-          <QueryClientProvider client={queryClient}>
-            <ConfigProvider locale={uiLocale}>
-              <ToastProvider>
-                <PhotoMenuBar>
-                  <PhotoApp />
-                </PhotoMenuBar>
-              </ToastProvider>
-            </ConfigProvider>
-          </QueryClientProvider>
-        </AppCtxProvider>
+        <RuntimeProvider value={ctx}>
+          <AppCtxProvider value={ctx}>
+            <QueryClientProvider client={queryClient}>
+              <ConfigProvider locale={uiLocale}>
+                <ToastProvider>
+                  <PhotoMenuBar>
+                    <PhotoApp />
+                  </PhotoMenuBar>
+                </ToastProvider>
+              </ConfigProvider>
+            </QueryClientProvider>
+          </AppCtxProvider>
+        </RuntimeProvider>
       </StrictMode>,
     );
     return () => root.unmount();
