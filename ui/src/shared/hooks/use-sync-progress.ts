@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
+import { useJobEvents } from "@tokimo/sdk";
 import type { PhotoLibraryOutput, WsJobEvent } from "../../lib/types";
-import { useJobEvents } from "../../shell/hooks";
 
 interface SyncProgressOptions {
   libraries?: PhotoLibraryOutput[];
