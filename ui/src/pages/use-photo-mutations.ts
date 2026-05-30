@@ -63,12 +63,15 @@ export function usePhotoMutations({
   // ── Batch operations ──────────────────────────────────────────────────
   const batchFavMutation = api.photo.batchFavorite.useMutation({
     onSuccess: (data) => {
-      messageRef.current.success(tRef.current("mutationUpdated", { count: data.updated }));
+      messageRef.current.success(
+        tRef.current("mutationUpdated", { count: data.updated }),
+      );
       clearSelectionRef.current();
       void refetchPhotosRef.current();
       void refetchFavRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationFailed")),
+    onError: (e) =>
+      messageRef.current.error(e.message || tRef.current("mutationFailed")),
   });
 
   const addToAlbumMutation = api.photo.addPhotosToAlbum.useMutation({
@@ -80,7 +83,8 @@ export function usePhotoMutations({
       setShowAlbumPicker(false);
       void refetchAlbums();
     },
-    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationFailed")),
+    onError: (e) =>
+      messageRef.current.error(e.message || tRef.current("mutationFailed")),
   });
 
   const handleBatchFavorite = useCallback(() => {
@@ -122,7 +126,9 @@ export function usePhotoMutations({
       { id: id, photoIds: [...selectedIds], hidden: true },
       {
         onSuccess: () => {
-          messageRef.current.success(tRef.current("mutationHidden", { count: selectedIds.size }));
+          messageRef.current.success(
+            tRef.current("mutationHidden", { count: selectedIds.size }),
+          );
           clearSelectionRef.current();
           refetchPhotosRef.current();
           refetchFavRef.current();
@@ -138,7 +144,11 @@ export function usePhotoMutations({
 
   const handleTrash = useCallback(() => {
     if (!id || selectedIds.size === 0) return;
-    if (!window.confirm(tRef.current("mutationTrashConfirm", { count: selectedIds.size })))
+    if (
+      !window.confirm(
+        tRef.current("mutationTrashConfirm", { count: selectedIds.size }),
+      )
+    )
       return;
     trashMutateRef.current(
       { id: id, photoIds: [...selectedIds] },
@@ -160,25 +170,35 @@ export function usePhotoMutations({
     onMutate: () => setIsRestoring(true),
     onSettled: () => setIsRestoring(false),
     onSuccess: (data) => {
-      messageRef.current.success(tRef.current("mutationRestored", { count: data.restored }));
+      messageRef.current.success(
+        tRef.current("mutationRestored", { count: data.restored }),
+      );
       clearSelectionRef.current();
       resetTrash();
       void refetchTrashedRef.current();
       void refetchPhotosRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationRestoreFailed")),
+    onError: (e) =>
+      messageRef.current.error(
+        e.message || tRef.current("mutationRestoreFailed"),
+      ),
   });
 
   const permanentDeleteMutation = api.photo.permanentDelete.useMutation({
     onMutate: () => setIsDeleting(true),
     onSettled: () => setIsDeleting(false),
     onSuccess: (data) => {
-      messageRef.current.success(tRef.current("mutationDeleted", { count: data.deleted }));
+      messageRef.current.success(
+        tRef.current("mutationDeleted", { count: data.deleted }),
+      );
       clearSelectionRef.current();
       resetTrash();
       void refetchTrashedRef.current();
     },
-    onError: (e) => messageRef.current.error(e.message || tRef.current("mutationDeleteFailed")),
+    onError: (e) =>
+      messageRef.current.error(
+        e.message || tRef.current("mutationDeleteFailed"),
+      ),
   });
 
   const handleRestore = useCallback(() => {

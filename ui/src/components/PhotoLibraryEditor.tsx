@@ -220,8 +220,15 @@ export default function PhotoLibraryEditor({
               <Input placeholder={t("editorNamePlaceholder")} size="large" />
             </Form.Item>
 
-            <Form.Item name="description" label={t("editorDescription")} className="!mb-0">
-              <Input.TextArea placeholder={t("editorDescriptionPlaceholder")} rows={3} />
+            <Form.Item
+              name="description"
+              label={t("editorDescription")}
+              className="!mb-0"
+            >
+              <Input.TextArea
+                placeholder={t("editorDescriptionPlaceholder")}
+                rows={3}
+              />
             </Form.Item>
           </div>
 
@@ -347,7 +354,12 @@ function DeleteConfirmModal({
 }) {
   const { t } = getPhotoI18n(locale);
   return (
-    <Modal title={t("deleteLibraryTitle")} open={open} onCancel={onCancel} footer={null}>
+    <Modal
+      title={t("deleteLibraryTitle")}
+      open={open}
+      onCancel={onCancel}
+      footer={null}
+    >
       <div className="space-y-4 pt-1">
         <p className="text-sm text-fg-secondary">
           {t("deleteLibraryMessage", {

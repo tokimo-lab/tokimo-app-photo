@@ -150,7 +150,15 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
         recentItems: [],
       },
     };
-  }, [id, isSelecting, sizeIndex, t, toggleSelectMode, handleRefresh, libraries]);
+  }, [
+    id,
+    isSelecting,
+    sizeIndex,
+    t,
+    toggleSelectMode,
+    handleRefresh,
+    libraries,
+  ]);
 
   useMenuBar(menuBarConfig);
 

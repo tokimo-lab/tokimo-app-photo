@@ -61,7 +61,8 @@ export const zhCN = {
   editorDescriptionPlaceholder: "可选描述",
   editorPathConfig: "路径配置",
   editorAiServices: "AI 自动处理",
-  editorAiServicesDesc: '控制同步后自动执行的 AI 处理任务，关闭后可在下方"数据管理"中手动触发',
+  editorAiServicesDesc:
+    '控制同步后自动执行的 AI 处理任务，关闭后可在下方"数据管理"中手动触发',
   editorAutoOcr: "自动 OCR 文字识别",
   editorAutoOcrDesc: "同步后自动识别照片中的文字，可用于搜索",
   editorAutoClip: "自动 CLIP 图像识别",
@@ -82,7 +83,8 @@ export const zhCN = {
 
   // Delete confirmation
   deleteLibraryTitle: "⚠️ 删除图库",
-  deleteLibraryMessage: "此操作将永久删除 {name} 及其所有数据，{irreversible}。",
+  deleteLibraryMessage:
+    "此操作将永久删除 {name} 及其所有数据，{irreversible}。",
   irreversible: "不可恢复",
   confirmDelete: "确认删除",
 
@@ -161,9 +163,12 @@ export const zhCN = {
   ocrDebugMergedEmpty: "无合并结果",
 
   // OCR models
-  ocrModelPpv5Server: "PP-OCRv5 Server 检测 + CTC 识别，Contours 旋转文字检测，ONNX Runtime 推理",
-  ocrModelPpv5Mobile: "PP-OCRv5 Mobile 轻量模型，轴对齐检测，适合大批量快速扫描，ONNX Runtime 推理",
-  ocrModelVlm: "视觉语言模型 (VLM)，端到端 OCR 无需检测步骤，支持复杂排版，需 Python Sidecar + GPU",
+  ocrModelPpv5Server:
+    "PP-OCRv5 Server 检测 + CTC 识别，Contours 旋转文字检测，ONNX Runtime 推理",
+  ocrModelPpv5Mobile:
+    "PP-OCRv5 Mobile 轻量模型，轴对齐检测，适合大批量快速扫描，ONNX Runtime 推理",
+  ocrModelVlm:
+    "视觉语言模型 (VLM)，端到端 OCR 无需检测步骤，支持复杂排版，需 Python Sidecar + GPU",
 
   // Settings window
   settingsTitle: "图库设置",
@@ -204,34 +209,41 @@ export const zhCN = {
   syncModalTitle: "同步资料库",
   syncModalOk: "开始同步",
   syncModalClearData: "清空数据重新同步",
-  syncModalHint: "勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。",
+  syncModalHint:
+    "勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。",
 
   // PhotoReprocessTools
-  reprocessSectionHint: "清除指定类型的处理结果并重新执行,适用于更换模型或修复数据异常",
+  reprocessSectionHint:
+    "清除指定类型的处理结果并重新执行,适用于更换模型或修复数据异常",
   reprocessOcrLabel: "重新识别文字 (OCR)",
   reprocessOcrDesc: "清除所有文字识别结果并重新识别",
   reprocessOcrConfirmTitle: "确认重新识别文字？",
-  reprocessOcrConfirmContent: "将删除该图库所有照片的文字识别结果,然后重新执行识别。此操作不可撤销。",
+  reprocessOcrConfirmContent:
+    "将删除该图库所有照片的文字识别结果,然后重新执行识别。此操作不可撤销。",
   reprocessOcrSuccess: "文字重新识别已开始",
   reprocessFaceLabel: "重新识别人脸",
   reprocessFaceDesc: "清除所有人脸识别结果并重新识别",
   reprocessFaceConfirmTitle: "确认重新识别人脸？",
-  reprocessFaceConfirmContent: "将删除该图库所有照片的人脸识别结果并重新执行识别。已命名的人物会保留,但需要重新关联。此操作不可撤销。",
+  reprocessFaceConfirmContent:
+    "将删除该图库所有照片的人脸识别结果并重新执行识别。已命名的人物会保留,但需要重新关联。此操作不可撤销。",
   reprocessFaceSuccess: "人脸重新识别已开始",
   reprocessClipLabel: "重新识别图像 (CLIP)",
   reprocessClipDesc: "清除所有图像向量并重新生成",
   reprocessClipConfirmTitle: "确认重新识别图像？",
-  reprocessClipConfirmContent: "将删除该图库所有照片的图像向量并重新生成。重新生成期间以图搜图功能暂不可用。此操作不可撤销。",
+  reprocessClipConfirmContent:
+    "将删除该图库所有照片的图像向量并重新生成。重新生成期间以图搜图功能暂不可用。此操作不可撤销。",
   reprocessClipSuccess: "图像重新识别已开始",
   reprocessGeoLabel: "重新解析地理位置",
   reprocessGeoDesc: "重新解析所有照片的 GPS 坐标为地名",
   reprocessGeoConfirmTitle: "确认重新解析地理位置？",
-  reprocessGeoConfirmContent: "将对该图库所有照片重新执行地理位置解析,已有结果会被覆盖。此操作不可撤销。",
+  reprocessGeoConfirmContent:
+    "将对该图库所有照片重新执行地理位置解析,已有结果会被覆盖。此操作不可撤销。",
   reprocessGeoSuccess: "地理位置重新解析已开始",
   reprocessThumbnailLabel: "重新生成缩略图",
   reprocessThumbnailDesc: "清除所有缩略图缓存,访问时自动重新生成",
   reprocessThumbnailConfirmTitle: "确认重新生成缩略图？",
-  reprocessThumbnailConfirmContent: "将删除该图库所有照片的缩略图缓存。缩略图会在下次访问时自动重新生成,期间可能加载较慢。",
+  reprocessThumbnailConfirmContent:
+    "将删除该图库所有照片的缩略图缓存。缩略图会在下次访问时自动重新生成,期间可能加载较慢。",
   reprocessThumbnailSuccess: "缩略图已清除,访问时将自动重新生成",
   reprocessConfirmOk: "确认执行",
   reprocessExecute: "执行",
@@ -302,15 +314,20 @@ export const enUS = {
   editorDescriptionPlaceholder: "Optional description",
   editorPathConfig: "Path Configuration",
   editorAiServices: "AI Auto Processing",
-  editorAiServicesDesc: "Control AI tasks that run automatically after sync; disable to trigger manually in 'Data Management' below",
+  editorAiServicesDesc:
+    "Control AI tasks that run automatically after sync; disable to trigger manually in 'Data Management' below",
   editorAutoOcr: "Auto OCR Text Recognition",
-  editorAutoOcrDesc: "Automatically recognize text in photos after sync, for search",
+  editorAutoOcrDesc:
+    "Automatically recognize text in photos after sync, for search",
   editorAutoClip: "Auto CLIP Image Recognition",
-  editorAutoClipDesc: "Automatically generate image vectors after sync, for image search",
+  editorAutoClipDesc:
+    "Automatically generate image vectors after sync, for image search",
   editorAutoFace: "Auto Face Recognition",
-  editorAutoFaceDesc: "Automatically detect and recognize faces in photos after sync",
+  editorAutoFaceDesc:
+    "Automatically detect and recognize faces in photos after sync",
   editorAutoGeo: "Auto Geo Location Parsing",
-  editorAutoGeoDesc: "Automatically convert EXIF GPS coordinates to readable place names after sync",
+  editorAutoGeoDesc:
+    "Automatically convert EXIF GPS coordinates to readable place names after sync",
   editorDataManagement: "Data Management",
 
   // Library CRUD messages
@@ -323,7 +340,8 @@ export const enUS = {
 
   // Delete confirmation
   deleteLibraryTitle: "⚠️ Delete Library",
-  deleteLibraryMessage: "This will permanently delete {name} and all of its data. {irreversible}.",
+  deleteLibraryMessage:
+    "This will permanently delete {name} and all of its data. {irreversible}.",
   irreversible: "This cannot be undone",
   confirmDelete: "Confirm Delete",
 
@@ -346,7 +364,7 @@ export const enUS = {
   albumDescPlaceholder: "Describe this album",
   albumPhotosCount: "{count} photos",
   albumEmpty: "No photos in this album",
-  albumEmptyList: "No albums yet, click \"New Album\" to create one",
+  albumEmptyList: 'No albums yet, click "New Album" to create one',
 
   // Album picker dialog
   albumPickerTitle: "Add to Album",
@@ -365,7 +383,8 @@ export const enUS = {
   mutationRestoreFailed: "Restore failed",
   mutationDeleted: "Permanently deleted {count} photos",
   mutationDeleteFailed: "Delete failed",
-  mutationDeleteConfirm: "Permanently delete selected photos? This cannot be undone!",
+  mutationDeleteConfirm:
+    "Permanently delete selected photos? This cannot be undone!",
 
   // Date formatting
   dateToday: "Today",
@@ -402,9 +421,12 @@ export const enUS = {
   ocrDebugMergedEmpty: "No merged results",
 
   // OCR models
-  ocrModelPpv5Server: "PP-OCRv5 Server detection + CTC recognition, Contours rotated text detection, ONNX Runtime inference",
-  ocrModelPpv5Mobile: "PP-OCRv5 Mobile lightweight model, axis-aligned detection, suitable for batch scanning, ONNX Runtime inference",
-  ocrModelVlm: "Vision Language Model (VLM), end-to-end OCR without detection, supports complex layouts, requires Python Sidecar + GPU",
+  ocrModelPpv5Server:
+    "PP-OCRv5 Server detection + CTC recognition, Contours rotated text detection, ONNX Runtime inference",
+  ocrModelPpv5Mobile:
+    "PP-OCRv5 Mobile lightweight model, axis-aligned detection, suitable for batch scanning, ONNX Runtime inference",
+  ocrModelVlm:
+    "Vision Language Model (VLM), end-to-end OCR without detection, supports complex layouts, requires Python Sidecar + GPU",
 
   // Settings window
   settingsTitle: "Library Settings",
@@ -445,35 +467,44 @@ export const enUS = {
   syncModalTitle: "Sync Library",
   syncModalOk: "Start Sync",
   syncModalClearData: "Clear data and resync",
-  syncModalHint: "This will delete all photo data and perform a full resync, useful for fixing data issues or rebuilding after schema changes.",
+  syncModalHint:
+    "This will delete all photo data and perform a full resync, useful for fixing data issues or rebuilding after schema changes.",
 
   // PhotoReprocessTools
-  reprocessSectionHint: "Clear specific processing results and re-execute, useful for model changes or fixing data issues",
+  reprocessSectionHint:
+    "Clear specific processing results and re-execute, useful for model changes or fixing data issues",
   reprocessOcrLabel: "Re-recognize Text (OCR)",
   reprocessOcrDesc: "Clear all text recognition results and re-recognize",
   reprocessOcrConfirmTitle: "Confirm re-recognize text?",
-  reprocessOcrConfirmContent: "This will delete all text recognition results for this library and re-execute recognition. This cannot be undone.",
+  reprocessOcrConfirmContent:
+    "This will delete all text recognition results for this library and re-execute recognition. This cannot be undone.",
   reprocessOcrSuccess: "Text re-recognition started",
   reprocessFaceLabel: "Re-recognize Faces",
   reprocessFaceDesc: "Clear all face recognition results and re-recognize",
   reprocessFaceConfirmTitle: "Confirm re-recognize faces?",
-  reprocessFaceConfirmContent: "This will delete all face recognition results for this library and re-execute recognition. Named people will be preserved but need re-association. This cannot be undone.",
+  reprocessFaceConfirmContent:
+    "This will delete all face recognition results for this library and re-execute recognition. Named people will be preserved but need re-association. This cannot be undone.",
   reprocessFaceSuccess: "Face re-recognition started",
   reprocessClipLabel: "Re-recognize Images (CLIP)",
   reprocessClipDesc: "Clear all image vectors and regenerate",
   reprocessClipConfirmTitle: "Confirm re-recognize images?",
-  reprocessClipConfirmContent: "This will delete all image vectors for this library and regenerate them. Image search will be unavailable during regeneration. This cannot be undone.",
+  reprocessClipConfirmContent:
+    "This will delete all image vectors for this library and regenerate them. Image search will be unavailable during regeneration. This cannot be undone.",
   reprocessClipSuccess: "Image re-recognition started",
   reprocessGeoLabel: "Re-parse Geo Locations",
   reprocessGeoDesc: "Re-parse all GPS coordinates to place names",
   reprocessGeoConfirmTitle: "Confirm re-parse geo locations?",
-  reprocessGeoConfirmContent: "This will re-execute geo location parsing for all photos in this library, overwriting existing results. This cannot be undone.",
+  reprocessGeoConfirmContent:
+    "This will re-execute geo location parsing for all photos in this library, overwriting existing results. This cannot be undone.",
   reprocessGeoSuccess: "Geo location re-parsing started",
   reprocessThumbnailLabel: "Regenerate Thumbnails",
-  reprocessThumbnailDesc: "Clear all thumbnail cache, auto-regenerate on access",
+  reprocessThumbnailDesc:
+    "Clear all thumbnail cache, auto-regenerate on access",
   reprocessThumbnailConfirmTitle: "Confirm regenerate thumbnails?",
-  reprocessThumbnailConfirmContent: "This will delete all thumbnail cache for this library. Thumbnails will be auto-regenerated on next access, which may slow loading.",
-  reprocessThumbnailSuccess: "Thumbnails cleared, will auto-regenerate on access",
+  reprocessThumbnailConfirmContent:
+    "This will delete all thumbnail cache for this library. Thumbnails will be auto-regenerated on next access, which may slow loading.",
+  reprocessThumbnailSuccess:
+    "Thumbnails cleared, will auto-regenerate on access",
   reprocessConfirmOk: "Confirm Execute",
   reprocessExecute: "Execute",
   reprocessFailed: "Operation failed, please retry",

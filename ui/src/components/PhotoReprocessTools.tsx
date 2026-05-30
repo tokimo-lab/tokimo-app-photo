@@ -94,7 +94,9 @@ export default function PhotoReprocessTools({
   const handleReprocess = (tool: ToolDef) => {
     Modal.confirm({
       title: t(tool.confirmTitleKey),
-      content: <p className="text-sm text-fg-muted">{t(tool.confirmContentKey)}</p>,
+      content: (
+        <p className="text-sm text-fg-muted">{t(tool.confirmContentKey)}</p>
+      ),
       okText: t("reprocessConfirmOk"),
       variant: "warning",
       onOk: async () => {
@@ -122,7 +124,8 @@ export default function PhotoReprocessTools({
           }
           toast.success(t(tool.successKey));
         } catch (err) {
-          const message = err instanceof Error ? err.message : t("reprocessFailed");
+          const message =
+            err instanceof Error ? err.message : t("reprocessFailed");
           toast.error(message || t("reprocessFailed"));
         } finally {
           setRunningKey(null);
@@ -133,9 +136,7 @@ export default function PhotoReprocessTools({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-fg-muted">
-        {t("reprocessSectionHint")}
-      </p>
+      <p className="text-xs text-fg-muted">{t("reprocessSectionHint")}</p>
       {TOOL_DEFS.map((tool) => (
         <div
           key={tool.key}

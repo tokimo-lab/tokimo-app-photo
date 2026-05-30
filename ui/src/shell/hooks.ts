@@ -10,7 +10,7 @@ import {
   useShellToast,
   useShellWindowNav,
 } from "@tokimo/sdk/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useAppCtx } from "../AppContext";
 import type { WsJobEvent } from "../lib/types";
 
