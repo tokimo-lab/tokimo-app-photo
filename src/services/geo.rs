@@ -6,7 +6,7 @@
 //! above keeps not-yet-called public items quiet until then.
 
 use reqwest::Client;
-use rust_client_api::geocoding::{GeoLocation, GeocodingClient};
+use tokimo_package_client_api::geocoding::{GeoLocation, GeocodingClient};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
 use tracing::{error, info, warn};

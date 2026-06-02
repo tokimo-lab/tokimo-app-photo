@@ -12,7 +12,7 @@ tokimo-bus-protocol = { git = "https://github.com/tokimo-lab/tokimo-bus.git", re
 tokimo-bus-auth     = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843", features = ["axum", "cli-db"] }
 tokimo-bus-cli      = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843" }
 tokimo-vfs          = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "17e3c7a9" }
-rust-client-api     = { path = "../../packages/rust-client-api" }
+tokimo-package-client-api = { path = "../../packages/tokimo-package-client-api" }
 tokimo-perception   = { path = "../../packages/tokimo-perception" }
 tokimo-package-ffmpeg = { path = "../../packages/tokimo-package-ffmpeg" }
 tokimo-package-utils  = { path = "../../packages/tokimo-package-utils" }
