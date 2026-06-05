@@ -35,7 +35,10 @@ impl PhotoFaceService {
 
     /// Format a 512-d embedding as a pgvector literal: `[0.1,0.2,…]`
     fn vec_literal(embedding: &[f64]) -> String {
-        let inner: Vec<String> = embedding.iter().map(std::string::ToString::to_string).collect();
+        let inner: Vec<String> = embedding
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         format!("[{}]", inner.join(","))
     }
 
@@ -143,12 +146,18 @@ impl PhotoFaceService {
             .await?
             .not_found("Photo not found")?;
 
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let image_path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
 
-        let image_bytes = crate::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
+        let image_bytes =
+            crate::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
 
         let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
-        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+        let rid = scope
+            .as_ref()
+            .map(crate::services::ai::AiCancelScope::request_id_owned);
         let detections = Self::represent(ai, image_bytes, rid).await?;
         drop(scope);
         let count = detections.len();
@@ -192,14 +201,18 @@ impl PhotoFaceService {
                 ],
             );
             let row = db.query_one_raw(stmt).await?;
-            let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
+            let face_id: i32 = row
+                .as_ref()
+                .and_then(|r| r.try_get::<i32>("", "id").ok())
+                .unwrap_or(0);
 
             // Assign to existing person or create a new one
             // Threshold 0.68: conservative — prefer splitting over merging
-            let person_id = match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
-                Some(pid) => pid,
-                None => Self::create_person(db, photo.app_id).await?,
-            };
+            let person_id =
+                match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
+                    Some(pid) => pid,
+                    None => Self::create_person(db, photo.app_id).await?,
+                };
 
             // Link face → person
             let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
@@ -254,7 +267,8 @@ impl PhotoFaceService {
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(Expr::cust(
-                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)".to_string(),
+                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)"
+                    .to_string(),
             ))
             .select_only()
             .column(photos::Column::Id)

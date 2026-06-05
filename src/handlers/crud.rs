@@ -2,12 +2,18 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, State}};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::ctx::AppCtx;
-use crate::db::{entities::photos, repos::library_repo::{PhotoLibraryRepo, UpdatePhotoLibraryFields}};
+use crate::db::{
+    entities::photos,
+    repos::library_repo::{PhotoLibraryRepo, UpdatePhotoLibraryFields},
+};
 use crate::error::{AppError, OptionExt};
 use crate::models::{PhotoLibraryOutput, PhotoLibrarySourceOutput};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
@@ -64,18 +70,20 @@ pub struct PhotoLibraryReorderItem {
 // ── Helper ──────────────────────────────────────────────────────────────────
 
 pub fn sources_to_json(sources: &[PhotoLibrarySourceInput]) -> serde_json::Value {
-    serde_json::json!(sources
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            serde_json::json!({
-                "sourceId": s.source_id,
-                "rootPath": s.root_path,
-                "sortOrder": s.sort_order.max(i as i32),
-                "isDefaultDownload": s.is_default_download.unwrap_or(false),
+    serde_json::json!(
+        sources
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                serde_json::json!({
+                    "sourceId": s.source_id,
+                    "rootPath": s.root_path,
+                    "sortOrder": s.sort_order.max(i as i32),
+                    "isDefaultDownload": s.is_default_download.unwrap_or(false),
+                })
             })
-        })
-        .collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    )
 }
 
 pub async fn to_photo_library_output(
@@ -88,7 +96,9 @@ pub async fn to_photo_library_output(
     let mut sources: Vec<PhotoLibrarySourceOutput> = Vec::with_capacity(source_tuples.len());
     for (idx, (source_id, root_path, is_default_download)) in source_tuples.iter().enumerate() {
         // Try to resolve VFS source info via the bus client (best-effort).
-        let (source_name, source_type) = if let Ok(client) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.client())) {
+        let (source_name, source_type) = if let Ok(client) =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.client()))
+        {
             match crate::bus_clients::vfs::get_driver_config(
                 &client,
                 crate::bus_clients::vfs::photo_caller(),
@@ -118,14 +128,8 @@ pub async fn to_photo_library_output(
         .count(&ctx.db)
         .await? as i64;
 
-    let created_at = model
-        .created_at
-        .map(|d| d.to_rfc3339())
-        .unwrap_or_default();
-    let updated_at = model
-        .updated_at
-        .map(|d| d.to_rfc3339())
-        .unwrap_or_default();
+    let created_at = model.created_at.map(|d| d.to_rfc3339()).unwrap_or_default();
+    let updated_at = model.updated_at.map(|d| d.to_rfc3339()).unwrap_or_default();
 
     Ok(PhotoLibraryOutput {
         id: model.id.to_string(),
@@ -263,7 +267,10 @@ pub async fn reorder_photo_libraries(
         .orders
         .into_iter()
         .filter_map(|item| {
-            item.id.parse::<Uuid>().ok().map(|uid| (uid, item.sort_order))
+            item.id
+                .parse::<Uuid>()
+                .ok()
+                .map(|uid| (uid, item.sort_order))
         })
         .collect();
     PhotoLibraryRepo::reorder(&ctx.db, orders).await?;

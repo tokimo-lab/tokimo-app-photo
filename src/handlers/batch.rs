@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -31,7 +34,10 @@ pub async fn batch_favorite(
         .get("photoIds")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let favorite: bool = body.get("favorite").and_then(|v| v.as_bool()).unwrap_or(true);
+    let favorite: bool = body
+        .get("favorite")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let ids = parse_ids(&photo_ids);
     let count = PhotoRepo::batch_set_favorite(&ctx.db, &ids, favorite).await?;
     ok(serde_json::json!({ "updated": count }))

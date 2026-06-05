@@ -140,7 +140,9 @@ pub fn notify_processing_progress(
     }
     let label = task_label(task_type);
     let pct = if total > 0 {
-        ((processed as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as i32
+        ((processed as f64 / total as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as i32
     } else {
         0
     };

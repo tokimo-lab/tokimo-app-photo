@@ -3,7 +3,9 @@ use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::db::entities::{photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos};
+use crate::db::entities::{
+    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos,
+};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::{AppError, OptionExt};
 use crate::models::{
@@ -146,26 +148,29 @@ impl PhotoRepo {
     ) -> Result<bool, AppError> {
         let results = photos::Entity::update_many()
             .filter(photos::Column::Id.eq(photo_id))
-            .col_expr(photos::Column::IsFavorite, Expr::col(photos::Column::IsFavorite).not())
+            .col_expr(
+                photos::Column::IsFavorite,
+                Expr::col(photos::Column::IsFavorite).not(),
+            )
             .exec_with_returning(db)
             .await?;
-        let model = results
-            .into_iter()
-            .next()
-            .not_found("Photo not found")?;
+        let model = results.into_iter().next().not_found("Photo not found")?;
         Ok(model.is_favorite)
     }
 
-    pub async fn toggle_hidden(db: &impl ConnectionTrait, photo_id: Uuid) -> Result<bool, AppError> {
+    pub async fn toggle_hidden(
+        db: &impl ConnectionTrait,
+        photo_id: Uuid,
+    ) -> Result<bool, AppError> {
         let results = photos::Entity::update_many()
             .filter(photos::Column::Id.eq(photo_id))
-            .col_expr(photos::Column::IsHidden, Expr::col(photos::Column::IsHidden).not())
+            .col_expr(
+                photos::Column::IsHidden,
+                Expr::col(photos::Column::IsHidden).not(),
+            )
             .exec_with_returning(db)
             .await?;
-        let model = results
-            .into_iter()
-            .next()
-            .not_found("Photo not found")?;
+        let model = results.into_iter().next().not_found("Photo not found")?;
         Ok(model.is_hidden)
     }
 
@@ -326,7 +331,9 @@ impl PhotoRepo {
             )
             .exec(&txn)
             .await?;
-        photo_albums::Entity::delete_by_id(album_id).exec(&txn).await?;
+        photo_albums::Entity::delete_by_id(album_id)
+            .exec(&txn)
+            .await?;
         txn.commit().await?;
         Ok(())
     }
@@ -345,21 +352,21 @@ impl PhotoRepo {
 
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Some(album_id)),
-            )
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Some(album_id)))
             .exec(&txn)
             .await?;
 
-        let count =
-            photos::Entity::find().filter(photos::Column::PhotoAlbumId.eq(album_id)).count(&txn).await? as i32;
+        let count = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .count(&txn)
+            .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
-            .one(&txn)
-            .await?
-            .not_found("Album not found")?
-            .into();
+        let mut album_active: photo_albums::ActiveModel =
+            photo_albums::Entity::find_by_id(album_id)
+                .one(&txn)
+                .await?
+                .not_found("Album not found")?
+                .into();
         album_active.photo_count = Set(count);
         if album_active.cover_photo_id == NotSet && !photo_ids.is_empty() {
             album_active.cover_photo_id = Set(Some(photo_ids[0]));
@@ -387,14 +394,17 @@ impl PhotoRepo {
             .exec(&txn)
             .await?;
 
-        let count =
-            photos::Entity::find().filter(photos::Column::PhotoAlbumId.eq(album_id)).count(&txn).await? as i32;
+        let count = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .count(&txn)
+            .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
-            .one(&txn)
-            .await?
-            .not_found("Album not found")?
-            .into();
+        let mut album_active: photo_albums::ActiveModel =
+            photo_albums::Entity::find_by_id(album_id)
+                .one(&txn)
+                .await?
+                .not_found("Album not found")?
+                .into();
         album_active.photo_count = Set(count);
         album_active.update(&txn).await?;
 
@@ -470,8 +480,7 @@ impl PhotoRepo {
         description: Option<Option<String>>,
         taken_at: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
     ) -> Result<PhotoDetailOutput, AppError> {
-        let mut update = photos::Entity::update_many()
-            .filter(photos::Column::Id.eq(photo_id));
+        let mut update = photos::Entity::update_many().filter(photos::Column::Id.eq(photo_id));
         if let Some(v) = title {
             update = update.col_expr(photos::Column::Title, Expr::value(v));
         }
@@ -482,10 +491,7 @@ impl PhotoRepo {
             update = update.col_expr(photos::Column::TakenAt, Expr::value(v));
         }
         let results = update.exec_with_returning(db).await?;
-        let model = results
-            .into_iter()
-            .next()
-            .not_found("Photo not found")?;
+        let model = results.into_iter().next().not_found("Photo not found")?;
         Ok(PhotoDetailOutput::from(model))
     }
 
@@ -670,7 +676,12 @@ impl PhotoRepo {
             let month: i32 = row.try_get("", "month").unwrap_or(0);
             let day: i32 = row.try_get("", "day").unwrap_or(0);
             let count: i64 = row.try_get("", "count").unwrap_or(0);
-            entries.push(TimelineEntry { year, month, day, count });
+            entries.push(TimelineEntry {
+                year,
+                month,
+                day,
+                count,
+            });
         }
         Ok(entries)
     }
@@ -729,7 +740,10 @@ impl PhotoRepo {
     }
 
     pub async fn clear_all_ocr_results(db: &impl ConnectionTrait) -> Result<u64, AppError> {
-        let deleted = photo_ocr_results::Entity::delete_many().exec(db).await?.rows_affected;
+        let deleted = photo_ocr_results::Entity::delete_many()
+            .exec(db)
+            .await?
+            .rows_affected;
         photos::Entity::update_many()
             .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
             .filter(photos::Column::OcrScannedAt.is_not_null())
@@ -943,7 +957,9 @@ impl PhotoRepo {
             .await?;
 
         // Delete source person
-        photo_persons::Entity::delete_by_id(source_id).exec(&txn).await?;
+        photo_persons::Entity::delete_by_id(source_id)
+            .exec(&txn)
+            .await?;
 
         txn.commit().await?;
         Ok(())

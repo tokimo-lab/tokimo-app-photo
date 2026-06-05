@@ -23,7 +23,9 @@ pub async fn handle(
     let http = reqwest::Client::new();
     let (success, failures, errors) =
         PhotoGeoService::process_photo_ids(&ctx.db, &http, vec![child_ctx.photo_id]).await;
-    let out = parent_child::finalize_child(ctx, user_id, &child_ctx, "photo_geocode", success, failures).await?;
+    let out =
+        parent_child::finalize_child(ctx, user_id, &child_ctx, "photo_geocode", success, failures)
+            .await?;
     if failures > 0 {
         let msg = errors
             .into_iter()

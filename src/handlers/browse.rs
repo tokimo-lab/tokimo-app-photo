@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -127,7 +130,8 @@ pub async fn update_photo(
     Json(body): Json<UpdatePhotoInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let uid = parse_uuid(&id)?;
-    let updated = PhotoRepo::update_photo(&ctx.db, uid, body.title, body.description, body.taken_at).await?;
+    let updated =
+        PhotoRepo::update_photo(&ctx.db, uid, body.title, body.description, body.taken_at).await?;
     ok(updated)
 }
 
@@ -210,7 +214,10 @@ pub async fn similar_photos(
             .try_get::<String>("", "vec")
             .map_err(|e| AppError::Internal(format!("Failed to read CLIP vector: {e}")))?,
         None => {
-            return ok(SimilarPhotosResponse { indexed: false, items: vec![] });
+            return ok(SimilarPhotosResponse {
+                indexed: false,
+                items: vec![],
+            });
         }
     };
 
@@ -228,7 +235,12 @@ pub async fn similar_photos(
                  AND 1 - (v.vec <=> $1::vector) > 0.5
                ORDER BY v.vec <=> $1::vector
                LIMIT $4",
-            [vec_str.into(), app_id.into(), photo_id.into(), i64::from(limit).into()],
+            [
+                vec_str.into(),
+                app_id.into(),
+                photo_id.into(),
+                i64::from(limit).into(),
+            ],
         ))
         .await?;
 
@@ -254,7 +266,10 @@ pub async fn similar_photos(
             mime_type: row.try_get("", "mime_type").ok(),
         });
     }
-    ok(SimilarPhotosResponse { indexed: true, items: results })
+    ok(SimilarPhotosResponse {
+        indexed: true,
+        items: results,
+    })
 }
 
 /// GET /api/apps/photo/{photoId}/tags — AI-powered CLIP zero-shot classification.

@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::Deserialize;
 
 use crate::ctx::AppCtx;

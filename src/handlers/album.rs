@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -38,7 +41,8 @@ pub async fn create_album(
     Json(body): Json<CreateAlbumInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let uid = parse_uuid(&id)?;
-    let album = PhotoRepo::create_album(&ctx.db, uid, &body.name, body.description.as_deref()).await?;
+    let album =
+        PhotoRepo::create_album(&ctx.db, uid, &body.name, body.description.as_deref()).await?;
     ok(album)
 }
 

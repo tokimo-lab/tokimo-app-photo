@@ -20,9 +20,17 @@ pub async fn handle(
     check_cancel(cancel)?;
     let child_ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
-    let (success, failures, errors) =
-        PhotoClipService::process_photo_ids(&ctx.db, &ctx.ai, &ctx.sources, child_ctx.app_id, vec![child_ctx.photo_id]).await;
-    let out = parent_child::finalize_child(ctx, user_id, &child_ctx, "photo_clip", success, failures).await?;
+    let (success, failures, errors) = PhotoClipService::process_photo_ids(
+        &ctx.db,
+        &ctx.ai,
+        &ctx.sources,
+        child_ctx.app_id,
+        vec![child_ctx.photo_id],
+    )
+    .await;
+    let out =
+        parent_child::finalize_child(ctx, user_id, &child_ctx, "photo_clip", success, failures)
+            .await?;
     if failures > 0 {
         let msg = errors
             .into_iter()

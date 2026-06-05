@@ -67,8 +67,10 @@ async fn run_server() -> anyhow::Result<()> {
         socket_path: ai_settings.socket_path,
         models_dir: None,
     };
-    let ai =
-        tokimo_perception::worker::client::AiWorkerClient::from_settings(&perception_settings, &data_local_path);
+    let ai = tokimo_perception::worker::client::AiWorkerClient::from_settings(
+        &perception_settings,
+        &data_local_path,
+    );
 
     let client_slot: Arc<OnceLock<Arc<BusClient>>> = Arc::new(OnceLock::new());
     let sources = Arc::new(SourceRegistry::new(Arc::clone(&client_slot)));

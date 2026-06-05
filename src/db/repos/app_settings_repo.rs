@@ -40,7 +40,10 @@ impl AppSettingsRepo {
     /// Get a typed section, returning [`AppSettingsSection::default_value`] when
     /// the row doesn't exist yet.
     pub async fn get<T: AppSettingsSection>(db: &impl ConnectionTrait) -> Result<T, AppError> {
-        match app_settings::Entity::find_by_id(T::KEY.to_string()).one(db).await? {
+        match app_settings::Entity::find_by_id(T::KEY.to_string())
+            .one(db)
+            .await?
+        {
             Some(m) => Ok(serde_json::from_value(m.value)?),
             None => Ok(T::default_value()),
         }
@@ -51,7 +54,10 @@ impl AppSettingsRepo {
     pub async fn get_optional<T: AppSettingsSection>(
         db: &impl ConnectionTrait,
     ) -> Result<Option<T>, AppError> {
-        match app_settings::Entity::find_by_id(T::KEY.to_string()).one(db).await? {
+        match app_settings::Entity::find_by_id(T::KEY.to_string())
+            .one(db)
+            .await?
+        {
             Some(m) => Ok(Some(serde_json::from_value(m.value)?)),
             None => Ok(None),
         }
@@ -82,10 +88,7 @@ impl AppSettingsRepo {
         app_settings::Entity::insert(am)
             .on_conflict(
                 OnConflict::column(app_settings::Column::Key)
-                    .update_columns([
-                        app_settings::Column::Value,
-                        app_settings::Column::UpdatedAt,
-                    ])
+                    .update_columns([app_settings::Column::Value, app_settings::Column::UpdatedAt])
                     .to_owned(),
             )
             .exec(db)

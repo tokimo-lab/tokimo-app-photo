@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::{Json, extract::{Path, Query, State}};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+};
 use serde::Deserialize;
 
 use crate::ctx::AppCtx;
@@ -103,13 +106,7 @@ pub async fn photos_by_bbox(
         page_size: q.page_size.unwrap_or(80),
     };
     let result = PhotoRepo::list_by_bbox(
-        &ctx.db,
-        app_id,
-        q.min_lat,
-        q.max_lat,
-        q.min_lng,
-        q.max_lng,
-        &page,
+        &ctx.db, app_id, q.min_lat, q.max_lat, q.min_lng, q.max_lng, &page,
     )
     .await?;
     ok(result)

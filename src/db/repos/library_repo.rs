@@ -21,7 +21,9 @@ pub struct UpdatePhotoLibraryFields {
 pub struct PhotoLibraryRepo;
 
 impl PhotoLibraryRepo {
-    pub async fn list_all(db: &impl ConnectionTrait) -> Result<Vec<photo_libraries::Model>, AppError> {
+    pub async fn list_all(
+        db: &impl ConnectionTrait,
+    ) -> Result<Vec<photo_libraries::Model>, AppError> {
         Ok(photo_libraries::Entity::find()
             .order_by_asc(photo_libraries::Column::SortOrder)
             .order_by_asc(photo_libraries::Column::CreatedAt)
@@ -75,30 +77,45 @@ impl PhotoLibraryRepo {
         id: Uuid,
         input: UpdatePhotoLibraryFields,
     ) -> Result<photo_libraries::Model, AppError> {
-        let mut update = photo_libraries::Entity::update_many()
-            .filter(photo_libraries::Column::Id.eq(id));
+        let mut update =
+            photo_libraries::Entity::update_many().filter(photo_libraries::Column::Id.eq(id));
         if let Some(name) = input.name {
             update = update.col_expr(photo_libraries::Column::Name, Expr::value(name));
         }
         if let Some(description) = input.description {
-            update = update.col_expr(photo_libraries::Column::Description, Expr::value(Some(description)));
+            update = update.col_expr(
+                photo_libraries::Column::Description,
+                Expr::value(Some(description)),
+            );
         }
         if let Some(avatar) = input.avatar {
             update = update.col_expr(photo_libraries::Column::Avatar, Expr::value(Some(avatar)));
         }
         if let Some(poster_path) = input.poster_path {
-            update = update.col_expr(photo_libraries::Column::PosterPath, Expr::value(Some(poster_path)));
+            update = update.col_expr(
+                photo_libraries::Column::PosterPath,
+                Expr::value(Some(poster_path)),
+            );
         }
         if let Some(scrape_enabled) = input.scrape_enabled {
-            update = update.col_expr(photo_libraries::Column::ScrapeEnabled, Expr::value(scrape_enabled));
+            update = update.col_expr(
+                photo_libraries::Column::ScrapeEnabled,
+                Expr::value(scrape_enabled),
+            );
         }
         if let Some(settings) = input.settings {
-            update = update.col_expr(photo_libraries::Column::Settings, Expr::value(Some(settings)));
+            update = update.col_expr(
+                photo_libraries::Column::Settings,
+                Expr::value(Some(settings)),
+            );
         }
         if let Some(sources) = input.sources {
             update = update.col_expr(photo_libraries::Column::Sources, Expr::value(sources));
         }
-        update = update.col_expr(photo_libraries::Column::UpdatedAt, Expr::value(Some(Utc::now().fixed_offset())));
+        update = update.col_expr(
+            photo_libraries::Column::UpdatedAt,
+            Expr::value(Some(Utc::now().fixed_offset())),
+        );
         let results = update.exec_with_returning(db).await?;
         results
             .into_iter()
@@ -137,8 +154,14 @@ impl PhotoLibraryRepo {
     ) -> Result<(), AppError> {
         let mut update = photo_libraries::Entity::update_many()
             .filter(photo_libraries::Column::Id.eq(id))
-            .col_expr(photo_libraries::Column::SyncStatus, Expr::value(status.to_string()))
-            .col_expr(photo_libraries::Column::UpdatedAt, Expr::value(Some(Utc::now().fixed_offset())));
+            .col_expr(
+                photo_libraries::Column::SyncStatus,
+                Expr::value(status.to_string()),
+            )
+            .col_expr(
+                photo_libraries::Column::UpdatedAt,
+                Expr::value(Some(Utc::now().fixed_offset())),
+            );
         if let Some(ts) = last_sync_at {
             update = update.col_expr(photo_libraries::Column::LastSyncAt, Expr::value(Some(ts)));
         }

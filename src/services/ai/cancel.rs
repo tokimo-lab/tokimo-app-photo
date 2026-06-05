@@ -83,7 +83,12 @@ impl Drop for AiCancelScope {
     }
 }
 
-fn spawn_watcher(ai: Arc<AiWorkerClient>, cancel: JobCancel, request_id: String, done: Arc<Notify>) -> JoinHandle<()> {
+fn spawn_watcher(
+    ai: Arc<AiWorkerClient>,
+    cancel: JobCancel,
+    request_id: String,
+    done: Arc<Notify>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         // Step 1: wait for the job to be cancelled.
         cancel.token.cancelled().await;
@@ -91,7 +96,10 @@ fn spawn_watcher(ai: Arc<AiWorkerClient>, cancel: JobCancel, request_id: String,
         // Step 2: cooperative cancel RPC — ask ORT to terminate at the next
         // safe point.
         if let Err(e) = ai.cancel(request_id.clone()).await {
-            warn!("[ai-cancel] failed to send /v1/cancel for {}: {}", request_id, e);
+            warn!(
+                "[ai-cancel] failed to send /v1/cancel for {}: {}",
+                request_id, e
+            );
         }
 
         // Step 3: if inference hasn't returned within 5 s, hard-kill the worker.

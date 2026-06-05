@@ -58,12 +58,22 @@ pub async fn serve_photo_image(
             return (StatusCode::NOT_FOUND, "Photo not found").into_response();
         }
         Err(e) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("photo lookup failed: {e}"))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("photo lookup failed: {e}"),
+            )
                 .into_response();
         }
     };
 
-    serve_file_response(&ctx, &target.path, target.mime_type.as_deref(), target.source_id, request).await
+    serve_file_response(
+        &ctx,
+        &target.path,
+        target.mime_type.as_deref(),
+        target.source_id,
+        request,
+    )
+    .await
 }
 
 pub async fn serve_live_video(
@@ -81,7 +91,10 @@ pub async fn serve_live_video(
             return (StatusCode::NOT_FOUND, "Photo not found").into_response();
         }
         Err(e) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, format!("photo lookup failed: {e}"))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("photo lookup failed: {e}"),
+            )
                 .into_response();
         }
     };
@@ -90,7 +103,14 @@ pub async fn serve_live_video(
         return (StatusCode::NOT_FOUND, "No live video for this photo").into_response();
     };
 
-    serve_file_response(&ctx, &live_path, Some("video/mp4"), target.source_id, request).await
+    serve_file_response(
+        &ctx,
+        &live_path,
+        Some("video/mp4"),
+        target.source_id,
+        request,
+    )
+    .await
 }
 
 async fn serve_file_response(
@@ -121,7 +141,8 @@ async fn serve_file_response(
             let vfs = match ctx.sources.ensure_vfs(&sid.to_string()).await {
                 Ok(v) => v,
                 Err(e) => {
-                    return (StatusCode::BAD_GATEWAY, format!("VFS init failed: {e}")).into_response();
+                    return (StatusCode::BAD_GATEWAY, format!("VFS init failed: {e}"))
+                        .into_response();
                 }
             };
             match vfs.read_bytes(StdPath::new(path), 0, None).await {

@@ -21,7 +21,12 @@ pub struct Model {
     pub h: f64,
     #[sea_orm(column_type = "Double", nullable)]
     pub confidence: Option<f64>,
-    #[sea_orm(ignore, column_type = "custom(\"vector\")", select_as = "text", nullable)]
+    #[sea_orm(
+        ignore,
+        column_type = "custom(\"vector\")",
+        select_as = "text",
+        nullable
+    )]
     pub vec: Option<String>,
     pub created_at: DateTimeWithTimeZone,
 }

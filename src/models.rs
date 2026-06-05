@@ -13,7 +13,8 @@ use crate::db::entities::{photo_albums, photos};
 // ---------------------------------------------------------------------------
 
 fn fmt_dt(dt: &Option<DateTimeWithTimeZone>) -> Option<String> {
-    dt.as_ref().map(|d| d.to_rfc3339_opts(SecondsFormat::Millis, true))
+    dt.as_ref()
+        .map(|d| d.to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
 // ---------------------------------------------------------------------------

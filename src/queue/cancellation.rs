@@ -29,8 +29,8 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use tokio_util::sync::CancellationToken;
 use tokimo_bus_client::BusClient;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::bus_clients::jobs::{self, QueryJobsRequest};

@@ -43,12 +43,16 @@ fn decl(name: &str, description: &str) -> MethodDecl {
 
 /// Extract user_id from CallerCtx (set by host's dispatch).
 fn caller_user_id(caller: &tokimo_bus_protocol::CallerCtx) -> Option<Uuid> {
-    caller.user_id.as_deref().and_then(|s| Uuid::parse_str(s).ok())
+    caller
+        .user_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok())
 }
 
 /// Decode `{ "job": { "id": "...", "params": {...} } }` from JSON bytes.
 fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
-    let v: JsonValue = serde_json::from_slice(raw).map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
+    let v: JsonValue = serde_json::from_slice(raw)
+        .map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
     let job = v
         .get("job")
         .ok_or_else(|| BusError::BadRequest("missing 'job' field".into()))?;
@@ -56,7 +60,9 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| BusError::BadRequest("missing 'job.id'".into()))
-        .and_then(|s| Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}"))))?;
+        .and_then(|s| {
+            Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}")))
+        })?;
     let params = job.get("params").cloned().unwrap_or(JsonValue::Null);
     Ok((job_id, params))
 }
@@ -87,7 +93,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_clip_scan::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -111,7 +120,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_clip::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -135,10 +147,15 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
-                    crate::queue::photo_clip_single::handle(&ctx, job_id, &params, user_id, &cancel),
+                    crate::queue::photo_clip_single::handle(
+                        &ctx, job_id, &params, user_id, &cancel,
+                    ),
                 )
                 .await;
                 poller.abort();
@@ -159,7 +176,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_face_scan::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -183,7 +203,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_face::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -207,10 +230,15 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
-                    crate::queue::photo_face_single::handle(&ctx, job_id, &params, user_id, &cancel),
+                    crate::queue::photo_face_single::handle(
+                        &ctx, job_id, &params, user_id, &cancel,
+                    ),
                 )
                 .await;
                 poller.abort();
@@ -231,7 +259,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_ocr_scan::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -255,7 +286,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_ocr::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -279,7 +313,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_ocr_single::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -303,10 +340,15 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
-                    crate::queue::photo_geocode_scan::handle(&ctx, job_id, &params, user_id, &cancel),
+                    crate::queue::photo_geocode_scan::handle(
+                        &ctx, job_id, &params, user_id, &cancel,
+                    ),
                 )
                 .await;
                 poller.abort();
@@ -327,7 +369,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 let user_id = caller_user_id(&req.caller);
                 let cancel = JobCancel::new();
                 let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
-                let cur = CurrentJobContext { job_id, cancel: cancel.clone() };
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
                 let result = cancellation::scope(
                     cur,
                     crate::queue::photo_geocode::handle(&ctx, job_id, &params, user_id, &cancel),
@@ -340,7 +385,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
             }
         })
         // ── capabilities ─────────────────────────────────────────────────────
-        .method(decl("capabilities", "Return photo bus service capabilities"))
+        .method(decl(
+            "capabilities",
+            "Return photo bus service capabilities",
+        ))
         .on_invoke("capabilities", |_req| async move {
             serde_json::to_vec(&serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),

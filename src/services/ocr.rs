@@ -18,7 +18,8 @@ use crate::error::OptionExt;
 
 /// Extensions the `image` crate cannot decode — need `FFmpeg` conversion.
 pub(crate) const NEEDS_FFMPEG_DECODE: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2",
+    ".pef", ".srw", ".raf",
 ];
 
 /// Single OCR detection result.
@@ -175,14 +176,18 @@ impl PhotoOcrService {
                     serde_json::json!(
                         positions
                             .iter()
-                            .map(|(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)}))
+                            .map(
+                                |(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)})
+                            )
                             .collect::<Vec<_>>()
                     )
                 }),
                 positioning_type,
-                corners: item
-                    .corners
-                    .map(|c| c.iter().map(|(x, y)| [f64::from(*x), f64::from(*y)]).collect()),
+                corners: item.corners.map(|c| {
+                    c.iter()
+                        .map(|(x, y)| [f64::from(*x), f64::from(*y)])
+                        .collect()
+                }),
             });
         }
 
@@ -207,7 +212,10 @@ impl PhotoOcrService {
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
         // Get thumbnail bytes (prefer thumbnail, fallback to original)
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let image_path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
 
         let image_bytes = load_photo_bytes(db, sources, &photo, image_path).await?;
 
@@ -357,10 +365,15 @@ impl PhotoOcrService {
         let mut results = Vec::new();
         for row in rows {
             results.push(OcrSearchResult {
-                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
+                photo_id: row
+                    .try_get::<Uuid>("", "photo_id")
+                    .unwrap_or_default()
+                    .to_string(),
                 filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
-                matched_text: row.try_get::<String>("", "matched_text").unwrap_or_default(),
+                matched_text: row
+                    .try_get::<String>("", "matched_text")
+                    .unwrap_or_default(),
             });
         }
         Ok(results)
@@ -413,7 +426,8 @@ pub(crate) async fn load_raw_bytes(
         && let Ok(cfg) = sources.driver_config(source_id).await
     {
         if cfg.driver_name == "local" {
-            let abs_path = crate::services::source::resolve_local_path(&photo.path, Some(&cfg.config));
+            let abs_path =
+                crate::services::source::resolve_local_path(&photo.path, Some(&cfg.config));
             if let Ok(bytes) = tokio::fs::read(&abs_path).await {
                 return Ok(bytes);
             }
@@ -441,7 +455,9 @@ async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();
     let result = tokio::task::spawn_blocking(move || {
-        use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
+        use tokimo_package_ffmpeg::image::{
+            ImageDecodeOptions, ImageFormat, decode_image_from_bytes,
+        };
 
         let opts = ImageDecodeOptions {
             width: None,

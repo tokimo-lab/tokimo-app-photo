@@ -146,7 +146,8 @@ where
             r
         })
         .collect();
-    let inserted = jobs::batch_children(&ctx.client(), photo_caller(user_id), job_id, children).await?;
+    let inserted =
+        jobs::batch_children(&ctx.client(), photo_caller(user_id), job_id, children).await?;
     info!(
         "[{task_type}_scan] enqueued {} child jobs (one per photo)",
         inserted.len()
@@ -250,7 +251,9 @@ pub async fn finalize_child(
     let completed = total > 0 && done >= total;
 
     let pct = if total > 0 {
-        ((done as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as i32
+        ((done as f64 / total as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as i32
     } else {
         0
     };

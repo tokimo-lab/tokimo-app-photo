@@ -27,7 +27,11 @@ use crate::queue::cancellation::PREEMPT_REASON;
 /// `task_type` is the scan job type passed directly by callers (e.g.
 /// `"photo_ocr_scan"`), so it maps 1:1 onto the bus `job_type` filter — we
 /// do NOT append `_scan` here.
-pub async fn preempt_scan_for(ctx: &Arc<AppCtx>, app_id: Uuid, task_type: &str) -> Result<usize, AppError> {
+pub async fn preempt_scan_for(
+    ctx: &Arc<AppCtx>,
+    app_id: Uuid,
+    task_type: &str,
+) -> Result<usize, AppError> {
     let mut params_match = HashMap::new();
     params_match.insert("photoLibraryId".to_string(), app_id.to_string());
     let filter = JobFilter {
@@ -36,7 +40,13 @@ pub async fn preempt_scan_for(ctx: &Arc<AppCtx>, app_id: Uuid, task_type: &str) 
         params_match: Some(params_match),
         parents_only: Some(true),
     };
-    let ids = jobs::preempt(&ctx.client(), photo_service_caller(), filter, PREEMPT_REASON).await?;
+    let ids = jobs::preempt(
+        &ctx.client(),
+        photo_service_caller(),
+        filter,
+        PREEMPT_REASON,
+    )
+    .await?;
     Ok(ids.len())
 }
 
@@ -60,6 +70,12 @@ pub async fn preempt_scan_child_for_photo(
         params_match: Some(params_match),
         parents_only: Some(false),
     };
-    let ids = jobs::preempt(&ctx.client(), photo_service_caller(), filter, PREEMPT_REASON).await?;
+    let ids = jobs::preempt(
+        &ctx.client(),
+        photo_service_caller(),
+        filter,
+        PREEMPT_REASON,
+    )
+    .await?;
     Ok(ids.len())
 }
