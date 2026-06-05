@@ -25,7 +25,7 @@ export function PhotoSelectionBar({
 
   const bar = (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 z-50 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-border-base bg-surface-glass px-5 py-3 shadow-2xl backdrop-blur-lg">
+      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-border-base bg-surface-overlay px-5 py-3 shadow-2xl backdrop-blur-lg">
         <span className="text-sm font-medium text-fg-secondary">
           已选择 <strong className="text-orange-500">{count}</strong> 张
         </span>

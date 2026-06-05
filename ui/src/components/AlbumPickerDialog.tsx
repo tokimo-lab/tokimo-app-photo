@@ -45,7 +45,7 @@ export function AlbumPickerDialog({
       title={
         <div>
           <div>添加到相册</div>
-          <div className="text-xs font-normal text-[var(--text-muted)] mt-0.5">
+          <div className="text-xs font-normal text-[var(--color-fg-muted)] mt-0.5">
             将 {selectedCount} 张照片添加到相册
           </div>
         </div>
@@ -86,10 +86,10 @@ export function AlbumPickerDialog({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                <p className="truncate text-sm font-medium text-[var(--color-fg-primary)]">
                   {album.name}
                 </p>
-                <p className="text-xs text-[var(--text-muted)]">
+                <p className="text-xs text-[var(--color-fg-muted)]">
                   {album.photoCount} 张
                 </p>
               </div>
@@ -97,7 +97,7 @@ export function AlbumPickerDialog({
           ))}
 
           {albums.length === 0 && !showCreate && (
-            <p className="py-4 text-center text-sm text-[var(--text-muted)]">
+            <p className="py-4 text-center text-sm text-[var(--color-fg-muted)]">
               暂无相册
             </p>
           )}
@@ -111,7 +111,7 @@ export function AlbumPickerDialog({
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-black/[0.15] bg-transparent px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-white/[0.15]"
+            className="min-w-0 flex-1 rounded-lg border border-black/[0.15] bg-transparent px-3 py-2 text-sm text-[var(--color-fg-primary)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-white/[0.15]"
             placeholder="相册名称"
             onKeyDown={(e) =>
               e.key === "Enter" && !e.nativeEvent.isComposing && handleCreate()
@@ -129,7 +129,7 @@ export function AlbumPickerDialog({
       ) : (
         <button
           type="button"
-          className="mt-3 flex w-full cursor-pointer items-center gap-2 rounded-lg p-2.5 text-sm text-[var(--text-muted)] transition-colors hover:bg-black/[0.04] hover:text-[var(--text-secondary)] dark:hover:bg-white/[0.06]"
+          className="mt-3 flex w-full cursor-pointer items-center gap-2 rounded-lg p-2.5 text-sm text-[var(--color-fg-muted)] transition-colors hover:bg-black/[0.04] hover:text-[var(--color-fg-secondary)] dark:hover:bg-white/[0.06]"
           onClick={() => setShowCreate(true)}
         >
           <Plus className="h-4 w-4" />

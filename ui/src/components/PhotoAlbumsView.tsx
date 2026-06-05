@@ -24,7 +24,7 @@ function CreateAlbumDialog({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-border-base bg-surface-elevated p-6 shadow-2xl ">
+      <div className="w-full max-w-md rounded-xl border border-border-base bg-surface-raised p-6 shadow-2xl ">
         <h3 className="mb-4 text-lg font-semibold text-fg-primary">新建相册</h3>
         <div className="space-y-4">
           <div>
@@ -39,7 +39,7 @@ function CreateAlbumDialog({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-surface-elevated px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-border-base bg-surface-raised px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="输入相册名称"
             />
           </div>
@@ -54,7 +54,7 @@ function CreateAlbumDialog({
               id="album-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-surface-elevated px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-border-base bg-surface-raised px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               placeholder="描述一下这个相册"
               rows={3}
             />

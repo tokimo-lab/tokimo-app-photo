@@ -90,7 +90,7 @@ export function PhotoInfoSidebar({
   }, [queryClient]);
 
   return (
-    <div className="flex w-80 shrink-0 flex-col border-l border-border-base bg-[var(--sidebar-bg)] text-sm text-white backdrop-blur">
+    <div className="flex w-80 shrink-0 flex-col border-l border-border-base bg-[var(--color-surface-sidebar)] text-sm text-white backdrop-blur">
       {detail ? (
         <>
           <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">

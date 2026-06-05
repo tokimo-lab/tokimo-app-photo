@@ -202,7 +202,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
         >
           {t("syncModalClearData")}
         </Checkbox>
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
+        <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
           {t("syncModalHint")}
         </p>
       </Modal>
