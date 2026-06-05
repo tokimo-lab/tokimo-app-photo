@@ -121,6 +121,7 @@ jobs:
           BREW_PREFIX="$(brew --prefix)"
           echo "LIBRARY_PATH=${BREW_PREFIX}/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=${BREW_PREFIX}/lib:${DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${{ github.workspace }}/bin/tokimo-lib/current/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Download tokimo-lib (macOS)
         if: runner.os == 'macOS'
@@ -134,6 +135,7 @@ jobs:
           echo "FFMPEG_PKG_CONFIG_PATH=${{ github.workspace }}/bin/tokimo-lib/current/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "PKG_CONFIG_PATH=${{ github.workspace }}/bin/tokimo-lib/current/lib/pkgconfig:${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=${{ github.workspace }}/bin/tokimo-lib/current/lib:${DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${{ github.workspace }}/bin/tokimo-lib/current/lib:${LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
