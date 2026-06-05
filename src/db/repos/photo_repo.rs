@@ -144,7 +144,7 @@ impl PhotoRepo {
         db: &impl ConnectionTrait,
         photo_id: Uuid,
     ) -> Result<bool, AppError> {
-        let mut results = photos::Entity::update_many()
+        let results = photos::Entity::update_many()
             .filter(photos::Column::Id.eq(photo_id))
             .col_expr(photos::Column::IsFavorite, Expr::col(photos::Column::IsFavorite).not())
             .exec_with_returning(db)
@@ -157,7 +157,7 @@ impl PhotoRepo {
     }
 
     pub async fn toggle_hidden(db: &impl ConnectionTrait, photo_id: Uuid) -> Result<bool, AppError> {
-        let mut results = photos::Entity::update_many()
+        let results = photos::Entity::update_many()
             .filter(photos::Column::Id.eq(photo_id))
             .col_expr(photos::Column::IsHidden, Expr::col(photos::Column::IsHidden).not())
             .exec_with_returning(db)
@@ -481,7 +481,7 @@ impl PhotoRepo {
         if let Some(v) = taken_at {
             update = update.col_expr(photos::Column::TakenAt, Expr::value(v));
         }
-        let mut results = update.exec_with_returning(db).await?;
+        let results = update.exec_with_returning(db).await?;
         let model = results
             .into_iter()
             .next()

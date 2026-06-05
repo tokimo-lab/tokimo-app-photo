@@ -99,7 +99,7 @@ impl PhotoLibraryRepo {
             update = update.col_expr(photo_libraries::Column::Sources, Expr::value(sources));
         }
         update = update.col_expr(photo_libraries::Column::UpdatedAt, Expr::value(Some(Utc::now().fixed_offset())));
-        let mut results = update.exec_with_returning(db).await?;
+        let results = update.exec_with_returning(db).await?;
         results
             .into_iter()
             .next()
