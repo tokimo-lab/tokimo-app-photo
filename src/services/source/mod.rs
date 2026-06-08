@@ -110,13 +110,16 @@ pub fn resolve_local_path(rel_path: &str, config: Option<&serde_json::Value>) ->
 
 /// Get the local driver root from a VFS entity's config JSON.
 ///
-/// Returns `None` for non-local drivers or if `root` is missing.
+/// Returns `None` for non-local drivers or if `root_folder_path` is missing.
 #[must_use]
 pub fn local_driver_root(source: &crate::db::entities::vfs::Model) -> Option<String> {
+    if source.r#type != "local" {
+        return None;
+    }
     let json = source.config.clone()?;
     let config: serde_json::Value = serde_json::from_value(json).ok()?;
     config
-        .get("root")?
+        .get("root_folder_path")?
         .as_str()
         .map(|s| s.trim_end_matches('/').to_string())
         .filter(|s| !s.is_empty())

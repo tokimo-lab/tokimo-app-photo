@@ -21,7 +21,9 @@ use uuid::Uuid;
 use tokimo_bus_client::BusClient;
 
 use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
-use crate::db::entities::{photos, vfs};
+use crate::db::entities::{
+    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
+};
 use crate::db::repos::library_repo::PhotoLibraryRepo;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::vfs::ops::{FileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
@@ -144,21 +146,80 @@ impl AppSyncService {
         Ok(SyncResult { total_jobs })
     }
 
-    /// Clear all photo data for a library.
+    /// Clear all photo data for a library, including derived tables.
     async fn clear_library_data(
         db: &DatabaseConnection,
         library_id: Uuid,
     ) -> Result<(), AppError> {
         info!("Clearing data for photo library {library_id}");
 
+        let txn = db.begin().await?;
+
+        // Delete derived tables first (they reference photos)
+        let photo_ids: Vec<Uuid> = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(library_id))
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
+            .all(&txn)
+            .await?;
+
+        if !photo_ids.is_empty() {
+            let deleted = photo_clip_vectors::Entity::delete_many()
+                .filter(photo_clip_vectors::Column::PhotoId.is_in(photo_ids.clone()))
+                .exec(&txn)
+                .await?
+                .rows_affected;
+            info!("  Deleted {deleted} CLIP vectors");
+
+            let deleted = photo_faces::Entity::delete_many()
+                .filter(photo_faces::Column::PhotoId.is_in(photo_ids.clone()))
+                .exec(&txn)
+                .await?
+                .rows_affected;
+            info!("  Deleted {deleted} face detections");
+
+            let deleted = photo_ocr_results::Entity::delete_many()
+                .filter(photo_ocr_results::Column::PhotoId.is_in(photo_ids))
+                .exec(&txn)
+                .await?
+                .rows_affected;
+            info!("  Deleted {deleted} OCR results");
+        }
+
+        // Delete albums and persons
+        let deleted = photo_albums::Entity::delete_many()
+            .filter(photo_albums::Column::AppId.eq(library_id))
+            .exec(&txn)
+            .await?
+            .rows_affected;
+        info!("  Deleted {deleted} albums");
+
+        let deleted = photo_persons::Entity::delete_many()
+            .filter(photo_persons::Column::AppId.eq(library_id))
+            .exec(&txn)
+            .await?
+            .rows_affected;
+        info!("  Deleted {deleted} persons");
+
+        // Delete photos
         let deleted = photos::Entity::delete_many()
             .filter(photos::Column::AppId.eq(library_id))
-            .exec(db)
+            .exec(&txn)
             .await?
             .rows_affected;
         info!("  Deleted {deleted} photos");
 
+        txn.commit().await?;
         Ok(())
+    }
+
+    /// Remote file system source types (network protocols + cloud drives).
+    fn is_remote_fs_type(source_type: &str) -> bool {
+        matches!(
+            source_type,
+            "smb" | "nfs" | "webdav" | "ftp" | "sftp" | "s3" | "115cloud" | "aliyundrive" | "baidu_netdisk" | "quark"
+        )
     }
 
     /// Batch size for flushing accumulated jobs to the bus.
@@ -175,8 +236,10 @@ impl AppSyncService {
         user_id: Uuid,
     ) -> Result<u64, AppError> {
         let source_type = &source.r#type;
+        let is_local = source_type == "local";
+        let is_remote = Self::is_remote_fs_type(source_type);
 
-        if source_type != "local" {
+        if !is_local && !is_remote {
             warn!(
                 "Unsupported source type \"{}\" for source \"{}\", skipping",
                 source_type, source.name
@@ -234,8 +297,9 @@ impl AppSyncService {
                     "dirPath": file.dir_path,
                     "fileSize": file.file_size,
                     "checksum": checksum,
-                    "photoLibraryId": library_id.to_string(),
                     "sourceId": source.id.to_string(),
+                    "libType": "photo",
+                    "photoLibraryId": library_id.to_string(),
                 }),
                 Some(user_id),
             ));
@@ -313,7 +377,7 @@ impl AppSyncService {
         }
         let mut inserted = 0u64;
         for (params, user_id) in jobs {
-            let request = CreateJobRequest::new("photo_scrape", params);
+            let request = CreateJobRequest::new("file_scrape", params);
             jobs_client::create(
                 client,
                 jobs_client::photo_caller(Some(user_id.unwrap_or(Uuid::nil()))),

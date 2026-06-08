@@ -1,7 +1,11 @@
-//! `photo_scrape` job handler — import a single photo file into the DB.
+//! `file_scrape` job handler — import a single photo file into the DB.
 //!
 //! Receives VFS file info from the sync walk, creates a `photos` record,
 //! extracts EXIF metadata, and detects Live Photo companions.
+//!
+//! This is the photo-sidecar equivalent of the monolith's `scrape::photo::handle`.
+//! The main server dispatches `file_scrape` jobs to this handler when
+//! `libType == "photo"` in the job params.
 
 use std::sync::Arc;
 
@@ -22,6 +26,19 @@ pub async fn handle(
     _user_id: Option<Uuid>,
     _cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
+    // Verify this is a photo library job
+    let lib_type = params
+        .get("libType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if lib_type != "photo" {
+        tracing::warn!("file_scrape: unexpected libType={lib_type}, expected 'photo'");
+        return Ok(Some(serde_json::json!({
+            "status": "skipped",
+            "reason": "unexpected libType",
+        })));
+    }
+
     let file_path = params
         .get("filePath")
         .and_then(|v| v.as_str())
@@ -271,11 +288,9 @@ fn extract_exif_from_bytes(bytes: &[u8]) -> Option<ExifData> {
 /// Parse EXIF date format "YYYY:MM:DD HH:MM:SS" into a `DateTime<FixedOffset>`.
 fn parse_exif_date(s: &str) -> Option<DateTime<FixedOffset>> {
     let trimmed = s.trim();
-    // Try "YYYY:MM:DD HH:MM:SS"
     if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y:%m:%d %H:%M:%S") {
         return Some(naive.and_utc().fixed_offset());
     }
-    // Try "YYYY-MM-DD HH:MM:SS"
     if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
         return Some(naive.and_utc().fixed_offset());
     }
@@ -354,7 +369,6 @@ async fn detect_live_photo_companion(
 ) -> Result<(), AppError> {
     use std::path::Path;
 
-    // Strip extension from photo filename to get the base name
     let photo_stem = Path::new(filename)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -364,7 +378,6 @@ async fn detect_live_photo_companion(
         return Ok(());
     }
 
-    // List directory and look for .mov/.mp4 with matching stem
     let entries = vfs
         .list(Path::new(dir_path))
         .await
@@ -387,7 +400,6 @@ async fn detect_live_photo_companion(
                 .unwrap_or("");
 
             if video_stem == photo_stem {
-                // Found companion video
                 let video_path = entry.path;
                 photos::Entity::update_many()
                     .filter(photos::Column::Id.eq(photo_id))

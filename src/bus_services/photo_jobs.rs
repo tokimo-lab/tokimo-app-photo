@@ -18,7 +18,7 @@
 //! | `dispatch_photo_ocr_single`   | `queue::photo_ocr_single::handle`         |
 //! | `dispatch_photo_geocode_scan` | `queue::photo_geocode_scan::handle`       |
 //! | `dispatch_photo_geocode`      | `queue::photo_geocode::handle`            |
-//! | `dispatch_photo_scrape`       | `queue::photo_scrape::handle`             |
+//! | `dispatch_file_scrape`        | `queue::handlers::file_scrape::handle`    |
 //! | `capabilities`                | bus capability handshake                  |
 
 use std::sync::Arc;
@@ -80,7 +80,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
     let ctx_ocr_single = ctx.clone();
     let ctx_geocode_scan = ctx.clone();
     let ctx_geocode = ctx.clone();
-    let ctx_scrape = ctx.clone();
+    let ctx_file_scrape = ctx.clone();
 
     builder
         // ── dispatch_photo_clip_scan ─────────────────────────────────────────
@@ -386,13 +386,13 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        // ── dispatch_photo_scrape ────────────────────────────────────────────
+        // ── dispatch_file_scrape ─────────────────────────────────────────────
         .method(decl(
-            "dispatch_photo_scrape",
-            "Run a photo_scrape job on behalf of the main worker",
+            "dispatch_file_scrape",
+            "Run a file_scrape job for photo libraries",
         ))
-        .on_invoke("dispatch_photo_scrape", move |req| {
-            let ctx = ctx_scrape.clone();
+        .on_invoke("dispatch_file_scrape", move |req| {
+            let ctx = ctx_file_scrape.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
@@ -404,7 +404,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 };
                 let result = cancellation::scope(
                     cur,
-                    crate::queue::photo_scrape::handle(&ctx, job_id, &params, user_id, &cancel),
+                    crate::queue::handlers::file_scrape::handle(&ctx, job_id, &params, user_id, &cancel),
                 )
                 .await;
                 poller.abort();
@@ -434,7 +434,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                     "dispatch_photo_ocr_single",
                     "dispatch_photo_geocode_scan",
                     "dispatch_photo_geocode",
-                    "dispatch_photo_scrape",
+                    "dispatch_file_scrape",
                 ],
             }))
             .map_err(|e| BusError::Internal(e.to_string()))
