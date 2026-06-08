@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod app_sync;
 pub mod clip;
 pub mod face;
 pub mod geo;

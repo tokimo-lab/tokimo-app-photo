@@ -7,3 +7,4 @@ pub mod photo_libraries;
 pub mod photo_ocr_results;
 pub mod photo_persons;
 pub mod photos;
+pub mod vfs;

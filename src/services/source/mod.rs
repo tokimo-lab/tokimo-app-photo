@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -105,4 +106,68 @@ pub fn resolve_local_path(rel_path: &str, config: Option<&serde_json::Value>) ->
         format!("{}/{}", driver_root.trim_end_matches('/'), rel_path)
     };
     tokimo_package_utils::path::internal_to_native(&combined)
+}
+
+/// Get the local driver root from a VFS entity's config JSON.
+///
+/// Returns `None` for non-local drivers or if `root` is missing.
+#[must_use]
+pub fn local_driver_root(source: &crate::db::entities::vfs::Model) -> Option<String> {
+    let json = source.config.clone()?;
+    let config: serde_json::Value = serde_json::from_value(json).ok()?;
+    config
+        .get("root")?
+        .as_str()
+        .map(|s| s.trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Convert an absolute `root_path` from `photo_libraries.sources` to a VFS-relative path.
+///
+/// For local sources the DB may store the full filesystem path
+/// (e.g. `/home/user/photos/vacation`) while the local driver's root is already
+/// `/home/user/photos`. The VFS expects a path relative to the driver root
+/// (e.g. `/vacation`), so we strip the driver root prefix.
+pub fn to_vfs_path(root_path: &str, source: &crate::db::entities::vfs::Model) -> String {
+    let Some(driver_root) = local_driver_root(source) else {
+        return root_path.to_string();
+    };
+    if root_path.starts_with(&driver_root) && root_path.len() > driver_root.len() {
+        let rel = &root_path[driver_root.len()..];
+        if rel.starts_with('/') {
+            return rel.to_string();
+        }
+    }
+    if root_path == driver_root {
+        return "/".to_string();
+    }
+    root_path.to_string()
+}
+
+/// Normalize a source path to a VFS-relative absolute path.
+///
+/// Strips `.` components, rejects `..` traversal, ensures a leading `/`.
+pub fn normalize_source_path(path: &str) -> Result<String, String> {
+    let trimmed = path.trim();
+    let normalized = if trimmed.is_empty() { "/" } else { trimmed };
+    let path = Path::new(normalized);
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => {
+                parts.push(part.to_string_lossy().to_string());
+            }
+            std::path::Component::ParentDir => {
+                return Err("path must not contain parent traversal ('..')".into());
+            }
+            std::path::Component::Prefix(_) => {
+                return Err("path contains an unsupported path prefix".into());
+            }
+        }
+    }
+    if parts.is_empty() {
+        return Ok("/".into());
+    }
+    Ok(format!("/{}", parts.join("/")))
 }

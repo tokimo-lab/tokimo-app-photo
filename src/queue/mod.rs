@@ -18,3 +18,4 @@ pub mod photo_geocode_scan;
 pub mod photo_ocr;
 pub mod photo_ocr_scan;
 pub mod photo_ocr_single;
+pub mod photo_scrape;

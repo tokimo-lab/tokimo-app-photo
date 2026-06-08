@@ -110,6 +110,7 @@ async fn run_server() -> anyhow::Result<()> {
     bus_clients::jobs::register_handler(&client, "photo_ocr_single", "dispatch_photo_ocr_single").await?;
     bus_clients::jobs::register_handler(&client, "photo_geocode_scan", "dispatch_photo_geocode_scan").await?;
     bus_clients::jobs::register_handler(&client, "photo_geocode", "dispatch_photo_geocode").await?;
+    bus_clients::jobs::register_handler(&client, "photo_scrape", "dispatch_photo_scrape").await?;
 
     info!("photo: registered with broker");
 

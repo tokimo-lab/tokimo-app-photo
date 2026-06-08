@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::ctx::AppCtx;
 use crate::db::{pagination::PageInput, repos::photo_repo::PhotoRepo};
-use crate::error::AppError;
+use crate::error::{AppError, OptionExt};
 
 use super::{ok, ok_simple, parse_uuid};
 
@@ -131,10 +131,55 @@ pub async fn permanent_delete(
 }
 
 pub async fn rescan(
-    State(_ctx): State<Arc<AppCtx>>,
+    State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let _uid = parse_uuid(&id)?;
-    tracing::warn!("rescan not yet implemented");
+    let uid = parse_uuid(&id)?;
+
+    let library = crate::db::repos::library_repo::PhotoLibraryRepo::get_by_id(&ctx.db, uid)
+        .await?
+        .not_found(format!("photo library {id} not found"))?;
+
+    if library.sync_status == "syncing" {
+        return Err(AppError::Conflict(
+            "Photo library is already syncing".into(),
+        ));
+    }
+
+    // Mark library as syncing
+    crate::db::repos::library_repo::PhotoLibraryRepo::update_sync_status(&ctx.db, uid, "syncing", None).await?;
+
+    // Trigger VFS walk + photo import in background
+    let db = ctx.db.clone();
+    let sources = Arc::clone(&ctx.sources);
+    let bus_client = Arc::clone(&ctx.client);
+    tokio::spawn(async move {
+        match crate::services::app_sync::AppSyncService::execute_photo_sync(
+            &db,
+            &sources,
+            &bus_client,
+            uid,
+            false, // don't clear existing data
+            Uuid::nil(),
+        )
+        .await
+        {
+            Ok(result) => {
+                tracing::info!(
+                    "photo rescan completed for library {}: {} jobs dispatched",
+                    uid,
+                    result.total_jobs
+                );
+            }
+            Err(e) => {
+                tracing::error!("photo rescan failed for library {}: {}", uid, e);
+                let _ = crate::db::repos::library_repo::PhotoLibraryRepo::update_sync_status(
+                    &db, uid, "failed", None,
+                )
+                .await;
+            }
+        }
+    });
+
     ok_simple()
 }

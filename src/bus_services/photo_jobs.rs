@@ -18,6 +18,7 @@
 //! | `dispatch_photo_ocr_single`   | `queue::photo_ocr_single::handle`         |
 //! | `dispatch_photo_geocode_scan` | `queue::photo_geocode_scan::handle`       |
 //! | `dispatch_photo_geocode`      | `queue::photo_geocode::handle`            |
+//! | `dispatch_photo_scrape`       | `queue::photo_scrape::handle`             |
 //! | `capabilities`                | bus capability handshake                  |
 
 use std::sync::Arc;
@@ -79,6 +80,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
     let ctx_ocr_single = ctx.clone();
     let ctx_geocode_scan = ctx.clone();
     let ctx_geocode = ctx.clone();
+    let ctx_scrape = ctx.clone();
 
     builder
         // ── dispatch_photo_clip_scan ─────────────────────────────────────────
@@ -384,6 +386,33 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
+        // ── dispatch_photo_scrape ────────────────────────────────────────────
+        .method(decl(
+            "dispatch_photo_scrape",
+            "Run a photo_scrape job on behalf of the main worker",
+        ))
+        .on_invoke("dispatch_photo_scrape", move |req| {
+            let ctx = ctx_scrape.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = JobCancel::new();
+                let poller = spawn_cancel_poller(ctx.client(), job_id, cancel.clone());
+                let cur = CurrentJobContext {
+                    job_id,
+                    cancel: cancel.clone(),
+                };
+                let result = cancellation::scope(
+                    cur,
+                    crate::queue::photo_scrape::handle(&ctx, job_id, &params, user_id, &cancel),
+                )
+                .await;
+                poller.abort();
+                result
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
         // ── capabilities ─────────────────────────────────────────────────────
         .method(decl(
             "capabilities",
@@ -405,6 +434,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                     "dispatch_photo_ocr_single",
                     "dispatch_photo_geocode_scan",
                     "dispatch_photo_geocode",
+                    "dispatch_photo_scrape",
                 ],
             }))
             .map_err(|e| BusError::Internal(e.to_string()))

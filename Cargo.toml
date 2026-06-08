@@ -18,6 +18,8 @@ tokimo-package-ffmpeg = { git = "https://github.com/tokimo-lab/tokimo-package-ff
 tokimo-package-utils  = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "b1edb7b" }
 dashmap             = "6"
 futures-util        = "0.3"
+kamadak-exif        = "0.6"
+regex               = "1"
 
 clap              = { version = "4", features = ["derive", "env"] }
 tokio             = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }

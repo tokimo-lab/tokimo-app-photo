@@ -10,6 +10,7 @@ pub mod person;
 pub mod stream;
 pub mod sync;
 pub mod user;
+pub mod vfs;
 
 pub use ai::*;
 pub use album::*;
