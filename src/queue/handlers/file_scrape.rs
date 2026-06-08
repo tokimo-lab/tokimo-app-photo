@@ -95,12 +95,9 @@ pub async fn handle(
         })));
     }
 
-    // Extract date from filename as fallback for taken_at
+    // Phase 1: Create photo record with basic metadata (fast, <100ms)
     let taken_at = extract_date_from_filename(&filename);
-
-    // Guess MIME type from extension
     let mime_type = guess_photo_mime(&filename);
-
     let now = Utc::now().fixed_offset();
     let photo_id = Uuid::new_v4();
 
@@ -123,22 +120,24 @@ pub async fn handle(
 
     photos::Entity::insert(active).exec(&ctx.db).await?;
 
-    // Try to extract EXIF metadata from VFS
-    if let Ok(vfs) = ctx.sources.ensure_vfs(&source_id.to_string()).await {
-        match extract_exif_from_vfs(&vfs, file_path).await {
-            Some(exif) => {
-                apply_exif(&ctx.db, photo_id, &exif).await?;
+    // Phase 2: Spawn EXIF extraction + Live Photo detection as background task.
+    // This can be slow (VFS reads over network) and must not block the bus invoke.
+    let ctx2 = Arc::clone(ctx);
+    let fp = file_path.to_string();
+    let dp = dir_path.to_string();
+    let fn2 = filename.clone();
+    tokio::spawn(async move {
+        if let Ok(vfs) = ctx2.sources.ensure_vfs(&source_id.to_string()).await {
+            // Extract EXIF
+            if let Some(exif) = extract_exif_from_vfs(&vfs, &fp).await {
+                if let Err(e) = apply_exif(&ctx2.db, photo_id, &exif).await {
+                    tracing::warn!("apply_exif failed for {fp}: {e}");
+                }
             }
-            None => {
-                tracing::debug!("no EXIF data for {file_path}");
-            }
+            // Detect Live Photo companion
+            let _ = detect_live_photo_companion(&ctx2.db, &vfs, photo_id, &dp, &fn2).await;
         }
-
-        // Detect Live Photo companion (.mov/.mp4 in same directory)
-        detect_live_photo_companion(&ctx.db, &vfs, photo_id, dir_path, &filename)
-            .await
-            .ok(); // best-effort
-    }
+    });
 
     tracing::info!("imported photo {photo_id} from {file_path}");
 
@@ -467,9 +466,9 @@ fn extract_date_from_filename(filename: &str) -> Option<DateTime<FixedOffset>> {
 
     // Pattern: generic YYYY-MM-DD in filename
     if let Some(caps) = regex_match(r"(\d{4})-(\d{2})-(\d{2})", name) {
-        let year: i32 = caps[1].parse().ok()?;
-        let month: u32 = caps[2].parse().ok()?;
-        let day: u32 = caps[3].parse().ok()?;
+        let year: i32 = caps.get(1)?.parse().ok()?;
+        let month: u32 = caps.get(2)?.parse().ok()?;
+        let day: u32 = caps.get(3)?.parse().ok()?;
         let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
             .and_hms_opt(0, 0, 0)?;
         return Some(naive.and_utc().fixed_offset());
@@ -492,12 +491,12 @@ fn parse_date_parts(parts: &[String]) -> Option<DateTime<FixedOffset>> {
     if parts.len() < 6 {
         return None;
     }
-    let year: i32 = parts[0].parse().ok()?;
-    let month: u32 = parts[1].parse().ok()?;
-    let day: u32 = parts[2].parse().ok()?;
-    let hour: u32 = parts[3].parse().ok()?;
-    let min: u32 = parts[4].parse().ok()?;
-    let sec: u32 = parts[5].parse().ok()?;
+    let year: i32 = parts.get(0)?.parse().ok()?;
+    let month: u32 = parts.get(1)?.parse().ok()?;
+    let day: u32 = parts.get(2)?.parse().ok()?;
+    let hour: u32 = parts.get(3)?.parse().ok()?;
+    let min: u32 = parts.get(4)?.parse().ok()?;
+    let sec: u32 = parts.get(5)?.parse().ok()?;
     let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
         .and_hms_opt(hour, min, sec)?;
     Some(naive.and_utc().fixed_offset())
