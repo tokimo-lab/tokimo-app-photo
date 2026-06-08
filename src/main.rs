@@ -98,6 +98,19 @@ async fn run_server() -> anyhow::Result<()> {
         .set(Arc::clone(&client))
         .map_err(|_| anyhow::anyhow!("client_slot already set"))?;
 
+    // Register job handlers with the main server (appId inferred from bus caller).
+    bus_clients::jobs::register_handler(&client, "photo_clip_scan", "dispatch_photo_clip_scan").await?;
+    bus_clients::jobs::register_handler(&client, "photo_clip", "dispatch_photo_clip").await?;
+    bus_clients::jobs::register_handler(&client, "photo_clip_single", "dispatch_photo_clip_single").await?;
+    bus_clients::jobs::register_handler(&client, "photo_face_scan", "dispatch_photo_face_scan").await?;
+    bus_clients::jobs::register_handler(&client, "photo_face", "dispatch_photo_face").await?;
+    bus_clients::jobs::register_handler(&client, "photo_face_single", "dispatch_photo_face_single").await?;
+    bus_clients::jobs::register_handler(&client, "photo_ocr_scan", "dispatch_photo_ocr_scan").await?;
+    bus_clients::jobs::register_handler(&client, "photo_ocr", "dispatch_photo_ocr").await?;
+    bus_clients::jobs::register_handler(&client, "photo_ocr_single", "dispatch_photo_ocr_single").await?;
+    bus_clients::jobs::register_handler(&client, "photo_geocode_scan", "dispatch_photo_geocode_scan").await?;
+    bus_clients::jobs::register_handler(&client, "photo_geocode", "dispatch_photo_geocode").await?;
+
     info!("photo: registered with broker");
 
     let shutdown = {
