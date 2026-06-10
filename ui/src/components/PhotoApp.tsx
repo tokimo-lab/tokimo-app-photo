@@ -146,7 +146,7 @@ export default function PhotoApp() {
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
       />
-      <div className="min-w-0 flex-1 overflow-auto">
+      <div className="min-w-0 flex-1 overflow-auto bg-[var(--color-surface-content)]">
         {activeLibraryId && (
           <PhotoAppPage
             key={activeLibraryId}
