@@ -16,6 +16,7 @@ tokimo-package-client-api = { git = "https://github.com/tokimo-lab/tokimo-packag
 tokimo-perception   = { git = "https://github.com/tokimo-lab/tokimo-perception.git", rev = "d14be13" }
 tokimo-package-ffmpeg = { git = "https://github.com/tokimo-lab/tokimo-package-ffmpeg.git", rev = "9ea65ce9" }
 tokimo-package-utils  = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "b1edb7b" }
+tokimo-package-image = { path = "../../packages/tokimo-package-image" }
 dashmap             = "6"
 futures-util        = "0.3"
 kamadak-exif        = "0.6"

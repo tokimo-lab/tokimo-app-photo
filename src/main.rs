@@ -37,7 +37,10 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(1);
         }
     } else {
-        eprintln!("tokimo-app-photo: managed sidecar — set TOKIMO_BUS_SOCKET to run.");
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!("tokimo-app-photo: managed sidecar — set TOKIMO_BUS_SOCKET to run.");
+        }
         std::process::exit(0);
     }
 
@@ -56,8 +59,7 @@ async fn run_server() -> anyhow::Result<()> {
             .await
             .unwrap_or_default();
     let data_local_path = std::env::var("TOKIMO_DATA_LOCAL_PATH")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("./.data/local"));
+        .map_or_else(|_| std::path::PathBuf::from("./.data/local"), std::path::PathBuf::from);
     let perception_settings = tokimo_perception::worker::client::AiWorkerSettings {
         mode: ai_settings.mode,
         remote_url: ai_settings.remote_url,
@@ -82,7 +84,6 @@ async fn run_server() -> anyhow::Result<()> {
     });
 
     let app_socket = app_server::spawn("photo", Arc::clone(&context))
-        .await
         .map_err(|e| anyhow::anyhow!("app_server spawn: {e}"))?;
 
     let client = bus_services::photo_jobs::register(
@@ -97,6 +98,9 @@ async fn run_server() -> anyhow::Result<()> {
     client_slot
         .set(Arc::clone(&client))
         .map_err(|_| anyhow::anyhow!("client_slot already set"))?;
+
+    // Wire the notification module so it can send real notifications via the bus.
+    crate::services::notifications::init(Arc::clone(&client));
 
     // Register job handlers with the main server (appId inferred from bus caller).
     bus_clients::jobs::register_handler(&client, "photo_clip_scan", "dispatch_photo_clip_scan").await?;

@@ -49,7 +49,7 @@ pub async fn handle(
         .unwrap_or("/");
     let file_size = params
         .get("fileSize")
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
     let checksum = params
         .get("checksum")
@@ -129,11 +129,33 @@ pub async fn handle(
     tokio::spawn(async move {
         if let Ok(vfs) = ctx2.sources.ensure_vfs(&source_id.to_string()).await {
             // Extract EXIF
+            let mut got_dims = false;
             if let Some(exif) = extract_exif_from_vfs(&vfs, &fp).await {
+                got_dims = exif.width.is_some() && exif.height.is_some();
                 if let Err(e) = apply_exif(&ctx2.db, photo_id, &exif).await {
                     tracing::warn!("apply_exif failed for {fp}: {e}");
                 }
             }
+
+            // Fallback: if EXIF didn't provide dimensions, read from image header
+            if !got_dims
+                && let Ok(bytes) = vfs.read_bytes(std::path::Path::new(&fp), 0, Some(512 * 1024)).await
+            {
+                let dim_bytes = bytes.clone();
+                if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
+                    tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
+                }).await {
+                    let _ = photos::ActiveModel {
+                        id: Set(photo_id),
+                        width: Set(Some(w)),
+                        height: Set(Some(h)),
+                        ..Default::default()
+                    }
+                    .update(&ctx2.db)
+                    .await;
+                }
+            }
+
             // Detect Live Photo companion
             let _ = detect_live_photo_companion(&ctx2.db, &vfs, photo_id, &dp, &fn2).await;
         }
@@ -255,7 +277,7 @@ fn extract_exif_from_bytes(bytes: &[u8]) -> Option<ExifData> {
     let aperture = get_f64(Tag::FNumber);
     let iso = get_i32(Tag::ISOSpeed);
 
-    let shutter_speed = get_string(Tag::ExposureTime).map(|s| format!("{}s", s));
+    let shutter_speed = get_string(Tag::ExposureTime).map(|s| format!("{s}s"));
 
     // Collect all raw tags
     let mut raw = serde_json::Map::new();
@@ -491,7 +513,7 @@ fn parse_date_parts(parts: &[String]) -> Option<DateTime<FixedOffset>> {
     if parts.len() < 6 {
         return None;
     }
-    let year: i32 = parts.get(0)?.parse().ok()?;
+    let year: i32 = parts.first()?.parse().ok()?;
     let month: u32 = parts.get(1)?.parse().ok()?;
     let day: u32 = parts.get(2)?.parse().ok()?;
     let hour: u32 = parts.get(3)?.parse().ok()?;

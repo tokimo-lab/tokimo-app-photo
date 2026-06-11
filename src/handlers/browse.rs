@@ -118,6 +118,7 @@ pub async fn list_folders(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::option_option)]
 pub struct UpdatePhotoInput {
     pub title: Option<Option<String>>,
     pub description: Option<Option<String>>,

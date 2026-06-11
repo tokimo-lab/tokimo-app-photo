@@ -11,7 +11,7 @@ use tracing::{error, info};
 
 use crate::{assets, ctx::AppCtx, handlers};
 
-pub async fn spawn(service: &str, ctx: Arc<AppCtx>) -> anyhow::Result<DataPlaneSocket> {
+pub fn spawn(service: &str, ctx: Arc<AppCtx>) -> anyhow::Result<DataPlaneSocket> {
     let (listener, socket) = BusListener::bind_for_app(service)?;
     info!(?socket, "photo: app server listening");
 

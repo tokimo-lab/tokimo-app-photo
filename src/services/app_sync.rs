@@ -284,11 +284,11 @@ impl AppSyncService {
             let checksum = format!("{}:{}", file.file_size, file.mtime);
 
             // Skip if already exists with matching checksum
-            if let Some(existing_checksum) = existing_photos.get(&file.file_path) {
-                if existing_checksum.as_deref() == Some(&checksum) {
-                    skipped += 1;
-                    continue;
-                }
+            if let Some(existing_checksum) = existing_photos.get(&file.file_path)
+                && existing_checksum.as_deref() == Some(&checksum)
+            {
+                skipped += 1;
+                continue;
             }
 
             jobs_batch.push((

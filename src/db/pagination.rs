@@ -32,6 +32,7 @@ impl PageInput {
 /// Standard paginated response.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_field_names)]
 pub struct Page<T: Serialize> {
     pub items: Vec<T>,
     pub total: i64,

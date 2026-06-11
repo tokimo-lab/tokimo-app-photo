@@ -50,23 +50,21 @@ pub async fn serve(path: Option<axum::extract::Path<String>>) -> impl IntoRespon
     }
 }
 
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn mime_from_path(path: &str) -> HeaderValue {
-    let mime = if path.ends_with(".js") {
-        "application/javascript"
-    } else if path.ends_with(".css") {
-        "text/css"
-    } else if path.ends_with(".html") {
-        "text/html; charset=utf-8"
-    } else if path.ends_with(".svg") {
-        "image/svg+xml"
-    } else if path.ends_with(".png") {
-        "image/png"
-    } else if path.ends_with(".woff2") {
-        "font/woff2"
-    } else if path.ends_with(".json") {
-        "application/json"
-    } else {
-        "application/octet-stream"
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let mime = match ext {
+        "js" => "application/javascript",
+        "css" => "text/css",
+        "html" => "text/html; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "woff2" => "font/woff2",
+        "json" => "application/json",
+        _ => "application/octet-stream",
     };
     HeaderValue::from_static(mime)
 }

@@ -32,10 +32,12 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+#[allow(clippy::unnecessary_wraps)]
 pub fn ok<T: Serialize>(data: T) -> Result<Json<serde_json::Value>, AppError> {
     Ok(Json(serde_json::json!({ "success": true, "data": data })))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 pub fn ok_simple() -> Result<Json<serde_json::Value>, AppError> {
     Ok(Json(serde_json::json!({ "success": true })))
 }

@@ -68,6 +68,7 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
     Ok((job_id, params))
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder {
     let ctx_clip_scan = ctx.clone();
     let ctx_clip = ctx.clone();

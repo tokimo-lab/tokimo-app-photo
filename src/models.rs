@@ -1,6 +1,5 @@
 //! DTO models for the photo sidecar API.
 
-use chrono::SecondsFormat;
 use sea_orm::DerivePartialModel;
 use sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde::Serialize;
@@ -12,9 +11,10 @@ use crate::db::entities::{photo_albums, photos};
 // Helper
 // ---------------------------------------------------------------------------
 
+/// Format a datetime to RFC 3339 string, matching the `ApiDateTimeExt` convention
+/// used across all other apps (to_rfc3339 with auto-selected seconds precision).
 fn fmt_dt(dt: &Option<DateTimeWithTimeZone>) -> Option<String> {
-    dt.as_ref()
-        .map(|d| d.to_rfc3339_opts(SecondsFormat::Millis, true))
+    dt.as_ref().map(DateTimeWithTimeZone::to_rfc3339)
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +144,12 @@ pub struct PhotoStreamTarget {
     pub mime_type: Option<String>,
     pub thumbnail_path: Option<String>,
     pub live_video_path: Option<String>,
-    /// UUID of the VFS source that owns this photo (None = local path).
-    pub source_id: Option<Uuid>,
+    /// UUID string of the VFS source that owns this photo (None = local path).
+    pub source_id: Option<String>,
+    /// VFS source type (e.g. "local", "smb", "webdav"); None when source_id is None.
+    pub source_type: Option<String>,
+    /// VFS source config JSON; None when source_id is None.
+    pub source_config: Option<serde_json::Value>,
 }
 
 /// Subdirectory info returned by the folders endpoint.

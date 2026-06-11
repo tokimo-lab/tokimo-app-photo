@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "photo_ocr_results")]
+#[allow(clippy::struct_field_names)]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,

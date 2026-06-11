@@ -14,26 +14,23 @@ use crate::ctx::AppCtx;
 use crate::db::repos::photo_repo::PhotoRepo;
 
 /// Returns a simple MIME type for a file path extension.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn mime_for_ext(path: &str) -> &'static str {
-    let lower = path.to_lowercase();
-    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
-        "image/jpeg"
-    } else if lower.ends_with(".png") {
-        "image/png"
-    } else if lower.ends_with(".gif") {
-        "image/gif"
-    } else if lower.ends_with(".webp") {
-        "image/webp"
-    } else if lower.ends_with(".heic") || lower.ends_with(".heif") {
-        "image/heic"
-    } else if lower.ends_with(".avif") {
-        "image/avif"
-    } else if lower.ends_with(".mp4") {
-        "video/mp4"
-    } else if lower.ends_with(".mov") {
-        "video/quicktime"
-    } else {
-        "application/octet-stream"
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+    match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" | "heif" => "image/heic",
+        "avif" => "image/avif",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        _ => "application/octet-stream",
     }
 }
 
@@ -48,9 +45,8 @@ pub async fn serve_photo_image(
     Path(photo_id): Path<String>,
     request: Request,
 ) -> Response {
-    let uid = match photo_id.parse::<uuid::Uuid>() {
-        Ok(u) => u,
-        Err(_) => return (StatusCode::BAD_REQUEST, "invalid photo id").into_response(),
+    let Ok(uid) = photo_id.parse::<uuid::Uuid>() else {
+        return (StatusCode::BAD_REQUEST, "invalid photo id").into_response();
     };
     let target = match PhotoRepo::load_stream_target(&ctx.db, uid).await {
         Ok(Some(t)) => t,
@@ -70,7 +66,7 @@ pub async fn serve_photo_image(
         &ctx,
         &target.path,
         target.mime_type.as_deref(),
-        target.source_id,
+        target.source_id.as_deref(),
         request,
     )
     .await
@@ -81,9 +77,8 @@ pub async fn serve_live_video(
     Path(photo_id): Path<String>,
     request: Request,
 ) -> Response {
-    let uid = match photo_id.parse::<uuid::Uuid>() {
-        Ok(u) => u,
-        Err(_) => return (StatusCode::BAD_REQUEST, "invalid photo id").into_response(),
+    let Ok(uid) = photo_id.parse::<uuid::Uuid>() else {
+        return (StatusCode::BAD_REQUEST, "invalid photo id").into_response();
     };
     let target = match PhotoRepo::load_stream_target(&ctx.db, uid).await {
         Ok(Some(t)) => t,
@@ -107,7 +102,7 @@ pub async fn serve_live_video(
         &ctx,
         &live_path,
         Some("video/mp4"),
-        target.source_id,
+        target.source_id.as_deref(),
         request,
     )
     .await
@@ -117,7 +112,7 @@ async fn serve_file_response(
     ctx: &AppCtx,
     path: &str,
     mime_type: Option<&str>,
-    source_id: Option<uuid::Uuid>,
+    source_id: Option<&str>,
     _request: Request,
 ) -> Response {
     let content_type = mime_type.unwrap_or_else(|| mime_for_ext(path));
@@ -138,7 +133,7 @@ async fn serve_file_response(
         }
         Some(sid) => {
             // Remote VFS
-            let vfs = match ctx.sources.ensure_vfs(&sid.to_string()).await {
+            let vfs = match ctx.sources.ensure_vfs(sid).await {
                 Ok(v) => v,
                 Err(e) => {
                     return (StatusCode::BAD_GATEWAY, format!("VFS init failed: {e}"))

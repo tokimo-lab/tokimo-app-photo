@@ -4,7 +4,7 @@ use sea_orm::*;
 use uuid::Uuid;
 
 use crate::db::entities::{
-    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos,
+    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
 use crate::db::pagination::{Page, PageInput};
 use crate::error::{AppError, OptionExt};
@@ -213,12 +213,30 @@ impl PhotoRepo {
         photo_id: Uuid,
     ) -> Result<Option<PhotoStreamTarget>, AppError> {
         let row = photos::Entity::find_by_id(photo_id).one(db).await?;
-        Ok(row.map(|photo| PhotoStreamTarget {
+        let Some(photo) = row else {
+            return Ok(None);
+        };
+
+        // Resolve source_type and source_config from the vfs table when source_id exists.
+        let (source_id_str, source_type, source_config) = match photo.source_id {
+            Some(sid) => {
+                let vfs_row = vfs::Entity::find_by_id(sid).one(db).await?;
+                match vfs_row {
+                    Some(v) => (Some(sid.to_string()), Some(v.r#type), v.config),
+                    None => (Some(sid.to_string()), None, None),
+                }
+            }
+            None => (None, None, None),
+        };
+
+        Ok(Some(PhotoStreamTarget {
             path: photo.path,
             mime_type: photo.mime_type,
             thumbnail_path: photo.thumbnail_path,
             live_video_path: photo.live_video_path,
-            source_id: photo.source_id,
+            source_id: source_id_str,
+            source_type,
+            source_config,
         }))
     }
 
@@ -473,6 +491,7 @@ impl PhotoRepo {
             .rows_affected)
     }
 
+    #[allow(clippy::option_option)]
     pub async fn update_photo(
         db: &impl ConnectionTrait,
         photo_id: Uuid,

@@ -36,7 +36,7 @@ pub async fn batch_favorite(
         .unwrap_or_default();
     let favorite: bool = body
         .get("favorite")
-        .and_then(|v| v.as_bool())
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
     let ids = parse_ids(&photo_ids);
     let count = PhotoRepo::batch_set_favorite(&ctx.db, &ids, favorite).await?;
@@ -63,7 +63,7 @@ pub async fn batch_hide(
         .get("photoIds")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let hidden: bool = body.get("hidden").and_then(|v| v.as_bool()).unwrap_or(true);
+    let hidden: bool = body.get("hidden").and_then(serde_json::Value::as_bool).unwrap_or(true);
     let ids = parse_ids(&photo_ids);
     let count = PhotoRepo::batch_set_hidden(&ctx.db, &ids, hidden).await?;
     ok(serde_json::json!({ "updated": count }))
