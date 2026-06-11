@@ -13,11 +13,11 @@ import {
   computeJustifiedRows,
   type JustifiedRow,
 } from "@/hooks/useJustifiedLayout";
-import { useWindowActions } from "@/system";
-import { getDefaultSize } from "@/system/window/window-sync";
+import { useAppCtx } from "../AppContext";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
-import { type DateGroup, groupPhotosByDate } from "./photo-utils";
+import { type DateGroup, groupPhotosByDate, photoImageUrl } from "./photo-utils";
+import { thumbUrl } from "@/lib/thumb";
 import { TimelineScrubber } from "./TimelineScrubber";
 
 const PHOTO_GAP = 4;
@@ -63,111 +63,60 @@ export function PhotoTimeline({
   targetRowHeight?: number;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
-  const { openWindow } = useWindowActions();
+  const ctx = useAppCtx();
 
   const handlePhotoClick = useCallback(
     (photo: PhotoOutput) => {
-      // Calculate center position relative to parent window
-      const parentEl = measureRef.current?.closest(
-        "[data-window-id]",
-      ) as HTMLElement | null;
-      const parentRect = parentEl?.getBoundingClientRect();
-      const childSize = getDefaultSize("image");
-      // Read info panel state to adjust fly animation target
-      let infoW = 0;
-      try {
-        if (localStorage.getItem("photo-viewer-info-panel-open") === "true")
-          infoW = 320;
-      } catch {}
-      let initialX: number | undefined;
-      let initialY: number | undefined;
-      if (parentRect) {
-        initialX = Math.max(
-          0,
-          parentRect.left + (parentRect.width - childSize.width) / 2,
-        );
-        initialY = Math.max(
-          0,
-          parentRect.top + (parentRect.height - childSize.height) / 2,
-        );
-      }
+      const dataSource = photos.map((p) => ({
+        id: p.id,
+        src: photoImageUrl(p.id),
+        thumbnail: thumbUrl("photo", p.id, 320),
+        width: p.width,
+        height: p.height,
+        alt: p.filename,
+      }));
+      const currentIndex = photos.findIndex((p) => p.id === photo.id);
 
-      // Fly animation: thumbnail → window target
-      const thumbEl = document.querySelector(
-        `[data-photo-id="${photo.id}"]`,
-      ) as HTMLElement | null;
-      if (thumbEl && initialX != null && initialY != null) {
+      const thumbEl = document.querySelector(`[data-photo-id="${photo.id}"]`);
+      const thumbImg = thumbEl?.querySelector("img");
+
+      if (thumbEl && thumbImg) {
         const thumbRect = thumbEl.getBoundingClientRect();
-        const thumbImg = thumbEl.querySelector("img");
-        if (thumbImg) {
-          // Calculate actual image size within the content area
-          const contentWidth = childSize.width - infoW;
-          const contentHeight = childSize.height - 36; // subtract title bar
-          const titleBarH = 36;
 
-          // If photo has dimensions, compute scaled size; otherwise use content area
-          let actualImgW = contentWidth;
-          let actualImgH = contentHeight;
-          if (photo.width && photo.height && photo.width > 0 && photo.height > 0) {
-            const imgAspect = photo.width / photo.height;
-            const contentAspect = contentWidth / contentHeight;
-            if (imgAspect > contentAspect) {
-              // Image is wider than content area
-              actualImgW = contentWidth;
-              actualImgH = contentWidth / imgAspect;
-            } else {
-              // Image is taller than content area
-              actualImgH = contentHeight;
-              actualImgW = contentHeight * imgAspect;
-            }
-          }
-
-          // Center the image within the content area (info panel is on the right)
-          const imageLeft = initialX + (contentWidth - actualImgW) / 2;
-          const imageTop = initialY + titleBarH + (contentHeight - actualImgH) / 2;
-
-          const flyEl = document.createElement("div");
-          flyEl.style.cssText = `
-            position: fixed; z-index: 99999; pointer-events: none;
-            left: ${thumbRect.left}px; top: ${thumbRect.top}px;
-            width: ${thumbRect.width}px; height: ${thumbRect.height}px;
-            border-radius: 4px; overflow: hidden;
-            transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-          `;
-          const img = document.createElement("img");
-          img.src = thumbImg.src;
-          img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
-          flyEl.appendChild(img);
-          document.body.appendChild(flyEl);
-          // Trigger reflow, then animate
-          flyEl.getBoundingClientRect();
-          requestAnimationFrame(() => {
-            flyEl.style.left = `${imageLeft}px`;
-            flyEl.style.top = `${imageTop}px`;
-            flyEl.style.width = `${actualImgW}px`;
-            flyEl.style.height = `${actualImgH}px`;
-            flyEl.style.borderRadius = "8px";
-            img.style.objectFit = "contain";
-          });
-          setTimeout(() => {
-            flyEl.remove();
-            window.dispatchEvent(new CustomEvent("photo-fly-end"));
-          }, 350);
-        }
+        ctx.shell.viewer.openViewer({
+          type: "image",
+          title: photo.filename,
+          route: `/photos/${photo.id}`,
+          metadata: {
+            dataSource,
+            index: currentIndex,
+            flyFrom: {
+              rect: thumbRect,
+              selector: `[data-photo-id="${photo.id}"]`,
+            },
+            thumbnail: thumbUrl("photo", photo.id, 320),
+            appId,
+            sourceType: "photo",
+            sourceId: photo.id,
+          },
+        });
+      } else {
+        // Fallback: open without animation
+        ctx.shell.viewer.openViewer({
+          type: "image",
+          title: photo.filename,
+          route: `/photos/${photo.id}`,
+          metadata: {
+            dataSource,
+            index: currentIndex,
+            appId,
+            sourceType: "photo",
+            sourceId: photo.id,
+          },
+        });
       }
-
-      openWindow({
-        type: "image",
-        title: photo.filename,
-        route: `/photos/${photo.id}`,
-        appId,
-        sourceType: "photo",
-        sourceId: photo.id,
-        initialX,
-        initialY,
-      });
     },
-    [openWindow, appId],
+    [ctx, appId, photos],
   );
 
   // ── Measure available content width for justified layout ─────
