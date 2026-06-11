@@ -100,8 +100,32 @@ export function PhotoTimeline({
         const thumbRect = thumbEl.getBoundingClientRect();
         const thumbImg = thumbEl.querySelector("img");
         if (thumbImg) {
-          // Target is the image area within the window (excludes info panel)
-          const targetW = childSize.width - infoW;
+          // Calculate actual image size within the content area
+          const contentWidth = childSize.width - infoW;
+          const contentHeight = childSize.height - 36; // subtract title bar
+          const titleBarH = 36;
+
+          // If photo has dimensions, compute scaled size; otherwise use content area
+          let actualImgW = contentWidth;
+          let actualImgH = contentHeight;
+          if (photo.width && photo.height && photo.width > 0 && photo.height > 0) {
+            const imgAspect = photo.width / photo.height;
+            const contentAspect = contentWidth / contentHeight;
+            if (imgAspect > contentAspect) {
+              // Image is wider than content area
+              actualImgW = contentWidth;
+              actualImgH = contentWidth / imgAspect;
+            } else {
+              // Image is taller than content area
+              actualImgH = contentHeight;
+              actualImgW = contentHeight * imgAspect;
+            }
+          }
+
+          // Center the image within the content area (info panel is on the right)
+          const imageLeft = initialX + (contentWidth - actualImgW) / 2;
+          const imageTop = initialY + titleBarH + (contentHeight - actualImgH) / 2;
+
           const flyEl = document.createElement("div");
           flyEl.style.cssText = `
             position: fixed; z-index: 99999; pointer-events: none;
@@ -118,11 +142,10 @@ export function PhotoTimeline({
           // Trigger reflow, then animate
           flyEl.getBoundingClientRect();
           requestAnimationFrame(() => {
-            // Offset by title bar height (36px) so image aligns with content area
-            flyEl.style.left = `${initialX}px`;
-            flyEl.style.top = `${(initialY ?? 0) + 36}px`;
-            flyEl.style.width = `${targetW}px`;
-            flyEl.style.height = `${childSize.height - 36}px`;
+            flyEl.style.left = `${imageLeft}px`;
+            flyEl.style.top = `${imageTop}px`;
+            flyEl.style.width = `${actualImgW}px`;
+            flyEl.style.height = `${actualImgH}px`;
             flyEl.style.borderRadius = "8px";
             img.style.objectFit = "contain";
           });
