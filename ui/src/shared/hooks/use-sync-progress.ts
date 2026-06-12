@@ -1,6 +1,7 @@
+import type { ShellJobEvent } from "@tokimo/sdk";
 import { useJobEvents } from "@tokimo/sdk";
 import { useMemo, useState } from "react";
-import type { PhotoLibraryOutput, WsJobEvent } from "../../lib/types";
+import type { PhotoLibraryOutput } from "../../lib/types";
 
 interface SyncProgressOptions {
   libraries?: PhotoLibraryOutput[];
@@ -11,10 +12,17 @@ interface SyncProgressOptions {
   fetchProgress?: (id: string) => Promise<unknown>;
 }
 
-function jobLibraryId(event: WsJobEvent): string | null {
-  const metadata = event.job.metadata;
+function jobLibraryId(event: ShellJobEvent): string | null {
+  const job = event.job;
+  if (!job) return null;
+  const metadata = job.metadata;
   const value =
-    metadata?.libraryId ?? metadata?.appId ?? event.job.appId ?? event.appId;
+    (typeof metadata === "object" && metadata !== null
+      ? (metadata as Record<string, unknown>).libraryId ??
+        (metadata as Record<string, unknown>).appId
+      : undefined) ??
+    job.appId ??
+    event.appId;
   return typeof value === "string" ? value : null;
 }
 
@@ -30,24 +38,24 @@ export function useSyncProgress({
   useJobEvents({
     jobTypes: [...scanJobTypes],
     enabled: true,
-    onEvent: (event) => {
+    onEvent: (event: ShellJobEvent) => {
       const libraryId = jobLibraryId(event);
-      if (!libraryId) return;
+      if (!libraryId || !event.job) return;
+      const job = event.job;
       const pct =
-        typeof event.job.progress === "number"
-          ? Math.round(event.job.progress)
-          : 0;
+        typeof job.progress === "number" ? Math.round(job.progress) : 0;
       const terminal = new Set([
         "completed",
         "partially_completed",
         "failed",
         "cancelled",
       ]);
+      const status = typeof job.status === "string" ? job.status : "";
       setProgress((prev) => ({
         ...prev,
-        [libraryId]: { isActive: !terminal.has(event.job.status), pct },
+        [libraryId]: { isActive: !terminal.has(status), pct },
       }));
-      if (terminal.has(event.job.status)) {
+      if (terminal.has(status)) {
         onContentRefresh();
         onLibraryRefresh();
       }

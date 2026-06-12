@@ -4,8 +4,8 @@
 //! Scan + refresh endpoints enqueue jobs over the bus (`jobs.create`) using the
 //! authenticated request user as the caller context.
 //!
-//! Three endpoints remain documented stubs (`clear_thumbnails`,
-//! `refresh_thumbnail`, `refresh_exif`) — see the comment above them.
+//! Two endpoints remain documented stubs (`clear_thumbnails`,
+//! `refresh_thumbnail`) — see the comment above them.
 
 use std::sync::Arc;
 
@@ -13,11 +13,13 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
+use sea_orm::{ActiveModelTrait, EntityTrait};
 use uuid::Uuid;
 
 use crate::bus_clients::jobs::{self, CreateJobRequest, photo_caller};
 use crate::config::{PhotoAiSettings, PhotoGeoSettings};
 use crate::ctx::AppCtx;
+use crate::db::entities::photos;
 use crate::db::repos::app_settings_repo::AppSettingsRepo;
 use crate::db::repos::photo_repo::PhotoRepo;
 use crate::error::AppError;
@@ -25,6 +27,7 @@ use crate::handlers::user::AuthUser;
 use crate::services::clip::PhotoClipService;
 use crate::services::ocr::PhotoOcrService;
 use crate::services::preempt;
+use crate::services::geo::reverse_geocode_dispatch;
 
 use super::{ok, ok_simple, parse_uuid};
 
@@ -225,13 +228,10 @@ pub async fn clear_clip_results(
 
 // ── Stubs pending infrastructure port ────────────────────────────────────────
 //
-// These three remain stubbed because their backing infrastructure has not been
+// These two remain stubbed because their backing infrastructure has not been
 // ported into the sidecar yet:
 //   • `clear_thumbnails` / `refresh_thumbnail` need a thumbnail storage layer
 //     (the host's `state.storage.delete`), which is absent from `AppCtx`.
-//   • `refresh_exif` needs the `rescan_local_photo` / `rescan_remote_photo`
-//     EXIF-rescan helpers, and the sidecar's `batch.rs::rescan` is itself still
-//     a stub.
 // They will be implemented alongside that infrastructure port.
 
 macro_rules! ai_stub {
@@ -247,7 +247,129 @@ macro_rules! ai_stub {
 }
 
 ai_stub!(clear_thumbnails, path);
-ai_stub!(refresh_exif, path);
+
+/// POST /api/photos/{id}/refresh-exif
+///
+/// Re-extract EXIF metadata + dimensions for a single photo.
+pub async fn refresh_exif(
+    State(ctx): State<Arc<AppCtx>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let photo_id = parse_uuid(&id)?;
+
+    let photo = photos::Entity::find_by_id(photo_id)
+        .one(&ctx.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Photo not found".into()))?;
+
+    let source_id = photo
+        .source_id
+        .ok_or_else(|| AppError::BadRequest("Photo has no source".into()))?;
+
+    let vfs = ctx.sources.ensure_vfs(&source_id.to_string()).await?;
+
+    let fp = std::path::Path::new(&photo.path);
+    let bytes = vfs.read_bytes(fp, 0, Some(256 * 1024)).await
+        .map_err(|e| AppError::Internal(format!("read photo bytes: {e}")))?;
+
+    // Extract EXIF
+    let partial = bytes.clone();
+    let exif_result = tokio::task::spawn_blocking(move || {
+        tokimo_package_image::extract_exif_from_bytes(&partial)
+    }).await.ok().flatten();
+
+    let mut got_dims = false;
+    if let Some(ref exif) = exif_result {
+        got_dims = exif.width.is_some() && exif.height.is_some();
+        apply_exif_update(&ctx.db, photo_id, exif).await?;
+    }
+
+    // Fallback: read dimensions from image header if EXIF didn't provide them
+    if !got_dims {
+        let dim_bytes = bytes.clone();
+        if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
+            tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
+        }).await {
+            let now = chrono::Utc::now().fixed_offset();
+            photos::ActiveModel {
+                id: sea_orm::Set(photo_id),
+                width: sea_orm::Set(Some(w)),
+                height: sea_orm::Set(Some(h)),
+                updated_at: sea_orm::Set(Some(now)),
+                ..Default::default()
+            }
+            .update(&ctx.db)
+            .await?;
+        }
+    }
+
+    ok(serde_json::json!({ "status": "ok" }))
+}
+
+/// Apply extracted EXIF data to an existing photo record.
+async fn apply_exif_update(
+    db: &sea_orm::DatabaseConnection,
+    photo_id: Uuid,
+    exif: &tokimo_package_image::ExifData,
+) -> Result<(), AppError> {
+    use sea_orm::Set;
+    let now = chrono::Utc::now().fixed_offset();
+    let mut active = photos::ActiveModel {
+        id: Set(photo_id),
+        ..Default::default()
+    };
+    if let Some(w) = exif.width {
+        active.width = Set(Some(w));
+    }
+    if let Some(h) = exif.height {
+        active.height = Set(Some(h));
+    }
+    if let Some(ref raw) = exif.taken_at {
+        let trimmed = raw.trim_matches('"');
+        let normalized = trimmed.replacen(':', "-", 2);
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&normalized, "%Y-%m-%d %H:%M:%S") {
+            active.taken_at = Set(Some(naive.and_utc().fixed_offset()));
+        }
+    }
+    if let Some(ref v) = exif.camera_make {
+        active.camera_make = Set(Some(v.clone()));
+    }
+    if let Some(ref v) = exif.camera_model {
+        active.camera_model = Set(Some(v.clone()));
+    }
+    if let Some(ref v) = exif.lens_model {
+        active.lens_model = Set(Some(v.clone()));
+    }
+    if let Some(v) = exif.focal_length {
+        active.focal_length = Set(Some(v));
+    }
+    if let Some(v) = exif.aperture {
+        active.aperture = Set(Some(v));
+    }
+    if let Some(ref v) = exif.shutter_speed {
+        active.shutter_speed = Set(Some(v.clone()));
+    }
+    if let Some(v) = exif.iso {
+        active.iso = Set(Some(v));
+    }
+    if let Some(v) = exif.orientation {
+        active.orientation = Set(Some(v));
+    }
+    if let Some(v) = exif.gps_latitude {
+        active.gps_latitude = Set(Some(v));
+    }
+    if let Some(v) = exif.gps_longitude {
+        active.gps_longitude = Set(Some(v));
+    }
+    if let Some(v) = exif.gps_altitude {
+        active.gps_altitude = Set(Some(v));
+    }
+    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
+    active.updated_at = Set(Some(now));
+    active.update(db).await?;
+    Ok(())
+}
+
 ai_stub!(refresh_thumbnail, path);
 
 // ── Settings: photo-ai ───────────────────────────────────────────────────────
@@ -317,20 +439,108 @@ pub async fn update_photo_geo_settings(
     ok(body)
 }
 
-/// POST /settings/geo/test
-///
-/// Until the geo service is ported (see status report), this returns a stub
-/// result so the UI's settings page doesn't break.
+/// POST /settings/geo/test — test all configured keys for the current provider
 pub async fn test_photo_geo_connection(
     State(ctx): State<Arc<AppCtx>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let settings: PhotoGeoSettings = AppSettingsRepo::get(&ctx.db).await?;
-    let result = serde_json::json!({
-        "success": false,
-        "provider": settings.provider,
-        "detail": "geo service not yet ported in sidecar",
-    });
-    ok(result)
+    let http = reqwest::Client::new();
+    let mut results: Vec<serde_json::Value> = Vec::new();
+
+    // Test coordinate: Tiananmen Square, Beijing
+    let test_lon = 116.397428;
+    let test_lat = 39.90923;
+
+    // Test 1: Server-side reverse geocoding API
+    let api_result = match reverse_geocode_dispatch(&http, &settings, test_lon, test_lat).await {
+        Ok(geo) => {
+            let addr = geo
+                .address
+                .or_else(|| {
+                    let parts: Vec<&str> = [
+                        geo.country.as_deref(),
+                        geo.province.as_deref(),
+                        geo.city.as_deref(),
+                        geo.district.as_deref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    if parts.is_empty() {
+                        None
+                    } else {
+                        Some(parts.join(""))
+                    }
+                })
+                .unwrap_or_else(|| "OK".to_string());
+            serde_json::json!({ "name": "serverApi", "success": true, "detail": addr })
+        }
+        Err(e) => {
+            serde_json::json!({ "name": "serverApi", "success": false, "detail": e.to_string() })
+        }
+    };
+    results.push(api_result);
+
+    // Test 2: Map / browser key (provider-specific, optional)
+    match settings.provider.as_str() {
+        "amap" => {
+            if let Some(js_key) = settings.amap_js_api_key.as_deref().filter(|k| !k.is_empty()) {
+                let map_result = test_amap_js_key(&http, js_key).await;
+                results.push(map_result);
+            }
+        }
+        "tianditu" => {
+            if let Some(bk) = settings.tianditu_browser_key.as_deref().filter(|k| !k.is_empty()) {
+                let map_result = test_tianditu_browser_key(&http, bk).await;
+                results.push(map_result);
+            }
+        }
+        _ => {}
+    }
+
+    ok(serde_json::json!({ "results": results }))
+}
+
+/// Test Amap JS API key via map vector tile request.
+async fn test_amap_js_key(http: &reqwest::Client, js_key: &str) -> serde_json::Value {
+    let url = format!(
+        "https://vdata.amap.com/nebula/v2?key={}&flds=road,building,region&t=10,855,340,0&p=16",
+        js_key
+    );
+    match http.get(&url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                serde_json::json!({ "name": "mapKey", "success": true, "detail": "OK" })
+            } else {
+                let detail = format!("HTTP {}", resp.status());
+                serde_json::json!({ "name": "mapKey", "success": false, "detail": detail })
+            }
+        }
+        Err(e) => {
+            serde_json::json!({ "name": "mapKey", "success": false, "detail": e.to_string() })
+        }
+    }
+}
+
+/// Test Tianditu browser key via tile request.
+async fn test_tianditu_browser_key(http: &reqwest::Client, tk: &str) -> serde_json::Value {
+    let url = format!(
+        "http://t0.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL=0&TILEROW=0&TILEMATRIX=1&tk={}",
+        tk
+    );
+    match http.get(&url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                serde_json::json!({ "name": "mapKey", "success": true, "detail": "OK" })
+            } else {
+                let detail = format!("HTTP {}", resp.status());
+                serde_json::json!({ "name": "mapKey", "success": false, "detail": detail })
+            }
+        }
+        Err(e) => {
+            serde_json::json!({ "name": "mapKey", "success": false, "detail": e.to_string() })
+        }
+    }
 }
 
 /// Clear all OCR results across all photos (library-level).

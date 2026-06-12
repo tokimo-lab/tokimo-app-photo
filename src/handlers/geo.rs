@@ -12,18 +12,32 @@ use crate::ctx::AppCtx;
 use crate::db::{pagination::PageInput, repos::photo_repo::PhotoRepo};
 use crate::error::AppError;
 
-use super::{ok, ok_simple, parse_uuid};
+use crate::services::geo::PhotoGeoService;
+
+use super::{ok, parse_uuid};
 
 // ── Reverse geocode ──────────────────────────────────────────────────────────
 
+/// POST /api/apps/{id}/photos/reverse-geocode
+///
+/// Trigger reverse geocoding for all photos with GPS but no geo data.
 pub async fn reverse_geocode(
-    State(_ctx): State<Arc<AppCtx>>,
+    State(ctx): State<Arc<AppCtx>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let _ = app_id;
-    tracing::warn!("reverse_geocode: geo service not available in sidecar");
-    ok_simple()
+    let db = ctx.db.clone();
+    let http = reqwest::Client::new();
+
+    // Run in background so we don't block the response
+    tokio::spawn(async move {
+        match PhotoGeoService::reverse_geocode_app(&db, &http, app_id).await {
+            Ok(count) => tracing::info!("Reverse geocoded {count} photos for app {app_id}"),
+            Err(e) => tracing::error!("Reverse geocode failed for app {app_id}: {e}"),
+        }
+    });
+
+    ok(serde_json::json!({"status": "started"}))
 }
 
 // ── Map points ───────────────────────────────────────────────────────────────
