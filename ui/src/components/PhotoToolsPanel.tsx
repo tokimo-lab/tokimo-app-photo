@@ -73,20 +73,21 @@ export function PhotoToolsPanel({
   // window and extension context, unlike useAppEvent which needs WsProvider).
   useEffect(() => {
     const unsub = shell.ws.subscribe("job_update", (msg) => {
-      const event = msg.data as
-        | { job?: { id?: string; status?: string; error?: string } }
+      // msg.data IS the job object directly (not wrapped in { job: ... })
+      const job = msg.data as
+        | { id?: string; status?: string; error?: string }
         | undefined;
-      if (!event?.job?.id) return;
-      const tool = pendingJobs.current.get(event.job.id);
+      if (!job?.id) return;
+      const tool = pendingJobs.current.get(job.id);
       if (!tool) return;
-      const status = event.job.status;
+      const status = job.status;
       if (!status || !TERMINAL_STATUSES.has(status)) return;
 
-      pendingJobs.current.delete(event.job.id);
+      pendingJobs.current.delete(job.id);
       setLoading((prev) => ({ ...prev, [tool]: false }));
       if (status === "failed" || status === "cancelled") {
         const errMsg =
-          event.job.error ?? (status === "cancelled" ? "已中断" : "失败");
+          job.error ?? (status === "cancelled" ? "已中断" : "失败");
         setResults((prev) => ({ ...prev, [tool]: `❌ ${errMsg}` }));
       } else {
         setResults((prev) => ({ ...prev, [tool]: "✅ 已完成" }));

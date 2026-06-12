@@ -49,7 +49,7 @@ export function OcrResultRow({
 
   const invalidateOcr = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/ocr-results"],
+      queryKey: ["/api/apps/photo/item/{id}/ocr-results"],
     });
   }, [queryClient]);
 

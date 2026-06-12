@@ -72,7 +72,7 @@ export function PhotoInfoSidebar({
         onSuccess: () => {
           setEditing(false);
           queryClient.invalidateQueries({
-            queryKey: ["/api/apps/photo/{id}"],
+            queryKey: ["/api/apps/photo/item/{id}"],
           });
         },
       },
@@ -80,12 +80,12 @@ export function PhotoInfoSidebar({
   }, [detail, editTitle, editDesc, editDate, updateMutation, queryClient]);
 
   const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/{id}"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/item/{id}"] });
     queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/faces"],
+      queryKey: ["/api/apps/photo/item/{id}/faces"],
     });
     queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/ocr-results"],
+      queryKey: ["/api/apps/photo/item/{id}/ocr-results"],
     });
   }, [queryClient]);
 

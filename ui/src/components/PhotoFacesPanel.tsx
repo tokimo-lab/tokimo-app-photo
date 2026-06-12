@@ -192,7 +192,7 @@ function FaceChip({
   const assignMutation = api.photo.assignFaceToPerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
+        queryKey: ["/api/apps/photo/item/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],
@@ -203,7 +203,7 @@ function FaceChip({
   const createPersonMutation = api.photo.createPersonFromFace.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
+        queryKey: ["/api/apps/photo/item/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],
@@ -214,7 +214,7 @@ function FaceChip({
   const renameMutation = api.photo.renamePerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
+        queryKey: ["/api/apps/photo/item/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],

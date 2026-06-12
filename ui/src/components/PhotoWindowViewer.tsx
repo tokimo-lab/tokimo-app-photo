@@ -133,7 +133,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         h,
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/ocr-results"],
+        queryKey: ["/api/apps/photo/item/{id}/ocr-results"],
       });
       setEditingOcrId(result.id);
       setPendingBbox(null);

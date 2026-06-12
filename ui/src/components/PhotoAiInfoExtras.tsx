@@ -71,12 +71,12 @@ export function PhotoAiInfoExtras({
   );
 
   const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/{id}"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/apps/photo/item/{id}"] });
     queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/faces"],
+      queryKey: ["/api/apps/photo/item/{id}/faces"],
     });
     queryClient.invalidateQueries({
-      queryKey: ["/api/apps/photo/{id}/ocr-results"],
+      queryKey: ["/api/apps/photo/item/{id}/ocr-results"],
     });
   }, [queryClient]);
 
@@ -289,7 +289,7 @@ export function PhotoAiInfoExtras({
                   .mutate({ photoId: detail.id, text: "", x, y, w, h })
                   .then(() => {
                     queryClient.invalidateQueries({
-                      queryKey: ["/api/apps/photo/{id}/ocr-results"],
+                      queryKey: ["/api/apps/photo/item/{id}/ocr-results"],
                     });
                   })
                   .catch(() => {});
