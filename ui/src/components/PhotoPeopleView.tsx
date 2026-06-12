@@ -217,7 +217,7 @@ export function PhotoPeopleView({
             <button
               type="button"
               key={person.id}
-              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-border-base bg-surface-raised p-4 text-center transition-colors hover:bg-fill-tertiary "
+              className="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-border-base bg-surface-elevated p-4 text-center transition-colors hover:bg-fill-tertiary "
               onClick={() => handleSelectPerson(person)}
             >
               {/* Avatar */}
@@ -251,7 +251,7 @@ export function PhotoPeopleView({
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-24 rounded border border-border-base bg-surface-raised px-1.5 py-0.5 text-center text-sm text-fg-primary"
+                      className="w-24 rounded border border-border-base bg-surface-elevated px-1.5 py-0.5 text-center text-sm text-fg-primary"
                     />
                     <Button
                       size="small"

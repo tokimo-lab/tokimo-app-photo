@@ -1,20 +1,14 @@
-#![allow(dead_code)]
-//! Photo app — reverse-geocoding service.
-//!
-//! Faithful port of the presplit `services/geo.rs`. Consumers (queue handlers
-//! and AI HTTP endpoints) are wired up in commits 3–5; the `#![allow(dead_code)]`
-//! above keeps not-yet-called public items quiet until then.
-
 use reqwest::Client;
+use rust_client_api::geocoding::{GeoLocation, GeocodingClient};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
-use tokimo_package_client_api::geocoding::{GeoLocation, GeocodingClient};
+use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::PhotoGeoSettings;
 use crate::db::entities::{photo_geo_cache, photos};
-use crate::db::repos::app_settings_repo::AppSettingsRepo;
+use crate::db::repos::system_config_repo::SystemConfigRepo;
 use crate::error::AppError;
 use crate::error::OptionExt;
 
@@ -26,26 +20,11 @@ fn coord_cache_key(val: f64) -> String {
 /// Check whether the selected provider has its required key configured.
 fn provider_has_key(settings: &PhotoGeoSettings) -> bool {
     match settings.provider.as_str() {
-        "amap" => settings
-            .amap_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "qqmap" => settings
-            .qqmap_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "tianditu" => settings
-            .tianditu_server_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "mapbox" => settings
-            .mapbox_access_token
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "maptiler" => settings
-            .maptiler_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
+        "amap" => settings.amap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "qqmap" => settings.qqmap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "tianditu" => settings.tianditu_server_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "mapbox" => settings.mapbox_access_token.as_ref().is_some_and(|k| !k.is_empty()),
+        "maptiler" => settings.maptiler_api_key.as_ref().is_some_and(|k| !k.is_empty()),
         _ => false,
     }
 }
@@ -167,12 +146,9 @@ impl PhotoGeoService {
         };
         photo_geo_cache::Entity::insert(cache_model)
             .on_conflict(
-                OnConflict::columns([
-                    photo_geo_cache::Column::LatKey,
-                    photo_geo_cache::Column::LonKey,
-                ])
-                .do_nothing()
-                .to_owned(),
+                OnConflict::columns([photo_geo_cache::Column::LatKey, photo_geo_cache::Column::LonKey])
+                    .do_nothing()
+                    .to_owned(),
             )
             .exec(db)
             .await
@@ -182,11 +158,7 @@ impl PhotoGeoService {
     }
 
     /// Batch reverse-geocode all photos in an app that have GPS but no geo data.
-    pub async fn reverse_geocode_app(
-        db: &DatabaseConnection,
-        http: &Client,
-        app_id: Uuid,
-    ) -> Result<u32, AppError> {
+    pub async fn reverse_geocode_app(db: &DatabaseConnection, http: &Client, app_id: Uuid) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, app_id).await?;
         if pending.is_empty() {
             return Ok(0);
@@ -199,11 +171,8 @@ impl PhotoGeoService {
     }
 
     /// List photo IDs missing geo data (have GPS but no province).
-    pub async fn list_pending_photo_ids(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<Uuid>, AppError> {
-        let settings: PhotoGeoSettings = AppSettingsRepo::get(db).await?;
+    pub async fn list_pending_photo_ids(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        let settings: PhotoGeoSettings = SystemConfigRepo::get(db).await?;
         if !settings.enabled || !provider_has_key(&settings) {
             return Err(AppError::Internal(
                 "Reverse geocoding not enabled or API key missing".into(),
@@ -225,13 +194,9 @@ impl PhotoGeoService {
 
     /// Process explicit photo IDs (used by child batch jobs). Lenient: per-photo
     /// failures don't abort the batch.
-    pub async fn process_photo_ids(
-        db: &DatabaseConnection,
-        http: &Client,
-        ids: Vec<Uuid>,
-    ) -> (u32, u32, Vec<String>) {
+    pub async fn process_photo_ids(db: &DatabaseConnection, http: &Client, ids: Vec<Uuid>) -> (u32, u32, Vec<String>) {
         let mut errors: Vec<String> = Vec::new();
-        let settings: PhotoGeoSettings = match AppSettingsRepo::get(db).await {
+        let settings: PhotoGeoSettings = match SystemConfigRepo::get(db).await {
             Ok(s) => s,
             Err(e) => {
                 let msg = format!("failed to load settings: {e}");
@@ -302,4 +267,49 @@ impl PhotoGeoService {
 
         (success_count, failure_count, errors)
     }
+
+    /// Get location stats for an app (grouped by province/city/district).
+    pub async fn location_stats(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<LocationGroup>, AppError> {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r"
+                SELECT
+                    geo_province,
+                    geo_city,
+                    geo_district,
+                    COUNT(*) as photo_count
+                FROM photos
+                WHERE app_id = $1
+                  AND geo_province IS NOT NULL
+                  AND deleted_at IS NULL
+                GROUP BY geo_province, geo_city, geo_district
+                ORDER BY photo_count DESC
+                ",
+                [app_id.into()],
+            ))
+            .await?;
+
+        let mut groups = Vec::new();
+        for row in rows {
+            groups.push(LocationGroup {
+                province: row.try_get("", "geo_province").ok(),
+                city: row.try_get("", "geo_city").ok(),
+                district: row.try_get("", "geo_district").ok(),
+                photo_count: row.try_get::<i64>("", "photo_count").unwrap_or(0),
+            });
+        }
+        Ok(groups)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationGroup {
+    pub province: Option<String>,
+    pub city: Option<String>,
+    pub district: Option<String>,
+    pub photo_count: i64,
 }

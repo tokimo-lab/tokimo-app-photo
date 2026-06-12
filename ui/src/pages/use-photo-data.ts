@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PAGE_SIZE } from "@/components/photo-utils";
+import { PAGE_SIZE } from "../components/photo-utils";
 import {
   clearViewerPhotos,
   setViewerPhotos,
-} from "@/components/photo-viewer-store";
+} from "../components/photo-viewer-store";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { api } from "@/generated/rust-api";
 

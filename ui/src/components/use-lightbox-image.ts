@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetchBlob } from "@/api/client";
 import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
 import type { AnimState } from "./lightbox-utils";
 
@@ -51,7 +50,7 @@ export function useLightboxImage({
 
     (async () => {
       try {
-        const res = await apiFetchBlob(fullSrc, { signal: abort.signal });
+        const res = await fetch(fullSrc, { signal: abort.signal });
         const contentLength = res.headers.get("Content-Length");
         const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
 
@@ -106,7 +105,7 @@ export function useLightboxImage({
             setDecoding(false);
             setFullLoaded(true);
           } catch {
-            const jpegRes = await apiFetchBlob(`${fullSrc}?format=jpeg`, {
+            const jpegRes = await fetch(`${fullSrc}?format=jpeg`, {
               signal: abort.signal,
             });
             const jpegBlob = await jpegRes.blob();

@@ -1,7 +1,6 @@
 import { AppSidebar, CircularProgress, Tooltip } from "@tokimo/ui";
 import { PanelLeft, PanelLeftClose, Plus, Settings } from "lucide-react";
 import type { PhotoLibraryOutput } from "@/generated/rust-api";
-import { usePhotoI18n } from "@/i18n";
 import { getAvatarColor, getAvatarIcon } from "@/shared/avatar-utils";
 import { AppIcon } from "@/shared/components/icons";
 
@@ -14,6 +13,7 @@ export default function PhotoSidebar({
   onSettingsClick,
   syncProgress,
   onToggleCollapse,
+  settingsActive = false,
 }: {
   libraries: PhotoLibraryOutput[];
   activeId: string | null;
@@ -23,8 +23,9 @@ export default function PhotoSidebar({
   onSettingsClick: () => void;
   syncProgress?: Record<string, { isActive: boolean; pct: number }>;
   onToggleCollapse?: () => void;
+  /** When true, the settings (⚙) button shows a highlighted state. */
+  settingsActive?: boolean;
 }) {
-  const { t } = usePhotoI18n();
   const sections = [
     {
       items: libraries.map((lib) => {
@@ -73,7 +74,7 @@ export default function PhotoSidebar({
 
   const collapsedFooter = (
     <div className="flex flex-col items-center gap-1">
-      <Tooltip title={t("sidebarCreateLibrary")} placement="right">
+      <Tooltip title="新建图库" placement="right">
         <button
           type="button"
           onClick={onCreateClick}
@@ -82,16 +83,20 @@ export default function PhotoSidebar({
           <Plus className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title={t("sidebarSettings")} placement="right">
+      <Tooltip title="图库设置" placement="right">
         <button
           type="button"
           onClick={onSettingsClick}
-          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-fg-muted transition-all hover:bg-black/[0.08] hover:text-fg-secondary dark:hover:bg-white/[0.08]"
+          className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg transition-all ${
+            settingsActive
+              ? "bg-black/[0.08] text-fg-primary dark:bg-white/[0.08]"
+              : "text-fg-muted hover:bg-black/[0.08] hover:text-fg-secondary dark:hover:bg-white/[0.08]"
+          }`}
         >
           <Settings className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title={t("sidebarExpand")} placement="right">
+      <Tooltip title="展开侧边栏" placement="right">
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -105,7 +110,7 @@ export default function PhotoSidebar({
 
   const fullFooter = (
     <div className="flex items-center gap-1">
-      <Tooltip title={t("sidebarCreateLibrary")}>
+      <Tooltip title="新建图库">
         <button
           type="button"
           onClick={onCreateClick}
@@ -114,16 +119,20 @@ export default function PhotoSidebar({
           <Plus className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title={t("sidebarSettings")}>
+      <Tooltip title="图库设置">
         <button
           type="button"
           onClick={onSettingsClick}
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-fg-muted transition-all hover:bg-black/[0.08] hover:text-fg-secondary dark:hover:bg-white/[0.08]"
+          className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition-all ${
+            settingsActive
+              ? "bg-black/[0.08] text-fg-primary dark:bg-white/[0.08]"
+              : "text-fg-muted hover:bg-black/[0.08] hover:text-fg-secondary dark:hover:bg-white/[0.08]"
+          }`}
         >
           <Settings className="h-4 w-4" />
         </button>
       </Tooltip>
-      <Tooltip title={t("sidebarCollapse")}>
+      <Tooltip title="收起侧边栏">
         <button
           type="button"
           onClick={onToggleCollapse}

@@ -1,38 +1,43 @@
-//! Handlers for photo image / live-video streaming.
-
-use std::{path::Path as StdPath, sync::Arc};
-
 use axum::{
     body::Body,
     extract::{Path, Query, Request, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use bytes::Bytes;
 use serde::Deserialize;
-use tokimo_package_image::vips::{self, OutputFormat};
+use std::{path::Path as StdPath, sync::Arc};
+use tower::util::ServiceExt;
+use tower_http::services::ServeFile;
 
-use crate::ctx::AppCtx;
-use crate::db::repos::photo_repo::PhotoRepo;
+use crate::AppCtx;
+use crate::db::repos::PhotoRepo;
+use crate::handlers::media::stream::mime_for;
+use crate::handlers::media::utils::resolve_local_path;
+use crate::error::{err404, err500};
 
-/// Returns a simple MIME type for a file path extension.
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
-fn mime_for_ext(path: &str) -> &'static str {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "heic" | "heif" => "image/heic",
-        "avif" => "image/avif",
-        "mp4" => "video/mp4",
-        "mov" => "video/quicktime",
-        _ => "application/octet-stream",
-    }
+const PHOTO_SERVE_CHUNK_SIZE: usize = 512 * 1024;
+const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
+    "smb",
+    "nfs",
+    "webdav",
+    "ftp",
+    "sftp",
+    "s3",
+    "115cloud",
+    "aliyundrive",
+    "baidu_netdisk",
+    "quark",
+];
+
+/// Extensions that browsers cannot decode natively.
+const BROWSER_INCOMPATIBLE_EXTS: &[&str] = &[
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+];
+
+fn needs_server_decode(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    BROWSER_INCOMPATIBLE_EXTS.iter().any(|ext| lower.ends_with(ext))
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,115 +45,90 @@ pub struct ImageQuery {
     pub format: Option<String>,
 }
 
-/// Returns `true` when the file is HEIC/HEIF by MIME type or extension.
-fn is_heic_file(path: &str, mime_type: Option<&str>) -> bool {
-    if let Some(mime) = mime_type {
-        let m = mime.to_lowercase();
-        if m == "image/heif" || m == "image/heic" {
-            return true;
-        }
-    }
-    let lower = path.to_lowercase();
-    lower.ends_with(".heic") || lower.ends_with(".heif")
-}
-
+/// GET /api/apps/photo/{photoId}/image
 pub async fn serve_photo_image(
-    State(ctx): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppCtx>>,
     Path(photo_id): Path<String>,
     Query(q): Query<ImageQuery>,
     request: Request,
 ) -> Response {
-    let Ok(uid) = photo_id.parse::<uuid::Uuid>() else {
-        return (StatusCode::BAD_REQUEST, "invalid photo id").into_response();
-    };
-    let target = match PhotoRepo::load_stream_target(&ctx.db, uid).await {
+    let db = state.db.clone();
+    let target = match PhotoRepo::load_stream_target(&db, &photo_id).await {
         Ok(Some(t)) => t,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, "Photo not found").into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("photo lookup failed: {e}"),
-            )
-                .into_response();
-        }
+        Ok(None) => return err404::<()>("Photo not found".into()).into_response(),
+        Err(e) => return err500::<()>(format!("photo lookup failed: {e}")).into_response(),
     };
 
-    // Convert HEIC→JPEG on demand (fallback for browsers without native HEIC support)
-    if q.format.as_deref() == Some("jpeg")
-        && is_heic_file(&target.path, target.mime_type.as_deref())
-    {
-        return serve_heic_as_jpeg(&ctx, &target).await;
+    if q.format.as_deref() == Some("jpeg") && needs_server_decode(&target.path) {
+        return serve_raw_as_jpeg(state, &target).await;
     }
 
-    serve_file_response(
-        &ctx,
-        &target.path,
+    serve_vfs_file(
+        state,
+        target.path,
         target.mime_type.as_deref(),
         target.source_id.as_deref(),
+        target.source_type.as_deref(),
+        target.source_config.as_ref(),
         request,
     )
     .await
 }
 
+/// GET /api/apps/photo/{photoId}/live-video
 pub async fn serve_live_video(
-    State(ctx): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppCtx>>,
     Path(photo_id): Path<String>,
     request: Request,
 ) -> Response {
-    let Ok(uid) = photo_id.parse::<uuid::Uuid>() else {
-        return (StatusCode::BAD_REQUEST, "invalid photo id").into_response();
-    };
-    let target = match PhotoRepo::load_stream_target(&ctx.db, uid).await {
+    let db = state.db.clone();
+    let target = match PhotoRepo::load_stream_target(&db, &photo_id).await {
         Ok(Some(t)) => t,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, "Photo not found").into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("photo lookup failed: {e}"),
-            )
-                .into_response();
-        }
+        Ok(None) => return err404::<()>("Photo not found".into()).into_response(),
+        Err(e) => return err500::<()>(format!("photo lookup failed: {e}")).into_response(),
     };
 
     let Some(live_path) = target.live_video_path else {
-        return (StatusCode::NOT_FOUND, "No live video for this photo").into_response();
+        return err404::<()>("No live video for this photo".into()).into_response();
     };
 
-    serve_file_response(
-        &ctx,
-        &live_path,
-        Some("video/mp4"),
+    let mime = Some("video/mp4");
+    serve_vfs_file(
+        state,
+        live_path,
+        mime,
         target.source_id.as_deref(),
+        target.source_type.as_deref(),
+        target.source_config.as_ref(),
         request,
     )
     .await
 }
 
-/// Load raw bytes of a photo from local filesystem or remote VFS.
+/// Load the raw bytes of a photo from local filesystem or remote VFS.
 async fn load_photo_bytes(
-    ctx: &AppCtx,
-    path: &str,
-    source_id: Option<&str>,
+    state: &Arc<AppCtx>,
+    target: &crate::models::PhotoStreamTarget,
 ) -> Result<Vec<u8>, String> {
-    match source_id {
-        None => tokio::fs::read(StdPath::new(path))
+    if target.source_type.as_deref().is_some_and(|t| t == "local") {
+        let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
+        return tokio::fs::read(&abs_path)
             .await
-            .map_err(|e| format!("failed to read local file: {e}")),
-        Some(sid) => {
-            let vfs = ctx
-                .sources
-                .ensure_vfs(sid)
-                .await
-                .map_err(|e| format!("VFS init failed: {e}"))?;
-            vfs.read_bytes(StdPath::new(path), 0, None)
-                .await
-                .map_err(|e| format!("VFS read failed: {e}"))
-        }
+            .map_err(|e| format!("failed to read local file {abs_path}: {e}"));
     }
+
+    let source_id = target
+        .source_id
+        .as_deref()
+        .ok_or_else(|| "no source_id for remote photo".to_string())?;
+    let vfs = state
+        .sources
+        .ensure_vfs(source_id)
+        .await
+        .map_err(|e| format!("VFS init failed: {e}"))?;
+    vfs.read_bytes(StdPath::new(&target.path), 0, None)
+        .await
+        .map_err(|e| format!("VFS read failed: {e}"))
 }
 
 /// Serve a HEIC/HEIF photo by converting it to JPEG on-the-fly via libvips.
@@ -164,82 +144,156 @@ async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTar
         }
     };
 
-    // Use libvips to decode HEIC and re-encode as JPEG (full size, quality 82).
-    let jpeg_bytes = match vips::thumbnail_to_format(&raw_bytes, 0, 0, OutputFormat::Jpeg) {
-        Ok(b) => b,
-        Err(e) => {
-            tracing::warn!("[photo] HEIC→JPEG conversion failed, serving raw: {e}");
-            // Fall back to serving the raw HEIC file
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "image/heic")
-                .header(header::CACHE_CONTROL, "public, max-age=86400")
-                .header(header::CONTENT_LENGTH, raw_bytes.len().to_string())
-                .body(Body::from(raw_bytes))
-                .unwrap_or_else(|_| Response::new(Body::empty()));
-        }
-    };
+    let ffmpeg_bin = which::which("ffmpeg").unwrap_or_else(|_| std::path::PathBuf::from("ffmpeg"));
+    let ext = filename.rsplit('.').next().unwrap_or("heic").to_lowercase();
+    let tmp_path = std::env::temp_dir().join(format!("tokimo_heic_{}.{}", Uuid::new_v4(), ext));
+
+    tokio::fs::write(&tmp_path, raw_bytes)
+        .await
+        .map_err(|e| format!("write temp file: {e}"))?;
+
+    let tmp_str = tmp_path.to_string_lossy().to_string();
+
+    let is_heic = ext == "heic" || ext == "heif";
+    let mut cmd = tokio::process::Command::new(&ffmpeg_bin);
+    cmd.args(["-i", &tmp_str]);
+    if is_heic {
+        cmd.args(["-filter_complex", "[0:g:0]scale=-1:-1[out]", "-map", "[out]"]);
+    } else {
+        cmd.args(["-vframes", "1"]);
+    }
+    cmd.args(["-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "2", "pipe:1"]);
+
+    let result = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
+
+    let _ = tokio::fs::remove_file(&tmp_path).await;
+
+    let output = result.map_err(|e| format!("ffmpeg spawn error: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg convert failed for {filename}: {stderr}"));
+    }
+    if output.stdout.is_empty() {
+        return Err(format!("ffmpeg produced no output for {filename}"));
+    }
 
     tracing::info!(
-        "[photo] HEIC→JPEG: {} ({} KB → {} KB)",
-        target.path,
+        "[photo] RAW→JPEG: {filename} ({} KB → {} KB)",
         raw_bytes.len() / 1024,
-        jpeg_bytes.len() / 1024
+        output.stdout.len() / 1024
     );
+    Ok(output.stdout)
+}
+
+/// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
+async fn serve_raw_as_jpeg(state: Arc<AppCtx>, target: &crate::models::PhotoStreamTarget) -> Response {
+    let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        target.path.hash(&mut hasher);
+        hasher.finish()
+    });
+
+    if let Ok(bytes) = state.storage.download(&cache_key).await {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "image/jpeg")
+            .header(header::CACHE_CONTROL, "public, max-age=604800, immutable")
+            .header(header::CONTENT_LENGTH, bytes.len().to_string())
+            .body(Body::from(bytes))
+            .unwrap_or_else(|_| Response::new(Body::empty()));
+    }
+
+    let raw_bytes = match load_photo_bytes(&state, target).await {
+        Ok(b) => b,
+        Err(e) => return err500::<()>(format!("failed to load photo: {e}")).into_response(),
+    };
+
+    let filename = target.path.rsplit('/').next().unwrap_or(&target.path);
+    let jpeg_bytes = match convert_heic_to_jpeg(&raw_bytes, filename).await {
+        Ok(b) => b,
+        Err(e) => return err500::<()>(format!("image conversion failed: {e}")).into_response(),
+    };
+
+    let storage = Arc::clone(&state.storage);
+    let key = cache_key.clone();
+    let buf = jpeg_bytes.clone();
+    tokio::spawn(async move {
+        if let Err(e) = storage
+            .upload(
+                &key,
+                Bytes::from(buf),
+                Some(crate::services::storage::UploadOptions {
+                    content_type: Some("image/jpeg".to_string()),
+                }),
+            )
+            .await
+        {
+            tracing::warn!("failed to cache JPEG conversion: {e}");
+        }
+    });
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/jpeg")
-        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .header(header::CACHE_CONTROL, "public, max-age=604800, immutable")
         .header(header::CONTENT_LENGTH, jpeg_bytes.len().to_string())
         .body(Body::from(jpeg_bytes))
         .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
-async fn serve_file_response(
-    ctx: &AppCtx,
-    path: &str,
+/// Serve a file from VFS.
+async fn serve_vfs_file(
+    state: Arc<AppCtx>,
+    path: String,
     mime_type: Option<&str>,
     source_id: Option<&str>,
-    _request: Request,
+    source_type: Option<&str>,
+    source_config: Option<&serde_json::Value>,
+    request: Request,
 ) -> Response {
-    let content_type = mime_type.unwrap_or_else(|| mime_for_ext(path));
+    let content_type = mime_type.unwrap_or_else(|| mime_for(&path));
 
-    match source_id {
-        None => {
-            // Local filesystem file
-            match tokio::fs::read(StdPath::new(path)).await {
-                Ok(data) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, content_type)
-                    .header(header::CACHE_CONTROL, "public, max-age=86400")
-                    .header(header::CONTENT_LENGTH, data.len().to_string())
-                    .body(Body::from(data))
-                    .unwrap_or_else(|_| Response::new(Body::empty())),
-                Err(e) => (StatusCode::NOT_FOUND, format!("file not found: {e}")).into_response(),
-            }
-        }
-        Some(sid) => {
-            // Remote VFS
-            let vfs = match ctx.sources.ensure_vfs(sid).await {
-                Ok(v) => v,
-                Err(e) => {
-                    return (StatusCode::BAD_GATEWAY, format!("VFS init failed: {e}"))
-                        .into_response();
-                }
-            };
-            match vfs.read_bytes(StdPath::new(path), 0, None).await {
-                Ok(data) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, content_type)
-                    .header(header::CACHE_CONTROL, "public, max-age=86400")
-                    .header(header::CONTENT_LENGTH, data.len().to_string())
-                    .body(Body::from(data))
-                    .unwrap_or_else(|_| Response::new(Body::empty())),
-                Err(e) => {
-                    (StatusCode::BAD_GATEWAY, format!("VFS read failed: {e}")).into_response()
-                }
-            }
-        }
+    if source_type.is_some_and(|t| t == "local") {
+        let abs_path = resolve_local_path(&path, source_config);
+        let response = match ServeFile::new(&abs_path)
+            .with_buf_chunk_size(PHOTO_SERVE_CHUNK_SIZE)
+            .oneshot(request)
+            .await
+        {
+            Ok(r) => r,
+            Err(never) => match never {},
+        };
+        let mut resp = response.map(Body::new).into_response();
+        resp.headers_mut().insert(
+            header::CACHE_CONTROL,
+            "public, max-age=604800, immutable".parse().unwrap(),
+        );
+        return resp;
     }
+
+    let Some(source_id) = source_id else {
+        return err404::<()>("Photo source not found".into()).into_response();
+    };
+    if !source_type.is_some_and(|t| REMOTE_FS_SOURCE_TYPES.contains(&t)) {
+        return err404::<()>("Photo source not available".into()).into_response();
+    }
+
+    let vfs = match state.sources.ensure_vfs(source_id).await {
+        Ok(vfs) => vfs,
+        Err(err) => return err404::<()>(err).into_response(),
+    };
+
+    let file_data = match vfs.read_bytes(StdPath::new(&path), 0, None).await {
+        Ok(data) => data,
+        Err(err) => return err500::<()>(format!("failed to read photo: {err}")).into_response(),
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
+        .header(header::CONTENT_LENGTH, file_data.len().to_string())
+        .body(Body::from(file_data))
+        .unwrap_or_else(|_| Response::new(Body::empty()))
 }

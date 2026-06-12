@@ -1,16 +1,17 @@
-#![allow(dead_code)]
 //! Single-photo CLIP embedding job (user-triggered "refresh" action).
 use std::sync::Arc;
 
+use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
-use crate::ctx::AppCtx;
-use crate::queue::cancellation::{JobCancel, check_cancel};
+use crate::AppCtx;
 use crate::services::clip::PhotoClipService;
+use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
-    ctx: &Arc<AppCtx>,
+    db: &DatabaseConnection,
+    state: &Arc<AppCtx>,
     _job_id: Uuid,
     params: &JsonValue,
     _user_id: Option<Uuid>,
@@ -23,6 +24,6 @@ pub async fn handle(
         .ok_or("Missing photoId in params")?;
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
-    PhotoClipService::embed_photo(&ctx.db, &ctx.ai, &ctx.sources, photo_uuid).await?;
+    PhotoClipService::embed_photo(db, state, photo_uuid).await?;
     Ok(Some(json!({ "status": "ok" })))
 }

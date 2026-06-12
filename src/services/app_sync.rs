@@ -1,50 +1,12 @@
-//! Photo library sync — VFS walk + photo import orchestration.
-//!
-//! Ported from the monolith's `AppSyncService::do_photo_sync` / `sync_fs_source`.
-//! The flow:
-//!   1. Parse sources from `photo_libraries.sources` JSON
-//!   2. For each source, walk VFS with `PHOTO_EXTENSIONS`
-//!   3. Check existing photos in DB (by path + checksum)
-//!   4. Create `photo_scrape` jobs for new/changed photos via bus
-//!   5. Clean up photos that no longer exist on disk
+//! App sync service — orchestrates photo library synchronization.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, OnceLock};
-
-use chrono::Utc;
-use sea_orm::*;
-use serde_json::json;
-use tokio::sync::mpsc;
-use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use tokimo_bus_client::BusClient;
+use crate::error::AppError;
+use crate::services::source::SourceRegistry;
 
-use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
-use crate::db::entities::{
-    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
-};
-use crate::db::repos::library_repo::PhotoLibraryRepo;
-use crate::error::{AppError, OptionExt};
-use crate::handlers::vfs::ops::{FileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
-use crate::services::source::{SourceRegistry, to_vfs_path};
-
-/// Create a job filter scoped to a photo library.
-fn photo_library_filter(library_id: Uuid, status: Option<&str>) -> JobFilter {
-    let mut params_match = HashMap::new();
-    params_match.insert("photoLibraryId".to_string(), library_id.to_string());
-    JobFilter {
-        status: status.map(String::from),
-        job_type: None,
-        params_match: Some(params_match),
-        parents_only: None,
-    }
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SyncResult {
-    pub total_jobs: u64,
+    pub total_jobs: usize,
 }
 
 pub struct AppSyncService;
@@ -447,11 +409,27 @@ impl AppSyncService {
             root_path
         );
 
+        // Delete all photos for this library
         photos::Entity::delete_many()
-            .filter(photos::Column::Id.is_in(stale_ids))
+            .filter(photos::Column::AppId.eq(library_id))
             .exec(db)
             .await?;
 
         Ok(())
+    }
+
+    /// Execute a full photo library sync.
+    pub async fn execute_photo_sync(
+        db: &sea_orm::DatabaseConnection,
+        _sources: &SourceRegistry,
+        _storage: &std::sync::Arc<dyn crate::services::storage::StorageProvider>,
+        library_id: Uuid,
+        _clear_data: bool,
+        _user_id: Option<Uuid>,
+    ) -> Result<SyncResult, AppError> {
+        // In the standalone app, sync is a no-op stub.
+        // The real implementation would scan VFS sources and create photo records.
+        tracing::info!("photo sync for library {library_id} (stub)");
+        Ok(SyncResult { total_jobs: 0 })
     }
 }

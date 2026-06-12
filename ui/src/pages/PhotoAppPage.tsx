@@ -11,16 +11,16 @@ import {
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlbumPickerDialog } from "@/components/AlbumPickerDialog";
-import { PhotoAlbumsView } from "@/components/PhotoAlbumsView";
-import { PhotoFoldersView } from "@/components/PhotoFoldersView";
-import { PhotoLocationTab } from "@/components/PhotoLocationTab";
-import type { MapClusterSelection } from "@/components/PhotoMapView";
-import { usePhotoMenuBarState } from "@/components/PhotoMenuBar";
-import { PhotoPeopleView } from "@/components/PhotoPeopleView";
-import { PhotoSelectionBar } from "@/components/PhotoSelectionBar";
-import { PHOTO_SIZE_LEVELS } from "@/components/PhotoSizeSlider";
-import { PhotoTimeline } from "@/components/PhotoTimeline";
+import { AlbumPickerDialog } from "../components/AlbumPickerDialog";
+import { PhotoAlbumsView } from "../components/PhotoAlbumsView";
+import { PhotoFoldersView } from "../components/PhotoFoldersView";
+import { PhotoLocationTab } from "../components/PhotoLocationTab";
+import type { MapClusterSelection } from "../components/PhotoMapView";
+import { usePhotoMenuBarState } from "../components/PhotoMenuBar";
+import { PhotoPeopleView } from "../components/PhotoPeopleView";
+import { PhotoSelectionBar } from "../components/PhotoSelectionBar";
+import { PHOTO_SIZE_LEVELS } from "../components/PhotoSizeSlider";
+import { PhotoTimeline } from "../components/PhotoTimeline";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { useMessage, useWindowNav } from "@/system";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";

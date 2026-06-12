@@ -1,97 +1,93 @@
-//! Handlers for triggering photo library sync.
-
-use std::sync::Arc;
-
 use axum::{
-    Json,
     extract::{Path, State},
+    response::Json,
 };
-use serde::Deserialize;
+use std::sync::Arc;
+use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::ctx::AppCtx;
-use crate::db::repos::library_repo::PhotoLibraryRepo;
-use crate::error::{AppError, OptionExt};
+use crate::AppCtx;
+use crate::db::repos::PhotoLibraryRepo;
+use crate::services::notifications as photo_notify;
+use crate::error::AppError;
+use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
+use crate::error::{ApiResponse, ok};
 use crate::services::app_sync::AppSyncService;
 
-use super::{ok, parse_uuid};
+// ── DTOs ──
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhotoSyncInput {
     pub clear_data: Option<bool>,
 }
 
+/// POST /api/apps/photo/{id}/sync
+///
+/// Triggers an async photo library sync.
 pub async fn sync_photo(
-    State(ctx): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppCtx>>,
+    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
-    auth: AuthUser,
     body: Option<Json<PhotoSyncInput>>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let caller_user_id: Uuid = auth
-        .user_id
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let uid: Uuid = id
         .parse()
-        .map_err(|_| AppError::Unauthorized("invalid user_id in auth token".into()))?;
-    let uid: Uuid = parse_uuid(&id)?;
+        .map_err(|_| AppError::BadRequest("invalid photo library id".into()))?;
 
-    let library = PhotoLibraryRepo::get_by_id(&ctx.db, uid)
+    let library = PhotoLibraryRepo::get_by_id(&state.db, uid)
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    let clear_data = body.as_ref().and_then(|b| b.clear_data).unwrap_or(false);
+    let clear_data = body.and_then(|b| b.clear_data).unwrap_or(false);
 
     if library.sync_status == "syncing" && !clear_data {
-        return Err(AppError::Conflict(
-            "Photo library is already syncing".into(),
-        ));
+        return Err(AppError::Conflict("Photo library is already syncing".into()));
     }
 
-    // Mark library as syncing
-    PhotoLibraryRepo::update_sync_status(&ctx.db, uid, "syncing", None).await?;
+    if clear_data {
+        AppSyncService::clear_library_data(&state.db, uid, "photo").await?;
+    }
 
-    // VFS walk + photo import (creates file_scrape jobs).
-    // AI scan jobs (CLIP, face, OCR, geocode) are triggered manually via UI buttons,
-    // matching monolith behavior.
-    let db = ctx.db.clone();
-    let sources = Arc::clone(&ctx.sources);
-    let bus_client = Arc::clone(&ctx.client);
+    PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
+
+    // Preempt any still-active same-library scans of the 4 kinds this
+    // sync-all endpoint will re-dispatch, so the previous attempt's jobs
+    // don't intermix with the new run.
+    for task_type in [
+        "photo_ocr_scan",
+        "photo_clip_scan",
+        "photo_face_scan",
+        "photo_geocode_scan",
+    ] {
+        crate::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
+    }
+
+    let user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
+    let db = state.db.clone();
+    let sources = state.sources.clone();
+    let storage = state.storage.clone();
+    let state_for_task = state.clone();
+    let library_name = library.name.clone();
+
     tokio::spawn(async move {
-        // Notify frontend that sync has started
-        if let Some(client) = bus_client.get() {
-            let _ = crate::bus_clients::app_events::emit_entity(
-                client,
-                caller_user_id,
-                "photo_library",
-                Some(format!("library:{uid}")),
-                serde_json::json!({ "id": uid.to_string(), "operation": "syncing", "libraryId": uid.to_string() }),
-            )
-            .await;
-        }
-
-        match AppSyncService::execute_photo_sync(
-            &db,
-            &sources,
-            &bus_client,
-            uid,
-            clear_data,
-            caller_user_id,
-        )
-        .await
-        {
+        match AppSyncService::execute_photo_sync(&db, &sources, &storage, uid, false, Some(user_id)).await {
             Ok(result) => {
-                tracing::info!(
-                    "photo sync completed for library {}: {} jobs dispatched",
-                    uid,
-                    result.total_jobs
-                );
+                info!("photo sync completed, {} jobs dispatched", result.total_jobs);
+                photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)
+                    .await;
             }
             Err(e) => {
-                tracing::error!("photo sync failed for library {}: {}", uid, e);
-                let _ = PhotoLibraryRepo::update_sync_status(&db, uid, "failed", None).await;
+                error!("photo sync failed: {e}");
+                photo_notify::notify_sync_failed(&state_for_task, user_id, uid, &library_name, &e.to_string()).await;
             }
         }
     });
 
-    ok(serde_json::json!({ "success": true }))
+    Ok(ok(serde_json::json!({ "success": true })))
 }

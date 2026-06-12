@@ -3,14 +3,11 @@ use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::db::entities::{
-    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
-};
+use crate::models::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::db::entities::{photo_albums, photos, vfs};
 use crate::db::pagination::{Page, PageInput};
-use crate::error::{AppError, OptionExt};
-use crate::models::{
-    FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget,
-};
+use crate::error::AppError;
+use crate::error::OptionExt;
 
 #[derive(Debug, serde::Serialize)]
 pub struct TimelineEntry {
@@ -45,22 +42,11 @@ pub struct ListPhotosInput {
     pub after_date: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize)]
-pub struct LocationGroup {
-    pub province: Option<String>,
-    pub city: Option<String>,
-    pub district: Option<String>,
-    pub count: i64,
-}
-
 pub struct PhotoRepo;
 
-#[allow(dead_code)]
 impl PhotoRepo {
-    pub async fn list(
-        db: &impl ConnectionTrait,
-        input: ListPhotosInput,
-    ) -> Result<Page<PhotoOutput>, AppError> {
+    /// List photos with pagination, sorting, and optional search
+    pub async fn list(db: &DatabaseConnection, input: ListPhotosInput) -> Result<Page<PhotoOutput>, AppError> {
         let mut query = photos::Entity::find()
             .filter(photos::Column::AppId.eq(input.app_id))
             .filter(photos::Column::IsHidden.eq(false))
@@ -70,6 +56,7 @@ impl PhotoRepo {
             query = query.filter(photos::Column::IsFavorite.eq(true));
         }
 
+        // Date filter: show only photos taken before (or on) this date
         if let Some(date_str) = input.before_date
             && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         {
@@ -77,6 +64,7 @@ impl PhotoRepo {
             query = query.filter(photos::Column::TakenAt.lte(end_of_day));
         }
 
+        // Date filter: show only photos taken after (or on) this date
         if let Some(date_str) = input.after_date
             && let Ok(dt) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         {
@@ -97,6 +85,7 @@ impl PhotoRepo {
             );
         }
 
+        // Sorting
         query = match input.sort_by.as_str() {
             "takenAt" => match input.sort_dir.as_str() {
                 "asc" => query.order_by_asc(photos::Column::TakenAt),
@@ -110,6 +99,7 @@ impl PhotoRepo {
                 "asc" => query.order_by_asc(photos::Column::FileSize),
                 _ => query.order_by_desc(photos::Column::FileSize),
             },
+            // Default: newest first by taken_at, then created_at
             _ => query
                 .order_by_desc(photos::Column::TakenAt)
                 .order_by_desc(photos::Column::CreatedAt),
@@ -125,69 +115,40 @@ impl PhotoRepo {
         Ok(Page::new(items, total, &input.page))
     }
 
-    pub async fn get_by_id(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<Option<PhotoDetailOutput>, AppError> {
-        Ok(photos::Entity::find_by_id(photo_id)
+    /// Get photo by ID with full detail
+    pub async fn get_by_id(db: &DatabaseConnection, photo_id: Uuid) -> Result<Option<PhotoDetailOutput>, AppError> {
+        let model = photos::Entity::find_by_id(photo_id).one(db).await?;
+        Ok(model.map(PhotoDetailOutput::from))
+    }
+
+    /// Toggle favorite
+    pub async fn toggle_favorite(db: &DatabaseConnection, photo_id: Uuid) -> Result<bool, AppError> {
+        let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
             .await?
-            .map(PhotoDetailOutput::from))
+            .not_found("Photo not found")?;
+
+        let new_val = !photo.is_favorite;
+        let mut active: photos::ActiveModel = photo.into();
+        active.is_favorite = Set(new_val);
+        active.update(db).await?;
+        Ok(new_val)
     }
 
-    pub async fn get_model_by_id(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<Option<photos::Model>, AppError> {
-        Ok(photos::Entity::find_by_id(photo_id).one(db).await?)
-    }
-
-    pub async fn toggle_favorite(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<bool, AppError> {
-        let results = photos::Entity::update_many()
-            .filter(photos::Column::Id.eq(photo_id))
-            .col_expr(
-                photos::Column::IsFavorite,
-                Expr::col(photos::Column::IsFavorite).not(),
-            )
-            .exec_with_returning(db)
-            .await?;
-        let model = results.into_iter().next().not_found("Photo not found")?;
-        Ok(model.is_favorite)
-    }
-
-    pub async fn toggle_hidden(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<bool, AppError> {
-        let results = photos::Entity::update_many()
-            .filter(photos::Column::Id.eq(photo_id))
-            .col_expr(
-                photos::Column::IsHidden,
-                Expr::col(photos::Column::IsHidden).not(),
-            )
-            .exec_with_returning(db)
-            .await?;
-        let model = results.into_iter().next().not_found("Photo not found")?;
-        Ok(model.is_hidden)
-    }
-
-    pub async fn list_albums(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<Vec<PhotoAlbumOutput>, AppError> {
-        Ok(photo_albums::Entity::find()
+    /// List photo albums
+    pub async fn list_albums(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PhotoAlbumOutput>, AppError> {
+        let items = photo_albums::Entity::find()
             .filter(photo_albums::Column::AppId.eq(app_id))
             .order_by_asc(photo_albums::Column::SortOrder)
             .into_partial_model::<PhotoAlbumOutput>()
             .all(db)
-            .await?)
+            .await?;
+        Ok(items)
     }
 
+    /// Get timeline data — photos grouped by date
     pub async fn timeline(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         app_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
@@ -208,40 +169,39 @@ impl PhotoRepo {
         Ok(Page::new(items, total, page))
     }
 
+    /// Load the minimal info needed to stream a photo file via VFS.
     pub async fn load_stream_target(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
+        db: &DatabaseConnection,
+        photo_id: &str,
     ) -> Result<Option<PhotoStreamTarget>, AppError> {
-        let row = photos::Entity::find_by_id(photo_id).one(db).await?;
-        let Some(photo) = row else {
-            return Ok(None);
-        };
+        let pid: Uuid = photo_id
+            .parse()
+            .map_err(|_| AppError::BadRequest("invalid photo id".into()))?;
+        let row = photos::Entity::find_by_id(pid)
+            .find_also_related(vfs::Entity)
+            .one(db)
+            .await?;
 
-        // Resolve source_type and source_config from the vfs table when source_id exists.
-        let (source_id_str, source_type, source_config) = match photo.source_id {
-            Some(sid) => {
-                let vfs_row = vfs::Entity::find_by_id(sid).one(db).await?;
-                match vfs_row {
-                    Some(v) => (Some(sid.to_string()), Some(v.r#type), v.config),
-                    None => (Some(sid.to_string()), None, None),
-                }
+        Ok(row.map(|(photo, fs)| {
+            let (source_type, source_config) = match fs {
+                Some(s) => (Some(s.r#type), s.config),
+                None => (None, None),
+            };
+            PhotoStreamTarget {
+                path: photo.path,
+                mime_type: photo.mime_type,
+                thumbnail_path: photo.thumbnail_path,
+                live_video_path: photo.live_video_path,
+                source_id: photo.source_id.map(|id| id.to_string()),
+                source_type,
+                source_config,
             }
-            None => (None, None, None),
-        };
-
-        Ok(Some(PhotoStreamTarget {
-            path: photo.path,
-            mime_type: photo.mime_type,
-            thumbnail_path: photo.thumbnail_path,
-            live_video_path: photo.live_video_path,
-            source_id: source_id_str,
-            source_type,
-            source_config,
         }))
     }
 
+    /// List subdirectories and photos within a specific directory path.
     pub async fn list_folders(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         app_id: Uuid,
         dir_path: &str,
     ) -> Result<(Vec<FolderInfo>, Vec<PhotoOutput>), AppError> {
@@ -271,6 +231,7 @@ impl PhotoRepo {
             let Some(remainder) = photo.path.get(prefix.len()..) else {
                 continue;
             };
+
             if let Some(slash_pos) = remainder.find('/') {
                 let dir_name = &remainder[..slash_pos];
                 let entry = subdirs.entry(dir_name.to_string()).or_insert((0, None));
@@ -296,15 +257,18 @@ impl PhotoRepo {
         Ok((folders, direct_photos))
     }
 
-    pub async fn count(db: &impl ConnectionTrait, app_id: Uuid) -> Result<u64, AppError> {
-        Ok(photos::Entity::find()
+    /// Count photos in app
+    pub async fn count(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
+        let count = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .count(db)
-            .await?)
+            .await?;
+        Ok(count)
     }
 
+    /// Create a photo album
     pub async fn create_album(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         app_id: Uuid,
         name: &str,
         description: Option<&str>,
@@ -339,203 +303,176 @@ impl PhotoRepo {
             .internal("Failed to read created album")
     }
 
+    /// Delete a photo album (unlinks photos but doesn't delete them)
     pub async fn delete_album(db: &DatabaseConnection, album_id: Uuid) -> Result<(), AppError> {
-        let txn = db.begin().await?;
         photos::Entity::update_many()
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Option::<Uuid>::None),
-            )
-            .exec(&txn)
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Option::<Uuid>::None))
+            .exec(db)
             .await?;
-        photo_albums::Entity::delete_by_id(album_id)
-            .exec(&txn)
-            .await?;
-        txn.commit().await?;
+
+        photo_albums::Entity::delete_by_id(album_id).exec(db).await?;
         Ok(())
     }
 
+    /// Add photos to an album
     pub async fn add_photos_to_album(
         db: &DatabaseConnection,
         album_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<i32, AppError> {
-        let txn = db.begin().await?;
-
         photo_albums::Entity::find_by_id(album_id)
-            .one(&txn)
+            .one(db)
             .await?
             .not_found("Album not found")?;
 
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .col_expr(photos::Column::PhotoAlbumId, Expr::value(Some(album_id)))
-            .exec(&txn)
+            .exec(db)
             .await?;
 
         let count = photos::Entity::find()
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .count(&txn)
+            .count(db)
             .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel =
-            photo_albums::Entity::find_by_id(album_id)
-                .one(&txn)
-                .await?
-                .not_found("Album not found")?
-                .into();
+        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")?
+            .into();
         album_active.photo_count = Set(count);
-        if album_active.cover_photo_id == NotSet && !photo_ids.is_empty() {
+
+        let album = photo_albums::Entity::find_by_id(album_id).one(db).await?;
+        if album.as_ref().and_then(|a| a.cover_photo_id).is_none() && !photo_ids.is_empty() {
             album_active.cover_photo_id = Set(Some(photo_ids[0]));
         }
-        album_active.update(&txn).await?;
+        album_active.update(db).await?;
 
-        txn.commit().await?;
         Ok(count)
     }
 
+    /// Remove photos from an album
     pub async fn remove_photos_from_album(
         db: &DatabaseConnection,
         album_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<i32, AppError> {
-        let txn = db.begin().await?;
-
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .col_expr(
-                photos::Column::PhotoAlbumId,
-                Expr::value(Option::<Uuid>::None),
-            )
-            .exec(&txn)
+            .col_expr(photos::Column::PhotoAlbumId, Expr::value(Option::<Uuid>::None))
+            .exec(db)
             .await?;
 
         let count = photos::Entity::find()
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .count(&txn)
+            .count(db)
             .await? as i32;
 
-        let mut album_active: photo_albums::ActiveModel =
-            photo_albums::Entity::find_by_id(album_id)
-                .one(&txn)
-                .await?
-                .not_found("Album not found")?
-                .into();
+        let mut album_active: photo_albums::ActiveModel = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")?
+            .into();
         album_active.photo_count = Set(count);
-        album_active.update(&txn).await?;
+        album_active.update(db).await?;
 
-        txn.commit().await?;
         Ok(count)
     }
 
-    pub async fn list_album_photos(
-        db: &impl ConnectionTrait,
-        album_id: Uuid,
-        page: &PageInput,
-    ) -> Result<Page<PhotoOutput>, AppError> {
-        let query = photos::Entity::find()
-            .filter(photos::Column::PhotoAlbumId.eq(album_id))
-            .filter(photos::Column::IsHidden.eq(false))
-            .filter(photos::Column::DeletedAt.is_null())
-            .order_by_desc(photos::Column::TakenAt)
-            .order_by_desc(photos::Column::CreatedAt);
-
-        let total = query.clone().count(db).await? as i64;
-        let items = query
-            .into_partial_model::<PhotoOutput>()
-            .paginate(db, page.page_size)
-            .fetch_page(page.page.saturating_sub(1))
-            .await?;
-
-        Ok(Page::new(items, total, page))
-    }
-
+    /// Batch set favorite for multiple photos
     pub async fn batch_set_favorite(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         photo_ids: &[Uuid],
         favorite: bool,
     ) -> Result<u64, AppError> {
-        Ok(photos::Entity::update_many()
+        let result = photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .col_expr(photos::Column::IsFavorite, Expr::value(favorite))
             .exec(db)
-            .await?
-            .rows_affected)
+            .await?;
+        Ok(result.rows_affected)
     }
 
-    pub async fn batch_delete(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
-        Ok(photos::Entity::delete_many()
+    /// Batch delete photos by IDs within an app
+    pub async fn batch_delete(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
+        let result = photos::Entity::delete_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .exec(db)
-            .await?
-            .rows_affected)
+            .await?;
+        Ok(result.rows_affected)
     }
 
-    pub async fn batch_set_hidden(
-        db: &impl ConnectionTrait,
-        photo_ids: &[Uuid],
-        hidden: bool,
-    ) -> Result<u64, AppError> {
-        Ok(photos::Entity::update_many()
+    /// Toggle hidden flag on a photo
+    pub async fn toggle_hidden(db: &DatabaseConnection, photo_id: Uuid) -> Result<bool, AppError> {
+        let photo = photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .not_found("Photo not found")?;
+
+        let new_val = !photo.is_hidden;
+        let mut active: photos::ActiveModel = photo.into();
+        active.is_hidden = Set(new_val);
+        active.update(db).await?;
+        Ok(new_val)
+    }
+
+    /// Batch set hidden for multiple photos
+    pub async fn batch_set_hidden(db: &DatabaseConnection, photo_ids: &[Uuid], hidden: bool) -> Result<u64, AppError> {
+        let result = photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .col_expr(photos::Column::IsHidden, Expr::value(hidden))
             .exec(db)
-            .await?
-            .rows_affected)
+            .await?;
+        Ok(result.rows_affected)
     }
 
-    #[allow(clippy::option_option)]
+    /// Update photo metadata (title, description, `taken_at`)
     pub async fn update_photo(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         photo_id: Uuid,
         title: Option<Option<String>>,
         description: Option<Option<String>>,
         taken_at: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
     ) -> Result<PhotoDetailOutput, AppError> {
-        let mut update = photos::Entity::update_many().filter(photos::Column::Id.eq(photo_id));
+        let photo = photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .not_found("Photo not found")?;
+
+        let mut active: photos::ActiveModel = photo.into();
         if let Some(v) = title {
-            update = update.col_expr(photos::Column::Title, Expr::value(v));
+            active.title = Set(v);
         }
         if let Some(v) = description {
-            update = update.col_expr(photos::Column::Description, Expr::value(v));
+            active.description = Set(v);
         }
         if let Some(v) = taken_at {
-            update = update.col_expr(photos::Column::TakenAt, Expr::value(v));
+            active.taken_at = Set(v);
         }
-        let results = update.exec_with_returning(db).await?;
-        let model = results.into_iter().next().not_found("Photo not found")?;
-        Ok(PhotoDetailOutput::from(model))
+        let updated = active.update(db).await?;
+        Ok(PhotoDetailOutput::from(updated))
     }
 
-    pub async fn trash_photos(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
+    /// Soft-delete (trash) photos by setting `deleted_at`
+    pub async fn trash_photos(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
         let now = chrono::Utc::now().fixed_offset();
-        Ok(photos::Entity::update_many()
+        let result = photos::Entity::update_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_null())
             .col_expr(photos::Column::DeletedAt, Expr::value(now))
             .exec(db)
-            .await?
-            .rows_affected)
+            .await?;
+        Ok(result.rows_affected)
     }
 
-    pub async fn restore_photos(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
-        Ok(photos::Entity::update_many()
+    /// Restore photos from trash by clearing `deleted_at`
+    pub async fn restore_photos(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
+        let result = photos::Entity::update_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_not_null())
@@ -544,12 +481,13 @@ impl PhotoRepo {
                 Expr::value(Option::<chrono::DateTime<chrono::FixedOffset>>::None),
             )
             .exec(db)
-            .await?
-            .rows_affected)
+            .await?;
+        Ok(result.rows_affected)
     }
 
+    /// List trashed photos (`deleted_at` IS NOT NULL)
     pub async fn list_trashed(
-        db: &impl ConnectionTrait,
+        db: &DatabaseConnection,
         app_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
@@ -568,108 +506,150 @@ impl PhotoRepo {
         Ok(Page::new(items, total, page))
     }
 
-    pub async fn permanent_delete(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        photo_ids: &[Uuid],
-    ) -> Result<u64, AppError> {
-        Ok(photos::Entity::delete_many()
+    /// Permanently delete photos that are already trashed
+    pub async fn permanent_delete(db: &DatabaseConnection, app_id: Uuid, photo_ids: &[Uuid]) -> Result<u64, AppError> {
+        let result = photos::Entity::delete_many()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::DeletedAt.is_not_null())
             .exec(db)
-            .await?
-            .rows_affected)
-    }
-
-    pub async fn list_by_location(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        page: &PageInput,
-        province: Option<&str>,
-        city: Option<&str>,
-        district: Option<&str>,
-    ) -> Result<Page<PhotoOutput>, AppError> {
-        let mut query = photos::Entity::find()
-            .filter(photos::Column::AppId.eq(app_id))
-            .filter(photos::Column::DeletedAt.is_null())
-            .filter(photos::Column::IsHidden.eq(false));
-
-        if let Some(prov) = province {
-            query = query.filter(photos::Column::GeoProvince.eq(prov));
-        }
-        if let Some(c) = city {
-            query = query.filter(photos::Column::GeoCity.eq(c));
-        }
-        if let Some(d) = district {
-            query = query.filter(photos::Column::GeoDistrict.eq(d));
-        }
-
-        let query = query
-            .order_by_desc(photos::Column::TakenAt)
-            .order_by_desc(photos::Column::CreatedAt);
-
-        let total = query.clone().count(db).await? as i64;
-        let items = query
-            .into_partial_model::<PhotoOutput>()
-            .paginate(db, page.page_size)
-            .fetch_page(page.page.saturating_sub(1))
             .await?;
-
-        Ok(Page::new(items, total, page))
+        Ok(result.rows_affected)
     }
 
-    pub async fn list_map_points(
-        db: &impl ConnectionTrait,
+    /// Get all photos with a source for full rescan
+    pub async fn get_all_photos_for_rescan(
+        db: &DatabaseConnection,
         app_id: Uuid,
-    ) -> Result<Vec<PhotoMapPoint>, AppError> {
-        Ok(photos::Entity::find()
+    ) -> Result<Vec<(Uuid, String, Uuid)>, AppError> {
+        let rows = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
-            .filter(photos::Column::DeletedAt.is_null())
-            .filter(photos::Column::IsHidden.eq(false))
-            .filter(photos::Column::GpsLatitude.is_not_null())
-            .filter(photos::Column::GpsLongitude.is_not_null())
-            .into_partial_model::<PhotoMapPoint>()
+            .filter(photos::Column::SourceId.is_not_null())
+            .select_only()
+            .column(photos::Column::Id)
+            .column(photos::Column::Path)
+            .column(photos::Column::SourceId)
+            .into_tuple::<(Uuid, String, Option<Uuid>)>()
             .all(db)
-            .await?)
-    }
-
-    pub async fn list_by_bbox(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-        min_lat: f64,
-        max_lat: f64,
-        min_lng: f64,
-        max_lng: f64,
-        page: &PageInput,
-    ) -> Result<Page<PhotoOutput>, AppError> {
-        let query = photos::Entity::find()
-            .filter(photos::Column::AppId.eq(app_id))
-            .filter(photos::Column::DeletedAt.is_null())
-            .filter(photos::Column::IsHidden.eq(false))
-            .filter(photos::Column::GpsLatitude.is_not_null())
-            .filter(photos::Column::GpsLongitude.is_not_null())
-            .filter(photos::Column::GpsLatitude.gte(min_lat))
-            .filter(photos::Column::GpsLatitude.lte(max_lat))
-            .filter(photos::Column::GpsLongitude.gte(min_lng))
-            .filter(photos::Column::GpsLongitude.lte(max_lng))
-            .order_by_desc(photos::Column::TakenAt)
-            .order_by_desc(photos::Column::CreatedAt);
-
-        let total = query.clone().count(db).await? as i64;
-        let items = query
-            .into_partial_model::<PhotoOutput>()
-            .paginate(db, page.page_size)
-            .fetch_page(page.page.saturating_sub(1))
             .await?;
 
-        Ok(Page::new(items, total, page))
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, path, src)| src.map(|s| (id, path, s)))
+            .collect())
     }
 
-    pub async fn timeline_index(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<Vec<TimelineEntry>, AppError> {
+    /// Update EXIF data for a single photo
+    pub async fn update_exif(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        exif: &tokimo_package_image::ExifData,
+    ) -> Result<(), AppError> {
+        let mut active = photos::ActiveModel {
+            id: Set(photo_id),
+            ..Default::default()
+        };
+
+        if let Some(ref date_str) = exif.taken_at {
+            let cleaned = date_str.trim_matches('"');
+            let normalised = if cleaned.len() >= 10 && &cleaned[4..5] == ":" && &cleaned[7..8] == ":" {
+                format!(
+                    "{}-{}-{}{}",
+                    &cleaned[0..4],
+                    &cleaned[5..7],
+                    &cleaned[8..10],
+                    &cleaned[10..]
+                )
+            } else {
+                cleaned.to_string()
+            };
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&normalised, "%Y-%m-%d %H:%M:%S") {
+                active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
+            }
+        }
+
+        if exif.camera_make.is_some() {
+            active.camera_make = Set(exif.camera_make.clone());
+        }
+        if exif.camera_model.is_some() {
+            active.camera_model = Set(exif.camera_model.clone());
+        }
+        if exif.lens_model.is_some() {
+            active.lens_model = Set(exif.lens_model.clone());
+        }
+        if exif.focal_length.is_some() {
+            active.focal_length = Set(exif.focal_length);
+        }
+        if exif.aperture.is_some() {
+            active.aperture = Set(exif.aperture);
+        }
+        if exif.shutter_speed.is_some() {
+            active.shutter_speed = Set(exif.shutter_speed.clone());
+        }
+        if exif.iso.is_some() {
+            active.iso = Set(exif.iso);
+        }
+        if exif.orientation.is_some() {
+            active.orientation = Set(exif.orientation);
+        }
+        if exif.width.is_some() {
+            active.width = Set(exif.width);
+        }
+        if exif.height.is_some() {
+            active.height = Set(exif.height);
+        }
+        if exif.gps_latitude.is_some() {
+            active.gps_latitude = Set(exif.gps_latitude);
+        }
+        if exif.gps_longitude.is_some() {
+            active.gps_longitude = Set(exif.gps_longitude);
+        }
+        if exif.gps_altitude.is_some() {
+            active.gps_altitude = Set(exif.gps_altitude);
+        }
+
+        // Save full raw EXIF as JSON
+        if !exif.raw_tags.is_empty() {
+            active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
+        }
+
+        active.update(db).await?;
+        Ok(())
+    }
+
+    /// Update only the `taken_at` field (from filename date or mtime).
+    /// `date_str` must be `"YYYY-MM-DD HH:MM:SS"`.
+    pub async fn update_taken_at(db: &DatabaseConnection, photo_id: Uuid, date_str: &str) -> Result<(), AppError> {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+            let mut active = photos::ActiveModel {
+                id: Set(photo_id),
+                ..Default::default()
+            };
+            active.taken_at = Set(Some(dt.and_utc().fixed_offset()));
+            active.update(db).await?;
+        }
+        Ok(())
+    }
+
+    /// Update only width/height (when EXIF didn't have dimensions but image header did).
+    pub async fn update_exif_dimensions(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        width: i32,
+        height: i32,
+    ) -> Result<(), AppError> {
+        let active = photos::ActiveModel {
+            id: Set(photo_id),
+            width: Set(Some(width)),
+            height: Set(Some(height)),
+            ..Default::default()
+        };
+        active.update(db).await?;
+        Ok(())
+    }
+
+    /// Get timeline index: year/month counts for an app (all photos, not paginated)
+    pub async fn timeline_index(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<TimelineEntry>, AppError> {
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r"
@@ -705,243 +685,21 @@ impl PhotoRepo {
         Ok(entries)
     }
 
-    pub async fn get_ids_for_app(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<Vec<Uuid>, AppError> {
-        #[derive(DerivePartialModel)]
-        #[sea_orm(entity = "photos::Entity")]
-        struct PhotoId {
-            pub id: Uuid,
-        }
-
-        Ok(photos::Entity::find()
-            .filter(photos::Column::AppId.eq(app_id))
-            .filter(photos::Column::DeletedAt.is_null())
-            .into_partial_model::<PhotoId>()
-            .all(db)
-            .await?
-            .into_iter()
-            .map(|r| r.id)
-            .collect())
-    }
-
-    pub async fn clear_ocr_results_for_app(
+    /// List photos in a specific album
+    pub async fn list_album_photos(
         db: &DatabaseConnection,
-        app_id: Uuid,
-        model_name: Option<&str>,
-    ) -> Result<u64, AppError> {
-        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
-        if photo_ids.is_empty() {
-            return Ok(0);
-        }
-
-        let txn = db.begin().await?;
-
-        let mut delete_q = photo_ocr_results::Entity::delete_many()
-            .filter(photo_ocr_results::Column::PhotoId.is_in(photo_ids));
-        if let Some(m) = model_name {
-            delete_q = delete_q.filter(photo_ocr_results::Column::ModelName.eq(m));
-        }
-        let deleted = delete_q.exec(&txn).await?.rows_affected;
-
-        let mut update_q = photos::Entity::update_many()
-            .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
-            .filter(photos::Column::AppId.eq(app_id))
-            .filter(photos::Column::DeletedAt.is_null());
-        if model_name.is_some() {
-            update_q = update_q.filter(photos::Column::OcrScannedAt.is_not_null());
-        }
-        update_q.exec(&txn).await?;
-
-        txn.commit().await?;
-        Ok(deleted)
-    }
-
-    pub async fn clear_all_ocr_results(db: &impl ConnectionTrait) -> Result<u64, AppError> {
-        let deleted = photo_ocr_results::Entity::delete_many()
-            .exec(db)
-            .await?
-            .rows_affected;
-        photos::Entity::update_many()
-            .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
-            .filter(photos::Column::OcrScannedAt.is_not_null())
-            .filter(photos::Column::DeletedAt.is_null())
-            .exec(db)
-            .await?;
-        Ok(deleted)
-    }
-
-    pub async fn clear_face_results_for_app(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
-        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
-        if photo_ids.is_empty() {
-            return Ok(0);
-        }
-
-        let txn = db.begin().await?;
-
-        let deleted = photo_faces::Entity::delete_many()
-            .filter(photo_faces::Column::PhotoId.is_in(photo_ids))
-            .exec(&txn)
-            .await?
-            .rows_affected;
-
-        photo_persons::Entity::update_many()
-            .col_expr(photo_persons::Column::FaceCount, Expr::val(0i32))
-            .col_expr(photo_persons::Column::AvatarFaceId, Expr::cust("NULL"))
-            .filter(photo_persons::Column::AppId.eq(app_id))
-            .exec(&txn)
-            .await?;
-
-        txn.commit().await?;
-        Ok(deleted)
-    }
-
-    pub async fn clear_clip_results_for_app(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
-        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
-        if photo_ids.is_empty() {
-            return Ok(0);
-        }
-
-        Ok(photo_clip_vectors::Entity::delete_many()
-            .filter(photo_clip_vectors::Column::PhotoId.is_in(photo_ids))
-            .exec(db)
-            .await?
-            .rows_affected)
-    }
-
-    pub async fn get_ocr_results(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<Vec<photo_ocr_results::Model>, AppError> {
-        Ok(photo_ocr_results::Entity::find()
-            .filter(photo_ocr_results::Column::PhotoId.eq(photo_id))
-            .all(db)
-            .await?)
-    }
-
-    pub async fn delete_ocr_result(db: &impl ConnectionTrait, ocr_id: i32) -> Result<(), AppError> {
-        photo_ocr_results::Entity::delete_by_id(ocr_id)
-            .exec(db)
-            .await?;
-        Ok(())
-    }
-
-    // ── Face / Person ──────────────────────────────────────────────────────────
-
-    pub async fn get_faces_for_photo(
-        db: &impl ConnectionTrait,
-        photo_id: Uuid,
-    ) -> Result<Vec<photo_faces::Model>, AppError> {
-        Ok(photo_faces::Entity::find()
-            .filter(photo_faces::Column::PhotoId.eq(photo_id))
-            .all(db)
-            .await?)
-    }
-
-    pub async fn assign_face_to_person(
-        db: &impl ConnectionTrait,
-        face_id: i32,
-        person_id: Uuid,
-    ) -> Result<(), AppError> {
-        let result = photo_faces::Entity::update_many()
-            .filter(photo_faces::Column::Id.eq(face_id))
-            .col_expr(photo_faces::Column::PersonId, Expr::value(Some(person_id)))
-            .exec(db)
-            .await?;
-        if result.rows_affected == 0 {
-            return Err(AppError::NotFound(format!("face {face_id} not found")));
-        }
-        Ok(())
-    }
-
-    pub async fn create_person_from_face(
-        db: &DatabaseConnection,
-        face_id: i32,
-        name: &str,
-    ) -> Result<photo_persons::Model, AppError> {
-        let face = photo_faces::Entity::find_by_id(face_id)
-            .one(db)
-            .await?
-            .not_found(format!("face {face_id} not found"))?;
-
-        // Find what app_id this photo belongs to
-        let photo = photos::Entity::find_by_id(face.photo_id)
-            .one(db)
-            .await?
-            .not_found("photo for face not found")?;
-
-        let txn = db.begin().await?;
-
-        let person_id = Uuid::new_v4();
-        let now = chrono::Utc::now().fixed_offset();
-
-        let person = photo_persons::ActiveModel {
-            id: Set(person_id),
-            app_id: Set(photo.app_id),
-            name: Set(Some(name.to_string())),
-            avatar_face_id: Set(Some(face_id)),
-            face_count: Set(1),
-            is_hidden: Set(false),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        photo_persons::Entity::insert(person).exec(&txn).await?;
-
-        // Assign face to the new person
-        photo_faces::Entity::update_many()
-            .filter(photo_faces::Column::Id.eq(face_id))
-            .col_expr(photo_faces::Column::PersonId, Expr::value(Some(person_id)))
-            .exec(&txn)
-            .await?;
-
-        txn.commit().await?;
-
-        photo_persons::Entity::find_by_id(person_id)
-            .one(db)
-            .await?
-            .internal("failed to fetch created person")
-    }
-
-    pub async fn list_persons(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<Vec<photo_persons::Model>, AppError> {
-        Ok(photo_persons::Entity::find()
-            .filter(photo_persons::Column::AppId.eq(app_id))
-            .filter(photo_persons::Column::IsHidden.eq(false))
-            .order_by_desc(photo_persons::Column::FaceCount)
-            .all(db)
-            .await?)
-    }
-
-    pub async fn list_photos_by_person(
-        db: &impl ConnectionTrait,
-        person_id: Uuid,
+        album_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
-        let face_photo_ids: Vec<Uuid> = photo_faces::Entity::find()
-            .filter(photo_faces::Column::PersonId.eq(person_id))
-            .select_only()
-            .column(photo_faces::Column::PhotoId)
-            .into_tuple::<Uuid>()
-            .all(db)
-            .await?;
-
-        if face_photo_ids.is_empty() {
-            return Ok(Page::new(vec![], 0, page));
-        }
-
-        let total = face_photo_ids.len() as i64;
-        let items = photos::Entity::find()
-            .filter(photos::Column::Id.is_in(face_photo_ids))
+        let query = photos::Entity::find()
+            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+            .filter(photos::Column::IsHidden.eq(false))
             .filter(photos::Column::DeletedAt.is_null())
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
             .into_partial_model::<PhotoOutput>()
             .paginate(db, page.page_size)
             .fetch_page(page.page.saturating_sub(1))
@@ -950,83 +708,245 @@ impl PhotoRepo {
         Ok(Page::new(items, total, page))
     }
 
-    pub async fn merge_persons(
+    /// List photos filtered by geo location fields.
+    pub async fn list_by_location(
         db: &DatabaseConnection,
-        target_id: Uuid,
-        source_id: Uuid,
-    ) -> Result<(), AppError> {
-        let txn = db.begin().await?;
+        app_id: Uuid,
+        page: &PageInput,
+        province: Option<&str>,
+        city: Option<&str>,
+        district: Option<&str>,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let mut query = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false));
 
-        // Reassign all faces from source to target
-        photo_faces::Entity::update_many()
-            .col_expr(photo_faces::Column::PersonId, Expr::value(target_id))
-            .filter(photo_faces::Column::PersonId.eq(source_id))
-            .exec(&txn)
+        if let Some(prov) = province {
+            query = query.filter(photos::Column::GeoProvince.eq(prov));
+        }
+        if let Some(c) = city {
+            query = query.filter(photos::Column::GeoCity.eq(c));
+        }
+        if let Some(d) = district {
+            query = query.filter(photos::Column::GeoDistrict.eq(d));
+        }
+
+        let query = query
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
             .await?;
 
-        // Update target face count
-        let count = photo_faces::Entity::find()
-            .filter(photo_faces::Column::PersonId.eq(target_id))
-            .count(&txn)
-            .await? as i32;
-        photo_persons::Entity::update_many()
-            .col_expr(photo_persons::Column::FaceCount, Expr::value(count))
-            .filter(photo_persons::Column::Id.eq(target_id))
-            .exec(&txn)
+        Ok(Page::new(items, total, page))
+    }
+
+    /// Return all photos with GPS coordinates for map display.
+    pub async fn list_map_points(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PhotoMapPoint>, AppError> {
+        let items = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::GpsLatitude.is_not_null())
+            .filter(photos::Column::GpsLongitude.is_not_null())
+            .into_partial_model::<PhotoMapPoint>()
+            .all(db)
             .await?;
 
-        // Delete source person
-        photo_persons::Entity::delete_by_id(source_id)
-            .exec(&txn)
+        Ok(items)
+    }
+
+    /// Return photos within a geographic bounding box, paginated.
+    pub async fn list_by_bbox(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        min_lat: f64,
+        max_lat: f64,
+        min_lng: f64,
+        max_lng: f64,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let query = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::GpsLatitude.is_not_null())
+            .filter(photos::Column::GpsLongitude.is_not_null())
+            .filter(photos::Column::GpsLatitude.gte(min_lat))
+            .filter(photos::Column::GpsLatitude.lte(max_lat))
+            .filter(photos::Column::GpsLongitude.gte(min_lng))
+            .filter(photos::Column::GpsLongitude.lte(max_lng))
+            .order_by_desc(photos::Column::TakenAt)
+            .order_by_desc(photos::Column::CreatedAt);
+
+        let total = query.clone().count(db).await? as i64;
+        let items = query
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
             .await?;
 
-        txn.commit().await?;
+        Ok(Page::new(items, total, page))
+    }
+
+    /// Get the raw `photos::Model` by ID (for internal use; does not convert to DTO).
+    pub async fn get_model_by_id(db: &DatabaseConnection, photo_id: Uuid) -> Result<Option<photos::Model>, AppError> {
+        Ok(photos::Entity::find_by_id(photo_id).one(db).await?)
+    }
+
+    /// Fetch multiple `vfs` rows by ID and return them as a `HashMap` keyed by UUID.
+    pub async fn get_file_systems_by_ids(
+        db: &DatabaseConnection,
+        ids: Vec<Uuid>,
+    ) -> Result<std::collections::HashMap<Uuid, vfs::Model>, AppError> {
+        let rows = vfs::Entity::find().filter(vfs::Column::Id.is_in(ids)).all(db).await?;
+        Ok(rows.into_iter().map(|fs| (fs.id, fs)).collect())
+    }
+
+    /// Get a single `vfs` row by ID.
+    pub async fn get_file_system_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<vfs::Model>, AppError> {
+        Ok(vfs::Entity::find_by_id(id).one(db).await?)
+    }
+
+    /// Set `live_video_path` on a photo.
+    pub async fn update_live_video_path(db: &DatabaseConnection, photo_id: Uuid, path: String) -> Result<(), AppError> {
+        let active = photos::ActiveModel {
+            id: Set(photo_id),
+            live_video_path: Set(Some(path)),
+            ..Default::default()
+        };
+        active.update(db).await?;
         Ok(())
     }
 
-    pub async fn rename_person(
-        db: &impl ConnectionTrait,
-        person_id: Uuid,
-        name: &str,
-    ) -> Result<(), AppError> {
-        photo_persons::Entity::update_many()
-            .col_expr(photo_persons::Column::Name, Expr::value(name.to_string()))
-            .filter(photo_persons::Column::Id.eq(person_id))
+    /// Return all non-deleted photo IDs belonging to an app.
+    pub async fn get_ids_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        use sea_orm::DerivePartialModel;
+
+        #[derive(DerivePartialModel)]
+        #[sea_orm(entity = "photos::Entity")]
+        struct PhotoId {
+            pub id: Uuid,
+        }
+
+        let rows = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .into_partial_model::<PhotoId>()
+            .all(db)
+            .await?;
+        Ok(rows.into_iter().map(|r| r.id).collect())
+    }
+
+    /// Delete OCR results for an app's photos and reset their `ocr_scanned_at`.
+    /// When `model_name` is Some, only results from that model are removed.
+    /// Returns the number of deleted OCR result rows.
+    pub async fn clear_ocr_results_for_app(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        model_name: Option<&str>,
+    ) -> Result<u64, AppError> {
+        use crate::db::entities::photo_ocr_results;
+
+        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
+        if photo_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let mut delete_q =
+            photo_ocr_results::Entity::delete_many().filter(photo_ocr_results::Column::PhotoId.is_in(photo_ids));
+        if let Some(m) = model_name {
+            delete_q = delete_q.filter(photo_ocr_results::Column::ModelName.eq(m));
+        }
+        let deleted = delete_q.exec(db).await?.rows_affected;
+
+        let mut update_q = photos::Entity::update_many()
+            .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null());
+        if model_name.is_some() {
+            update_q = update_q.filter(photos::Column::OcrScannedAt.is_not_null());
+        }
+        update_q.exec(db).await?;
+
+        Ok(deleted)
+    }
+
+    /// Delete ALL OCR results across every app and reset `ocr_scanned_at` on affected photos.
+    pub async fn clear_all_ocr_results(db: &DatabaseConnection) -> Result<u64, AppError> {
+        use crate::db::entities::photo_ocr_results;
+
+        let deleted = photo_ocr_results::Entity::delete_many().exec(db).await?.rows_affected;
+
+        photos::Entity::update_many()
+            .col_expr(photos::Column::OcrScannedAt, Expr::cust("NULL"))
+            .filter(photos::Column::OcrScannedAt.is_not_null())
+            .filter(photos::Column::DeletedAt.is_null())
             .exec(db)
             .await?;
-        Ok(())
+
+        Ok(deleted)
     }
 
-    // ── Location stats ─────────────────────────────────────────────────────────
+    /// Delete face-detection results for an app's photos and reset related persons.
+    /// Returns the number of deleted `photo_faces` rows.
+    pub async fn clear_face_results_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
+        use crate::db::entities::{photo_faces, photo_persons};
 
-    pub async fn location_stats(
-        db: &impl ConnectionTrait,
-        app_id: Uuid,
-    ) -> Result<Vec<LocationGroup>, AppError> {
-        let rows = db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r"SELECT geo_province, geo_city, geo_district, COUNT(*) as count
-                  FROM photos
-                  WHERE app_id = $1
-                    AND deleted_at IS NULL
-                    AND (geo_province IS NOT NULL OR geo_city IS NOT NULL)
-                  GROUP BY geo_province, geo_city, geo_district
-                  ORDER BY count DESC
-                  LIMIT 200",
-                [app_id.into()],
-            ))
+        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
+        if photo_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let deleted = photo_faces::Entity::delete_many()
+            .filter(photo_faces::Column::PhotoId.is_in(photo_ids))
+            .exec(db)
+            .await?
+            .rows_affected;
+
+        photo_persons::Entity::update_many()
+            .col_expr(photo_persons::Column::FaceCount, Expr::val(0i32))
+            .col_expr(photo_persons::Column::AvatarFaceId, Expr::cust("NULL"))
+            .filter(photo_persons::Column::AppId.eq(app_id))
+            .exec(db)
             .await?;
 
-        let mut result = Vec::with_capacity(rows.len());
-        for row in rows {
-            result.push(LocationGroup {
-                province: row.try_get("", "geo_province").ok(),
-                city: row.try_get("", "geo_city").ok(),
-                district: row.try_get("", "geo_district").ok(),
-                count: row.try_get("", "count").unwrap_or(0),
-            });
+        Ok(deleted)
+    }
+
+    /// Delete CLIP embedding vectors for an app's photos.
+    /// Returns the number of deleted rows.
+    pub async fn clear_clip_results_for_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, AppError> {
+        use crate::db::entities::photo_clip_vectors;
+
+        let photo_ids = Self::get_ids_for_app(db, app_id).await?;
+        if photo_ids.is_empty() {
+            return Ok(0);
         }
-        Ok(result)
+
+        let deleted = photo_clip_vectors::Entity::delete_many()
+            .filter(photo_clip_vectors::Column::PhotoId.is_in(photo_ids))
+            .exec(db)
+            .await?
+            .rows_affected;
+
+        Ok(deleted)
+    }
+
+    /// Fetch stored OCR results for a single photo.
+    pub async fn get_ocr_results(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+    ) -> Result<Vec<crate::db::entities::photo_ocr_results::Model>, AppError> {
+        use crate::db::entities::photo_ocr_results;
+        Ok(photo_ocr_results::Entity::find()
+            .filter(photo_ocr_results::Column::PhotoId.eq(photo_id))
+            .all(db)
+            .await?)
     }
 }

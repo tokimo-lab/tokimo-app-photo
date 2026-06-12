@@ -7,3 +7,4 @@ pub mod notifications;
 pub mod ocr;
 pub mod preempt;
 pub mod source;
+pub mod storage;

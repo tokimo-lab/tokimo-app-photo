@@ -1,15 +1,14 @@
 import type { WindowState } from "@/system/window/window-types";
 
-export function stripExifQuotes(value: unknown): string {
-  const text = String(value ?? "");
-  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
-    return text.slice(1, -1);
+export function stripExifQuotes(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1);
   }
-  return text;
+  return value;
 }
 
 export interface ExifWindowMetadata {
-  exifData: Record<string, unknown>;
+  exifData: Record<string, string>;
 }
 
 export default function ExifWindow({ win }: { win: WindowState }) {
@@ -27,8 +26,8 @@ export default function ExifWindow({ win }: { win: WindowState }) {
               i % 2 === 0 ? "bg-black/[0.04] dark:bg-white/[0.04]" : ""
             }`}
           >
-            <span className="shrink-0 text-[var(--color-fg-muted)]">{key}</span>
-            <span className="break-all text-right text-[var(--color-fg-secondary)]">
+            <span className="shrink-0 text-[var(--text-muted)]">{key}</span>
+            <span className="break-all text-right text-[var(--text-secondary)]">
               {stripExifQuotes(exifData[key])}
             </span>
           </div>

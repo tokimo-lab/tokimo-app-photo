@@ -1,45 +1,32 @@
-#![allow(dead_code)]
-//! Shared parent/child job machinery for photo background workers (sidecar port).
+//! Shared parent/child job machinery for photo background workers.
 //!
 //! Background workers that may need to process hundreds of thousands of
 //! photos are split into a parent `*_scan` job (which enumerates pending
 //! photo IDs and enqueues one child job per photo) and the child jobs
-//! themselves.
-//!
-//! In the pre-split host the parent transitioned
+//! themselves. The parent transitions
 //! `pending → running → waiting → completed` via the queue framework's
-//! `_phase: "waiting"` magic key, and child jobs aggregated their results
-//! back onto the parent via `JobRepo::aggregate_parent_progress`. The sidecar
-//! has neither: there is no host `_phase` handling and no host-side
-//! aggregation. Instead the sidecar self-drives parent/child lifecycle via the
-//! bus `jobs` RPCs — children query the parent's child set with
-//! `jobs::progress_summary` and update the parent directly with
-//! `jobs::update_progress` / `jobs::update_status`.
+//! `_phase: "waiting"` magic key, and child jobs aggregate their results
+//! back onto the parent via `JobRepo::aggregate_parent_progress`.
 //!
 //! This module factors out the wiring that's common across the four
 //! photo task types (OCR / CLIP / face / geocode).
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
+use sea_orm::{DatabaseConnection, EntityTrait};
 use serde_json::{Value as JsonValue, json};
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
-use crate::bus_clients::jobs::{
-    self, CreateJobRequest, JobFilter, QueryJobsRequest, UpdateStatusRequest, photo_caller,
-    photo_service_caller,
-};
-use crate::ctx::AppCtx;
-use crate::db::repos::library_repo::PhotoLibraryRepo;
+use crate::AppCtx;
+use crate::db::repos::PhotoLibraryRepo;
 use crate::services::notifications as photo_notify;
+use crate::db::repos::job_repo::JobRepo;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
 
-/// Build the parent data JSON. Includes the legacy `_phase: "waiting"` key for
-/// forward-compatibility. NOTE: the current host bus-proxy ignores the value
-/// returned from a scan handler, so this blob is advisory only — the sidecar
-/// self-aggregates parent progress via [`finalize_child`].
+/// Build the parent data JSON returned to the worker. Includes the magic
+/// `_phase: "waiting"` key so the worker calls `mark_waiting`.
 fn parent_data_waiting(total: i64, library_name: &str, task_type: &str) -> JsonValue {
     json!({
         "_phase": "waiting",
@@ -53,8 +40,8 @@ fn parent_data_waiting(total: i64, library_name: &str, task_type: &str) -> JsonV
 }
 
 /// Resolve a photo library's display name (falls back to the UUID string).
-async fn library_name(ctx: &Arc<AppCtx>, app_uuid: Uuid) -> String {
-    PhotoLibraryRepo::get_by_id(&ctx.db, app_uuid)
+async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
+    PhotoLibraryRepo::get_by_id(db, app_uuid)
         .await
         .ok()
         .flatten()
@@ -62,12 +49,13 @@ async fn library_name(ctx: &Arc<AppCtx>, app_uuid: Uuid) -> String {
 }
 
 /// Run the "scan" half of a parent/child photo job: list pending photo IDs,
-/// enqueue one child job per photo, and return a data blob that mirrors the
-/// legacy `waiting` shape. Idempotent: on retry it detects the
+/// enqueue one child job per photo, and return a data blob that flips
+/// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
 pub async fn run_scan<F>(
-    ctx: &Arc<AppCtx>,
+    db: &DatabaseConnection,
+    state: &Arc<AppCtx>,
     job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
@@ -83,25 +71,16 @@ where
         .and_then(|v| v.as_str())
         .ok_or("Missing photoLibraryId in params")?;
     let app_uuid = Uuid::parse_str(app_id)?;
-    let lib_name = library_name(ctx, app_uuid).await;
+    let lib_name = library_name(db, app_uuid).await;
 
     // Idempotency: if a previous (crashed) run already enqueued children,
-    // skip the enqueue phase and just return the waiting blob again.
-    if let Ok(resp) = jobs::query(
-        &ctx.client(),
-        photo_service_caller(),
-        QueryJobsRequest {
-            id: Some(job_id),
-            ..Default::default()
-        },
-    )
-    .await
-        && let Some(self_job) = resp.items.first()
-        && let Some(data) = self_job.data.as_ref()
-        && data.get("totalChildren").is_some()
+    // skip the enqueue phase and just transition to waiting again.
+    if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id).one(db).await
+        && self_job.data.get("totalChildren").is_some()
     {
         info!("[{task_type}_scan] resuming parent {job_id}: children already enqueued");
-        let total = data
+        let total = self_job
+            .data
             .get("totalChildren")
             .and_then(serde_json::Value::as_i64)
             .unwrap_or(0);
@@ -118,7 +97,7 @@ where
         if let Some(uid) = user_id {
             // Surface "nothing to do" as a completion notification (count=0)
             // so the user gets an immediate ack instead of silence.
-            photo_notify::notify_processing_completed(uid, app_uuid, &lib_name, task_type, 0);
+            photo_notify::notify_processing_completed(state, uid, app_uuid, &lib_name, task_type, 0).await;
         }
         return Ok(Some(json!({
             "processed": 0,
@@ -126,44 +105,45 @@ where
         })));
     }
 
-    // One child job per photo. parentJobId + taskType travel in the params so
-    // child handlers can surface them, and are ALSO persisted into dedicated
-    // `parent_job_id` / `task_type` columns (via batch_children) so DB queries
-    // can rely on stable indexed columns even if handlers overwrite `data`.
-    let children: Vec<CreateJobRequest> = pending
+    // One child job per photo. parentJobId + taskType travel in the params
+    // so the dispatch can surface them to child
+    // handlers. They are ALSO persisted into dedicated `parent_job_id` and
+    // `task_type` columns (via create_child_jobs_batch) so DB queries can
+    // rely on stable indexed columns even if handlers overwrite `data`.
+    let children: Vec<_> = pending
         .iter()
         .map(|photo_id| {
-            let child_params = json!({
+            let params = json!({
                 "photoLibraryId": app_uuid.to_string(),
                 "photoId": photo_id.to_string(),
                 "libraryName": lib_name,
                 "parentJobId": job_id.to_string(),
                 "taskType": task_type,
             });
-            let mut r = CreateJobRequest::new(child_job_type, child_params);
-            r.parent_job_id = Some(job_id);
-            r.task_type = Some(task_type.to_string());
-            r
+            (
+                child_job_type,
+                params,
+                None::<JsonValue>,
+                user_id,
+                job_id,
+                task_type.to_string(),
+            )
         })
         .collect();
-    let inserted =
-        jobs::batch_children(&ctx.client(), photo_caller(user_id), job_id, children).await?;
-    info!(
-        "[{task_type}_scan] enqueued {} child jobs (one per photo)",
-        inserted.len()
-    );
+    let inserted = JobRepo::create_child_jobs_batch(db, children, None).await?;
+    info!("[{task_type}_scan] enqueued {inserted} child jobs (one per photo)");
 
     // Fire an immediate 0/total progress notification so the user sees the
     // task in their notification center right away.
     if let Some(uid) = user_id {
-        photo_notify::notify_processing_progress(uid, app_uuid, &lib_name, task_type, 0, total);
+        photo_notify::notify_processing_progress(state, uid, app_uuid, &lib_name, task_type, 0, total).await;
     }
 
     Ok(Some(parent_data_waiting(total, &lib_name, task_type)))
 }
 
-/// Parsed `(photoLibraryId, photoId, libraryName, parentJobId, taskType)` from
-/// a child job's params.
+/// Extract `(photoLibraryId, photoId, libraryName, parentJobId, taskType)` from a
+/// child job's params. Returns parsed UUIDs.
 pub struct ChildContext {
     pub app_id: Uuid,
     pub photo_id: Uuid,
@@ -210,116 +190,50 @@ pub fn parse_child_params(params: &JsonValue) -> Result<ChildContext, DynErr> {
     })
 }
 
-/// After processing a child photo, aggregate the parent's progress over the
-/// bus and dispatch progress / completion notifications for the user.
-///
-/// Replaces the host's `JobRepo::aggregate_parent_progress`: the sidecar
-/// queries the OS job store for all siblings via `jobs::progress_summary` and
-/// updates the parent directly.
+/// After processing, aggregate to parent and dispatch progress / completion
+/// notifications for the user.
 pub async fn finalize_child(
-    ctx: &Arc<AppCtx>,
+    db: &DatabaseConnection,
+    state: &Arc<AppCtx>,
     user_id: Option<Uuid>,
-    child: &ChildContext,
-    child_job_type: &str,
+    ctx: &ChildContext,
     success: u32,
     failures: u32,
 ) -> Result<Option<JsonValue>, DynErr> {
-    let mut params_match: HashMap<String, String> = HashMap::new();
-    params_match.insert("parentJobId".to_string(), child.parent_job_id.to_string());
-    let filter = JobFilter {
-        status: None,
-        job_type: Some(child_job_type.to_string()),
-        params_match: Some(params_match),
-        parents_only: Some(false),
-    };
-
-    let summary = jobs::progress_summary(
-        &ctx.client(),
-        photo_service_caller(),
-        filter,
-        vec![child_job_type.to_string()],
-    )
-    .await?;
-
-    // The current child is NOT yet marked completed/failed in the OS store
-    // (we're still inside its handler), so inject its outcome to keep the
-    // parent's progress/status accurate.
-    let successes = summary.completed + i64::from(success);
-    let total_failed = summary.failed + i64::from(failures);
-    let done = successes + total_failed;
-    let total = summary.total;
-    let completed = total > 0 && done >= total;
-
-    let pct = if total > 0 {
-        ((done as f64 / total as f64) * 100.0)
-            .round()
-            .clamp(0.0, 100.0) as i32
-    } else {
-        0
-    };
-    let data = json!({
-        "totalChildren": total,
-        "done": done,
-        "successes": successes,
-        "failures": total_failed,
-        "libraryName": child.library_name,
-        "taskType": child.task_type,
-    });
-
-    // Best-effort parent update — the parent may already be `completed`
-    // host-side; do NOT fail the child if these error.
-    if completed {
-        if let Err(e) = jobs::update_status(
-            &ctx.client(),
-            photo_service_caller(),
-            UpdateStatusRequest {
-                job_id: child.parent_job_id,
-                status: "completed".into(),
-                error: None,
-                result: Some(data.clone()),
-                progress: Some(100),
-            },
-        )
-        .await
-        {
-            warn!("finalize_child: parent update_status failed: {e}");
-        }
-    } else if let Err(e) = jobs::update_progress(
-        &ctx.client(),
-        photo_service_caller(),
-        child.parent_job_id,
-        pct,
-        Some(data.clone()),
-    )
-    .await
-    {
-        warn!("finalize_child: parent update_progress failed: {e}");
-    }
-
-    if let Some(uid) = user_id {
-        if completed {
+    // Aggregate with the current child biased in — the worker hasn't yet
+    // marked this child `completed`/`failed` in the DB, so the raw count
+    // is always off by one. We know this child's outcome here, so inject
+    // it directly to keep the parent's progress/status accurate.
+    let pending_s = i32::try_from(success).unwrap_or(i32::MAX);
+    let pending_f = i32::try_from(failures).unwrap_or(i32::MAX);
+    let agg = JobRepo::aggregate_parent_progress(db, ctx.parent_job_id, pending_s, pending_f).await?;
+    if let (Some(uid), Some(a)) = (user_id, agg) {
+        if a.completed {
             photo_notify::notify_processing_completed(
+                state,
                 uid,
-                child.app_id,
-                &child.library_name,
-                &child.task_type,
-                successes,
-            );
+                ctx.app_id,
+                &ctx.library_name,
+                &ctx.task_type,
+                i64::from(a.successes),
+            )
+            .await;
         } else {
             photo_notify::notify_processing_progress(
+                state,
                 uid,
-                child.app_id,
-                &child.library_name,
-                &child.task_type,
-                done,
-                total,
-            );
+                ctx.app_id,
+                &ctx.library_name,
+                &ctx.task_type,
+                i64::from(a.done),
+                i64::from(a.total_children),
+            )
+            .await;
         }
     }
-
     Ok(Some(json!({
-        "parentJobId": child.parent_job_id.to_string(),
-        "taskType": child.task_type,
+        "parentJobId": ctx.parent_job_id.to_string(),
+        "taskType": ctx.task_type,
         "processed": success,
         "failed": failures,
     })))

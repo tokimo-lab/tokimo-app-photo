@@ -1,36 +1,29 @@
-#![allow(dead_code)]
 //! Child job for photo CLIP embedding (one photo per job).
 use std::sync::Arc;
 
+use sea_orm::DatabaseConnection;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::ctx::AppCtx;
-use crate::queue::cancellation::{JobCancel, check_cancel};
+use crate::AppCtx;
 use crate::queue::parent_child;
 use crate::services::clip::PhotoClipService;
+use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
-    ctx: &Arc<AppCtx>,
+    db: &DatabaseConnection,
+    state: &Arc<AppCtx>,
     _job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let child_ctx = parent_child::parse_child_params(params)?;
+    let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
-    let (success, failures, errors) = PhotoClipService::process_photo_ids(
-        &ctx.db,
-        &ctx.ai,
-        &ctx.sources,
-        child_ctx.app_id,
-        vec![child_ctx.photo_id],
-    )
-    .await;
-    let out =
-        parent_child::finalize_child(ctx, user_id, &child_ctx, "photo_clip", success, failures)
-            .await?;
+    let (success, failures, errors) =
+        PhotoClipService::process_photo_ids(db, state, ctx.app_id, vec![ctx.photo_id]).await;
+    let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors
             .into_iter()

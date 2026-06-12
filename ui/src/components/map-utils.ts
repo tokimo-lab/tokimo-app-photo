@@ -21,20 +21,7 @@ export interface PhotoMapViewProps {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
-const STORAGE_KEY_STYLE = "photo-map-style";
-const STORAGE_KEY_CENTER = "photo-map-center";
 export const THUMB_SIZE = 50;
-
-export function getStoredTheme(): MapTheme {
-  const v = localStorage.getItem(STORAGE_KEY_STYLE);
-  if (v === "light" || v === "dark" || v === "satellite" || v === "auto")
-    return v;
-  return "auto";
-}
-
-export function saveTheme(theme: MapTheme) {
-  localStorage.setItem(STORAGE_KEY_STYLE, theme);
-}
 
 export function getEffectiveTheme(
   theme: MapTheme,
@@ -50,49 +37,15 @@ export function amapStyleForTheme(t: "light" | "dark" | "satellite"): string {
   return "amap://styles/normal";
 }
 
-export function saveMapCenter(map: AMapInstance) {
-  const zoom = map.getZoom();
-  const center = map.getCenter();
-  localStorage.setItem(
-    STORAGE_KEY_CENTER,
-    `${center.lng},${center.lat},${zoom}`,
-  );
-}
-
-export function loadMapCenter(): {
-  center: [number, number];
-  zoom: number;
-} | null {
-  const raw = localStorage.getItem(STORAGE_KEY_CENTER);
-  if (!raw) return null;
-  const parts = raw.split(",");
-  if (parts.length !== 3) return null;
-  const lng = Number(parts[0]);
-  const lat = Number(parts[1]);
-  const zoom = Number(parts[2]);
-  if (Number.isNaN(lng) || Number.isNaN(lat) || Number.isNaN(zoom)) return null;
-  return { center: [lng, lat], zoom };
-}
-
 // ── Cluster selection computation ─────────────────────────────────────
-import Supercluster from "supercluster";
-
-type SuperclusterIndex = InstanceType<typeof Supercluster>;
-type ClusterFeatureLike = {
-  id?: number;
-  geometry: { coordinates: [number, number] };
-  properties: {
-    cluster?: boolean;
-    city?: string | null;
-    point_count?: number;
-    [key: string]: unknown;
-  };
-};
+import type Supercluster from "supercluster";
 
 /** Compute cluster/point selection info (bbox + label) for a map click. */
 export function computeClusterSelection(
-  sc: SuperclusterIndex,
-  cluster: ClusterFeatureLike,
+  sc: Supercluster,
+  cluster:
+    | Supercluster.ClusterFeature<Supercluster.AnyProps>
+    | Supercluster.PointFeature<Supercluster.AnyProps>,
 ): MapClusterSelection | null {
   const isCluster = cluster.properties.cluster;
 

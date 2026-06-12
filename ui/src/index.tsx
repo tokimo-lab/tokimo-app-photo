@@ -1,60 +1,57 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Dispose } from "@tokimo/sdk";
-import { defineApp, RuntimeProvider } from "@tokimo/sdk";
-import { ConfigProvider, ToastProvider } from "@tokimo/ui";
-import { StrictMode } from "react";
+/**
+ * Photo app — standalone entry point.
+ *
+ * This file bootstraps the photo app as a self-contained Tokimo app.
+ * The actual UI lives in ui/src/components/ and ui/src/pages/.
+ */
+import {
+  type AppRuntimeCtx,
+  type Dispose,
+  defineApp,
+  RuntimeProvider,
+} from "@tokimo/sdk";
+import {
+  ConfigProvider,
+  ToastProvider,
+  enUS as uiEnUS,
+  zhCN as uiZhCN,
+} from "@tokimo/ui";
+import { Camera } from "lucide-react";
+import { StrictMode, lazy, Suspense } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { AppCtxProvider } from "./AppContext";
-import PhotoApp from "./components/PhotoApp";
-import PhotoMenuBar from "./components/PhotoMenuBar";
-import { getPhotoI18n } from "./i18n";
-import { createPhotoExtension } from "./photo-extension";
 import "./index.css";
+
+const PhotoApp = lazy(() => import("./components/PhotoApp"));
 
 export default defineApp({
   id: "photo",
   manifest: {
     id: "photo",
     appName: "Photo",
-    icon: "Image",
+    icon: "Camera",
     image: "icon.png",
-    color: "#10b981",
+    color: "#8b5cf6",
     windowType: "photo",
-    defaultSize: { width: 1400, height: 900 },
-    category: "system",
+    defaultSize: { width: 1200, height: 800 },
+    category: "app",
   },
+  translations: {},
   mount(container, ctx): Dispose {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: 1 } },
-    });
-    const { uiLocale } = getPhotoI18n(ctx.locale);
     const root: Root = createRoot(container);
-
-    const unregisterPhotoExtension = ctx.shell.photo.registerExtension(
-      ctx.appId,
-      createPhotoExtension(ctx),
-    );
-
+    const locale = ctx.locale.startsWith("zh") ? uiZhCN : uiEnUS;
     root.render(
       <StrictMode>
-        <RuntimeProvider value={ctx}>
-          <AppCtxProvider value={ctx}>
-            <QueryClientProvider client={queryClient}>
-              <ConfigProvider locale={uiLocale}>
-                <ToastProvider>
-                  <PhotoMenuBar>
-                    <PhotoApp />
-                  </PhotoMenuBar>
-                </ToastProvider>
-              </ConfigProvider>
-            </QueryClientProvider>
-          </AppCtxProvider>
-        </RuntimeProvider>
+        <ConfigProvider locale={locale}>
+          <ToastProvider>
+            <RuntimeProvider value={ctx}>
+              <Suspense fallback={null}>
+                <PhotoApp />
+              </Suspense>
+            </RuntimeProvider>
+          </ToastProvider>
+        </ConfigProvider>
       </StrictMode>,
     );
-    return () => {
-      unregisterPhotoExtension();
-      root.unmount();
-    };
+    return () => root.unmount();
   },
 });

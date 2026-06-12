@@ -1,20 +1,13 @@
-#![allow(dead_code)]
-//! Photo app — CLIP embedding & search service.
-//!
-//! Faithful port of the presplit `services/clip.rs`. Consumers (queue handlers
-//! and AI HTTP endpoints) are wired up in commits 3–5; the `#![allow(dead_code)]`
-//! above keeps not-yet-called public items quiet until then.
-
 use sea_orm::*;
 use serde::Serialize;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::PhotoAiSettings;
 use crate::db::entities::photos;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::services::source::{SourceRegistry, local_driver_root_from_config};
+use crate::handlers::media::utils::local_driver_root;
 
 // ── ClipSearchResult ─────────────────────────────────────────────────────────
 
@@ -90,11 +83,7 @@ impl PhotoClipService {
     }
 
     /// Store a CLIP vector for a photo (upsert).
-    async fn store_vector(
-        db: &DatabaseConnection,
-        photo_id: Uuid,
-        vec: &[f32],
-    ) -> Result<(), AppError> {
+    async fn store_vector(db: &DatabaseConnection, photo_id: Uuid, vec: &[f32]) -> Result<(), AppError> {
         let vec_str = Self::format_vector(vec);
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -110,8 +99,7 @@ impl PhotoClipService {
     /// Embed a single photo: fetch image bytes, call CLIP, store vector.
     pub async fn embed_photo(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         photo_id: Uuid,
     ) -> Result<(), AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
@@ -119,7 +107,7 @@ impl PhotoClipService {
             .await?
             .not_found("Photo not found")?;
 
-        Self::embed_photo_model(db, ai, sources, &photo).await
+        Self::embed_photo_model(db, state, &photo).await
     }
 
     /// Embed a photo from an already-loaded model (avoids redundant DB fetch).
@@ -128,22 +116,18 @@ impl PhotoClipService {
     /// resolution (512px) instead of full-size, which is ~10× faster.
     async fn embed_photo_model(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         photo: &photos::Model,
     ) -> Result<(), AppError> {
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes = Self::load_photo_bytes_for_clip(db, sources, photo, image_path).await?;
+        let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
 
-        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo.id);
+        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo.id);
         let request_id = cancel_scope
             .as_ref()
             .map(crate::services::ai::AiCancelScope::request_id_owned);
-        let vec = Self::embed_image(ai, image_bytes, request_id).await?;
+        let vec = Self::embed_image(&state.ai, image_bytes, request_id).await?;
         drop(cancel_scope);
         Self::store_vector(db, photo.id, &vec).await?;
 
@@ -152,14 +136,11 @@ impl PhotoClipService {
 
     /// Load bytes for a single photo using a pre-resolved base path (no DB lookup).
     async fn load_bytes_fast(
-        sources: &std::sync::Arc<SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         photo: &photos::Model,
         source_base_paths: &std::collections::HashMap<Uuid, String>,
     ) -> Result<Vec<u8>, AppError> {
-        let path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
         // Try direct file read first (thumbnails, local paths)
         if let Ok(bytes) = tokio::fs::read(path).await {
@@ -169,11 +150,7 @@ impl PhotoClipService {
         // Resolve via pre-cached source base path
         if let Some(source_id) = photo.source_id {
             if let Some(base) = source_base_paths.get(&source_id) {
-                let combined = format!(
-                    "{}/{}",
-                    base.trim_end_matches('/'),
-                    photo.path.trim_start_matches('/')
-                );
+                let combined = format!("{}/{}", base.trim_end_matches('/'), photo.path.trim_start_matches('/'));
                 let abs = tokimo_package_utils::path::internal_to_native(&combined);
                 if let Ok(bytes) = tokio::fs::read(&abs).await {
                     return Self::maybe_decode_heic(bytes, &photo.filename).await;
@@ -181,7 +158,7 @@ impl PhotoClipService {
             }
 
             // Remote source — VFS fallback
-            let vfs = sources.ensure_vfs(&source_id.to_string()).await;
+            let vfs = state.sources.ensure_vfs(&source_id.to_string()).await;
             if let Ok(vfs) = vfs {
                 let data = vfs
                     .read_bytes(std::path::Path::new(&photo.path), 0, None)
@@ -200,10 +177,7 @@ impl PhotoClipService {
     /// If the file is HEIC/AVIF/RAW, decode to small JPEG; otherwise pass through.
     async fn maybe_decode_heic(raw_bytes: Vec<u8>, filename: &str) -> Result<Vec<u8>, AppError> {
         let lower = filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE
-            .iter()
-            .any(|ext| lower.ends_with(ext))
-        {
+        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
             return Self::convert_to_jpeg_small(&raw_bytes, filename).await;
         }
         Ok(raw_bytes)
@@ -212,17 +186,14 @@ impl PhotoClipService {
     /// Load photo bytes optimised for CLIP (small decode size for HEIC/AVIF).
     async fn load_photo_bytes_for_clip(
         db: &DatabaseConnection,
-        sources: &std::sync::Arc<SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         photo: &photos::Model,
         path: &str,
     ) -> Result<Vec<u8>, AppError> {
-        let raw_bytes = super::ocr::load_raw_bytes(db, sources, photo, path).await?;
+        let raw_bytes = super::ocr::load_raw_bytes(db, &state.sources, photo, path).await?;
 
         let lower = photo.filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE
-            .iter()
-            .any(|ext| lower.ends_with(ext))
-        {
+        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
             return Self::convert_to_jpeg_small(&raw_bytes, &photo.filename).await;
         }
 
@@ -234,9 +205,7 @@ impl PhotoClipService {
         let fname = filename.to_string();
         let bytes = raw_bytes.to_vec();
         tokio::task::spawn_blocking(move || {
-            use tokimo_package_ffmpeg::image::{
-                ImageDecodeOptions, ImageFormat, decode_image_from_bytes,
-            };
+            use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
             let opts = ImageDecodeOptions {
                 width: Some(512),
@@ -250,12 +219,13 @@ impl PhotoClipService {
         .map_err(|e| AppError::Internal(format!("FFI decode failed for {filename}: {e}")))
     }
 
-    /// Pre-load base paths for all local sources used by this app's photos.
+    /// Pre-load base paths for all `vfs` used by this app's sources.
     async fn preload_source_base_paths(
         db: &DatabaseConnection,
-        sources: &std::sync::Arc<SourceRegistry>,
         app_id: Uuid,
     ) -> Result<std::collections::HashMap<Uuid, String>, AppError> {
+        use crate::db::entities::{photos, vfs};
+
         // Get distinct source_ids from photos
         let source_ids: Vec<Option<Uuid>> = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
@@ -269,8 +239,8 @@ impl PhotoClipService {
 
         let mut map = std::collections::HashMap::new();
         for source_id in source_ids.into_iter().flatten() {
-            if let Ok(cfg) = sources.driver_config(source_id).await
-                && let Some(base) = local_driver_root_from_config(&cfg)
+            if let Some(fs) = vfs::Entity::find_by_id(source_id).one(db).await?
+                && let Some(base) = local_driver_root(&fs)
             {
                 map.insert(source_id, base);
             }
@@ -281,14 +251,14 @@ impl PhotoClipService {
     /// List photo IDs missing a CLIP vector. Empty Vec when models not ready.
     pub async fn list_pending_photo_ids(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
+        state: &std::sync::Arc<crate::AppCtx>,
         app_id: Uuid,
     ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.clip_enabled {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
-        if !ai.is_clip_enabled() || !ai.clip_models_ready() {
+        if !state.ai.is_clip_enabled() || !state.ai.clip_models_ready() {
             warn!("[photo_clip] CLIP model files not found, skipping batch for app {app_id}");
             return Ok(Vec::new());
         }
@@ -315,8 +285,7 @@ impl PhotoClipService {
     /// failures are recorded as zero vectors so the photo isn't re-queued forever.
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         app_id: Uuid,
         ids: Vec<Uuid>,
     ) -> (u32, u32, Vec<String>) {
@@ -325,7 +294,7 @@ impl PhotoClipService {
         }
         let mut errors: Vec<String> = Vec::new();
         // Pre-cache base paths so per-photo loading skips DB lookups.
-        let source_paths = match Self::preload_source_base_paths(db, sources, app_id).await {
+        let source_paths = match Self::preload_source_base_paths(db, app_id).await {
             Ok(p) => std::sync::Arc::new(p),
             Err(e) => {
                 let msg = format!("preload_source_base_paths failed: {e}");
@@ -359,20 +328,17 @@ impl PhotoClipService {
 
         for photo in photos_rows {
             let db_c = db.clone();
-            let ai_c = ai.clone();
-            let sources_c = sources.clone();
+            let state_c = state.clone();
             let sp = source_paths.clone();
             futures.push(async move {
                 let filename = photo.filename.clone();
                 let photo_id = photo.id;
-                let bytes_result = Self::load_bytes_fast(&sources_c, &photo, &sp).await;
+                let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                 let result = match bytes_result {
                     Ok(image_bytes) => {
-                        let scope = crate::services::ai::AiCancelScope::start(&ai_c, photo_id);
-                        let rid = scope
-                            .as_ref()
-                            .map(crate::services::ai::AiCancelScope::request_id_owned);
-                        let embed_result = Self::embed_image(&ai_c, image_bytes, rid).await;
+                        let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+                        let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
                         drop(scope);
                         match embed_result {
                             Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
@@ -396,9 +362,7 @@ impl PhotoClipService {
                         errors.push(msg);
                         let zero_vec = vec![0.0f32; 512];
                         if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
-                            warn!(
-                                "[photo_clip] failed to store zero vector for photo {photo_id}: {e}"
-                            );
+                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
                         }
                     }
                 }
@@ -423,10 +387,182 @@ impl PhotoClipService {
         (success, failures, errors)
     }
 
+    /// Batch embed all photos in an app that don't yet have a CLIP vector.
+    ///
+    /// Processes in pages of 500 to avoid loading all rows at once.
+    /// Reports progress to the job record so the UI can show real-time status.
+    pub async fn embed_app(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppCtx>,
+        app_id: Uuid,
+        job_id: Option<Uuid>,
+    ) -> Result<u32, AppError> {
+        let settings = PhotoAiSettings::for_app(db, app_id).await?;
+        if !settings.clip_enabled {
+            return Err(AppError::Internal("CLIP not enabled".into()));
+        }
+
+        if !state.ai.is_clip_enabled() || !state.ai.clip_models_ready() {
+            warn!("[photo_clip] CLIP model files not found, skipping batch for app {app_id}");
+            return Ok(0);
+        }
+
+        // Count total pending to report accurate progress
+        let total = photos::Entity::find()
+            .filter(photos::Column::AppId.eq(app_id))
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(
+                photos::Column::Id.not_in_subquery(
+                    sea_orm::sea_query::Query::select()
+                        .column(crate::db::entities::photo_clip_vectors::Column::PhotoId)
+                        .from(crate::db::entities::photo_clip_vectors::Entity)
+                        .to_owned(),
+                ),
+            )
+            .count(db)
+            .await? as u32;
+
+        if total == 0 {
+            info!("[photo_clip] No photos need CLIP embedding for app {app_id}");
+            return Ok(0);
+        }
+
+        info!("[photo_clip] Processing {total} photos for app {app_id}");
+        let mut success = 0u32;
+        let mut processed = 0u32;
+
+        const PAGE_SIZE: u64 = 500;
+        // Concurrency for I/O (HEIC decode, file read) — these are CPU-bound
+        // spawn_blocking tasks, so high concurrency keeps cores busy.
+        // GPU inference is serialized by the ONNX session lock internally.
+        const CONCURRENCY: usize = 8;
+
+        // Pre-cache source base paths to avoid DB lookups per photo
+        let source_paths = Self::preload_source_base_paths(db, app_id).await?;
+        let source_paths = std::sync::Arc::new(source_paths);
+
+        loop {
+            // Fetch next page of photos without vectors (always page 0 since
+            // processed photos get vectors and drop out of the query)
+            let page = photos::Entity::find()
+                .filter(photos::Column::AppId.eq(app_id))
+                .filter(photos::Column::DeletedAt.is_null())
+                .filter(
+                    photos::Column::Id.not_in_subquery(
+                        sea_orm::sea_query::Query::select()
+                            .column(crate::db::entities::photo_clip_vectors::Column::PhotoId)
+                            .from(crate::db::entities::photo_clip_vectors::Entity)
+                            .to_owned(),
+                    ),
+                )
+                .paginate(db, PAGE_SIZE)
+                .fetch_page(0)
+                .await?;
+
+            if page.is_empty() {
+                break;
+            }
+
+            // Process photos with bounded concurrency.
+            // Each task: load bytes (no DB) → CLIP inference (GPU) → store vector (DB).
+            use futures_util::StreamExt;
+            let mut futures = futures_util::stream::FuturesUnordered::new();
+
+            for photo in page {
+                let db_c = db.clone();
+                let state_c = state.clone();
+                let sp = source_paths.clone();
+                futures.push(async move {
+                    let filename = photo.filename.clone();
+                    let photo_id = photo.id;
+
+                    // Load bytes without DB call (uses pre-cached source paths)
+                    let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
+                    let result = match bytes_result {
+                        Ok(image_bytes) => {
+                            let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                            let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
+                            let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
+                            drop(scope);
+                            match embed_result {
+                                Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
+                                Err(e) => Err(e),
+                            }
+                        }
+                        Err(e) => Err(e),
+                    };
+                    (photo_id, filename, result)
+                });
+
+                // When we hit the concurrency limit, drain one before adding more
+                if futures.len() >= CONCURRENCY
+                    && let Some((photo_id, filename, result)) = futures.next().await
+                {
+                    processed += 1;
+                    match result {
+                        Ok(()) => success += 1,
+                        Err(e) => {
+                            error!("[photo_clip] Failed for {filename}: {e}");
+                            let zero_vec = vec![0.0f32; 512];
+                            if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                                warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                            }
+                        }
+                    }
+                    Self::maybe_report_progress(db, job_id, processed, total, success).await;
+                }
+            }
+
+            // Drain remaining futures
+            while let Some((photo_id, filename, result)) = futures.next().await {
+                processed += 1;
+                match result {
+                    Ok(()) => success += 1,
+                    Err(e) => {
+                        error!("[photo_clip] Failed for {filename}: {e}");
+                        let zero_vec = vec![0.0f32; 512];
+                        if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
+                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                        }
+                    }
+                }
+                Self::maybe_report_progress(db, job_id, processed, total, success).await;
+            }
+        }
+
+        info!("[photo_clip] Done: {success}/{total} photos processed ({processed} total attempts)");
+        Ok(success)
+    }
+
+    /// Report progress to the job record every 50 photos.
+    async fn maybe_report_progress(
+        db: &DatabaseConnection,
+        job_id: Option<Uuid>,
+        processed: u32,
+        total: u32,
+        success: u32,
+    ) {
+        if processed.is_multiple_of(50) {
+            let pct = ((f64::from(processed) / f64::from(total)) * 100.0).min(100.0) as i32;
+            info!("[photo_clip] Progress: {processed}/{total} ({pct}%), {success} succeeded");
+            if let Some(jid) = job_id {
+                let payload = serde_json::json!({
+                    "processed": processed,
+                    "total": total,
+                    "success": success,
+                });
+                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(payload)).await
+                {
+                    warn!("[photo_clip] job {jid}: failed to update progress: {e}");
+                }
+            }
+        }
+    }
+
     /// Search photos by text using CLIP cosine similarity.
     pub async fn search(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
+        state: &std::sync::Arc<crate::AppCtx>,
         app_id: Uuid,
         query: &str,
     ) -> Result<Vec<ClipSearchResult>, AppError> {
@@ -435,7 +571,7 @@ impl PhotoClipService {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
 
-        let text_vec = Self::embed_text(ai, query, None).await?;
+        let text_vec = Self::embed_text(&state.ai, query, None).await?;
         let vec_str = Self::format_vector(&text_vec);
 
         let rows = db
@@ -458,10 +594,7 @@ impl PhotoClipService {
         let mut results = Vec::new();
         for row in rows {
             results.push(ClipSearchResult {
-                photo_id: row
-                    .try_get::<Uuid>("", "photo_id")
-                    .unwrap_or_default()
-                    .to_string(),
+                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
                 filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
                 similarity: row.try_get::<f64>("", "similarity").unwrap_or(0.0),

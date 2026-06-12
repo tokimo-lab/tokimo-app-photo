@@ -8,16 +8,17 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
 import {
   computeJustifiedRows,
   type JustifiedRow,
-} from "@/hooks/useJustifiedLayout";
-import { useAppCtx } from "../AppContext";
+} from "../hooks/useJustifiedLayout";
+import type { PhotoOutput } from "@/generated/rust-api";
+import { useComponentPreference } from "@/shared/hooks/use-preference";
+import { useWindowActions } from "@/system";
+import { getDefaultSize } from "@/system/window/window-sync";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
-import { type DateGroup, groupPhotosByDate, photoImageUrl } from "./photo-utils";
-import { thumbUrl } from "@/lib/thumb";
+import { type DateGroup, groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
 
 const PHOTO_GAP = 4;
@@ -63,60 +64,90 @@ export function PhotoTimeline({
   targetRowHeight?: number;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
-  const ctx = useAppCtx();
+  const { openWindow } = useWindowActions();
+  const infoPanelPref = useComponentPreference<{ open?: boolean }>(
+    "photo-viewer-info",
+  );
+  const infoPanelOpenRef = useRef(infoPanelPref.data.open ?? false);
+  infoPanelOpenRef.current = infoPanelPref.data.open ?? false;
 
   const handlePhotoClick = useCallback(
     (photo: PhotoOutput) => {
-      const dataSource = photos.map((p) => ({
-        id: p.id,
-        src: photoImageUrl(p.id),
-        thumbnail: thumbUrl("photo", p.id, 320),
-        width: p.width,
-        height: p.height,
-        alt: p.filename,
-      }));
-      const currentIndex = photos.findIndex((p) => p.id === photo.id);
-
-      const thumbEl = document.querySelector(`[data-photo-id="${photo.id}"]`);
-      const thumbImg = thumbEl?.querySelector("img");
-
-      if (thumbEl && thumbImg) {
-        const thumbRect = thumbEl.getBoundingClientRect();
-
-        ctx.shell.viewer.openViewer({
-          type: "image",
-          title: photo.filename,
-          route: `/photos/${photo.id}`,
-          metadata: {
-            dataSource,
-            index: currentIndex,
-            flyFrom: {
-              rect: thumbRect,
-              selector: `[data-photo-id="${photo.id}"]`,
-            },
-            thumbnail: thumbUrl("photo", photo.id, 320),
-            appId,
-            sourceType: "photo",
-            sourceId: photo.id,
-          },
-        });
-      } else {
-        // Fallback: open without animation
-        ctx.shell.viewer.openViewer({
-          type: "image",
-          title: photo.filename,
-          route: `/photos/${photo.id}`,
-          metadata: {
-            dataSource,
-            index: currentIndex,
-            appId,
-            sourceType: "photo",
-            sourceId: photo.id,
-          },
-        });
+      // Calculate center position relative to parent window
+      const parentEl = measureRef.current?.closest(
+        "[data-window-id]",
+      ) as HTMLElement | null;
+      const parentRect = parentEl?.getBoundingClientRect();
+      const childSize = getDefaultSize("image");
+      // Read info panel state to adjust fly animation target
+      let infoW = 0;
+      if (infoPanelOpenRef.current) infoW = 320;
+      let initialX: number | undefined;
+      let initialY: number | undefined;
+      if (parentRect) {
+        initialX = Math.max(
+          0,
+          parentRect.left + (parentRect.width - childSize.width) / 2,
+        );
+        initialY = Math.max(
+          0,
+          parentRect.top + (parentRect.height - childSize.height) / 2,
+        );
       }
+
+      // Fly animation: thumbnail → window target
+      const thumbEl = document.querySelector(
+        `[data-photo-id="${photo.id}"]`,
+      ) as HTMLElement | null;
+      if (thumbEl && initialX != null && initialY != null) {
+        const thumbRect = thumbEl.getBoundingClientRect();
+        const thumbImg = thumbEl.querySelector("img");
+        if (thumbImg) {
+          // Target is the image area within the window (excludes info panel)
+          const targetW = childSize.width - infoW;
+          const flyEl = document.createElement("div");
+          flyEl.style.cssText = `
+            position: fixed; z-index: 99999; pointer-events: none;
+            left: ${thumbRect.left}px; top: ${thumbRect.top}px;
+            width: ${thumbRect.width}px; height: ${thumbRect.height}px;
+            border-radius: 4px; overflow: hidden;
+            transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+          `;
+          const img = document.createElement("img");
+          img.src = thumbImg.src;
+          img.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
+          flyEl.appendChild(img);
+          document.body.appendChild(flyEl);
+          // Trigger reflow, then animate
+          flyEl.getBoundingClientRect();
+          requestAnimationFrame(() => {
+            // Offset by title bar height (36px) so image aligns with content area
+            flyEl.style.left = `${initialX}px`;
+            flyEl.style.top = `${(initialY ?? 0) + 36}px`;
+            flyEl.style.width = `${targetW}px`;
+            flyEl.style.height = `${childSize.height - 36}px`;
+            flyEl.style.borderRadius = "8px";
+            img.style.objectFit = "contain";
+          });
+          setTimeout(() => {
+            flyEl.remove();
+            window.dispatchEvent(new CustomEvent("photo-fly-end"));
+          }, 350);
+        }
+      }
+
+      openWindow({
+        type: "image",
+        title: photo.filename,
+        route: `/photos/${photo.id}`,
+        appId,
+        sourceType: "photo",
+        sourceId: photo.id,
+        initialX,
+        initialY,
+      });
     },
-    [ctx, appId, photos],
+    [openWindow, appId],
   );
 
   // ── Measure available content width for justified layout ─────

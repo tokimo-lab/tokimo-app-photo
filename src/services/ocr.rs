@@ -1,10 +1,3 @@
-#![allow(dead_code)]
-//! Photo app — OCR service.
-//!
-//! Faithful port of the presplit `services/ocr.rs`. Consumers (queue handlers
-//! and AI HTTP endpoints) are wired up in commits 3–5; the `#![allow(dead_code)]`
-//! above keeps not-yet-called public items quiet until then.
-
 use chrono::Utc;
 use sea_orm::*;
 use serde::Serialize;
@@ -18,8 +11,7 @@ use crate::error::OptionExt;
 
 /// Extensions the `image` crate cannot decode — need `FFmpeg` conversion.
 pub(crate) const NEEDS_FFMPEG_DECODE: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2",
-    ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 /// Single OCR detection result.
@@ -176,18 +168,14 @@ impl PhotoOcrService {
                     serde_json::json!(
                         positions
                             .iter()
-                            .map(
-                                |(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)})
-                            )
+                            .map(|(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)}))
                             .collect::<Vec<_>>()
                     )
                 }),
                 positioning_type,
-                corners: item.corners.map(|c| {
-                    c.iter()
-                        .map(|(x, y)| [f64::from(*x), f64::from(*y)])
-                        .collect()
-                }),
+                corners: item
+                    .corners
+                    .map(|c| c.iter().map(|(x, y)| [f64::from(*x), f64::from(*y)]).collect()),
             });
         }
 
@@ -197,8 +185,7 @@ impl PhotoOcrService {
     /// OCR a single photo: fetch image bytes, call OCR, store results.
     pub async fn ocr_photo(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         photo_id: Uuid,
     ) -> Result<usize, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
@@ -212,23 +199,20 @@ impl PhotoOcrService {
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
         // Get thumbnail bytes (prefer thumbnail, fallback to original)
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes = load_photo_bytes(db, sources, &photo, image_path).await?;
+        let image_bytes = load_photo_bytes(db, &state.sources, &photo, image_path).await?;
 
         // Bridge the owning job's cancel token to the AI worker's /v1/cancel
         // so that `cancel_one(job_id, ...)` actually terminates the in-flight
         // ONNX session instead of letting it chew CPU until the batch ends.
-        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
+        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo_id);
         let request_id = cancel_scope
             .as_ref()
             .map(crate::services::ai::AiCancelScope::request_id_owned);
 
         let (results, debug_info) = Self::ocr_image(
-            ai,
+            &state.ai,
             image_bytes,
             Some(&model_name),
             aux_model_name.as_deref(),
@@ -280,19 +264,36 @@ impl PhotoOcrService {
         Ok(count)
     }
 
+    /// Batch OCR all unscanned photos in an app.
+    pub async fn ocr_app(
+        db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppCtx>,
+        app_id: Uuid,
+    ) -> Result<u32, AppError> {
+        let pending = Self::list_pending_photo_ids(db, state, app_id).await?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let total = pending.len();
+        info!("[photo_ocr] Processing {total} photos for app {app_id}");
+        let (success, _failures, _errors) = Self::process_photo_ids(db, state, pending).await;
+        info!("[photo_ocr] Done: {success}/{total} photos processed");
+        Ok(success)
+    }
+
     /// List photo IDs that need OCR scanning. Returns empty Vec if OCR is
     /// disabled or models aren't ready (parent worker decides whether to
     /// surface this as an error).
     pub async fn list_pending_photo_ids(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
+        state: &std::sync::Arc<crate::AppCtx>,
         app_id: Uuid,
     ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.ocr_enabled {
             return Err(AppError::Internal("OCR not enabled".into()));
         }
-        if !ai.is_ocr_enabled() || !ai.ocr_models_ready() {
+        if !state.ai.is_ocr_enabled() || !state.ai.ocr_models_ready() {
             warn!("[photo_ocr] OCR model files not found, skipping batch for app {app_id}");
             return Ok(Vec::new());
         }
@@ -313,15 +314,14 @@ impl PhotoOcrService {
     /// per-photo failures (lenient).
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
-        ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
-        sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
+        state: &std::sync::Arc<crate::AppCtx>,
         ids: Vec<Uuid>,
     ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;
         let mut failures = 0u32;
         let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
-            match Self::ocr_photo(db, ai, sources, photo_id).await {
+            match Self::ocr_photo(db, state, photo_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;
@@ -365,15 +365,10 @@ impl PhotoOcrService {
         let mut results = Vec::new();
         for row in rows {
             results.push(OcrSearchResult {
-                photo_id: row
-                    .try_get::<Uuid>("", "photo_id")
-                    .unwrap_or_default()
-                    .to_string(),
+                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
                 filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
-                matched_text: row
-                    .try_get::<String>("", "matched_text")
-                    .unwrap_or_default(),
+                matched_text: row.try_get::<String>("", "matched_text").unwrap_or_default(),
             });
         }
         Ok(results)
@@ -411,35 +406,37 @@ pub(crate) async fn load_photo_bytes(
 
 /// Load raw file bytes from local filesystem or VFS.
 pub(crate) async fn load_raw_bytes(
-    _db: &DatabaseConnection,
+    db: &DatabaseConnection,
     sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
     photo: &photos::Model,
     path: &str,
 ) -> Result<Vec<u8>, AppError> {
+    use crate::db::entities::vfs;
+
     // Try local file first (thumbnail_path is usually local)
     if let Ok(bytes) = tokio::fs::read(path).await {
         return Ok(bytes);
     }
 
     // Fallback: resolve via VFS if source exists
-    if let Some(source_id) = photo.source_id
-        && let Ok(cfg) = sources.driver_config(source_id).await
-    {
-        if cfg.driver_name == "local" {
-            let abs_path =
-                crate::services::source::resolve_local_path(&photo.path, Some(&cfg.config));
-            if let Ok(bytes) = tokio::fs::read(&abs_path).await {
-                return Ok(bytes);
-            }
-        } else {
-            // Remote source — use VFS
-            let vfs = sources.ensure_vfs(&source_id.to_string()).await;
-            if let Ok(vfs) = vfs {
-                let data = vfs
-                    .read_bytes(std::path::Path::new(&photo.path), 0, None)
-                    .await
-                    .map_err(|e| AppError::Internal(format!("VFS read error: {e}")))?;
-                return Ok(data);
+    if let Some(source_id) = photo.source_id {
+        let fs = vfs::Entity::find_by_id(source_id).one(db).await?;
+        if let Some(fs_model) = fs {
+            if fs_model.r#type == "local" {
+                let abs_path = crate::handlers::media::utils::resolve_local_path(&photo.path, fs_model.config.as_ref());
+                if let Ok(bytes) = tokio::fs::read(&abs_path).await {
+                    return Ok(bytes);
+                }
+            } else {
+                // Remote source — use VFS
+                let vfs = sources.ensure_vfs(&source_id.to_string()).await;
+                if let Ok(vfs) = vfs {
+                    let data = vfs
+                        .read_bytes(std::path::Path::new(&photo.path), 0, None)
+                        .await
+                        .map_err(|e| AppError::Internal(format!("VFS read error: {e}")))?;
+                    return Ok(data);
+                }
             }
         }
     }
@@ -455,9 +452,7 @@ async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();
     let result = tokio::task::spawn_blocking(move || {
-        use tokimo_package_ffmpeg::image::{
-            ImageDecodeOptions, ImageFormat, decode_image_from_bytes,
-        };
+        use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
 
         let opts = ImageDecodeOptions {
             width: None,

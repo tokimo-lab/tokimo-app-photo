@@ -1,55 +1,16 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ShellWindowHandle } from "@tokimo/sdk";
-import { ConfigProvider, ToastProvider } from "@tokimo/ui";
-import { useState } from "react";
-import { getPhotoI18n } from "../i18n";
-import { getBridge } from "../modal-bridge";
-import PhotoLibraryEditor from "./PhotoLibraryEditor";
+/**
+ * PhotoLibraryEditorWindow — stub for standalone mode.
+ *
+ * In the monorepo, this was provided by the settings app.
+ * In standalone mode, this is a placeholder.
+ */
 
-export default function PhotoLibraryEditorWindow({
-  win,
-}: {
-  win: ShellWindowHandle;
-}) {
-  const bridgeId =
-    typeof win.metadata.bridgeId === "string" ? win.metadata.bridgeId : "";
-  const [bridge] = useState(() => (bridgeId ? getBridge(bridgeId) : undefined));
-  const [queryClient] = useState(() => new QueryClient());
-
-  if (bridge?.kind !== "settings") {
-    return null;
-  }
-
-  const { uiLocale } = getPhotoI18n(bridge.locale);
-
-  const handleSaved = () => {
-    bridge.onMutated();
-    win.close();
-  };
-
-  const handleDeleted = () => {
-    bridge.onMutated();
-    win.close();
-  };
-
-  const handleCancel = () => {
-    win.close();
-  };
-
+export default function PhotoLibraryEditorWindow() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ConfigProvider locale={uiLocale}>
-        <ToastProvider>
-          <PhotoLibraryEditor
-            photoId={bridge.photoId}
-            shell={bridge.shell}
-            locale={bridge.locale}
-            onSaved={handleSaved}
-            onDeleted={handleDeleted}
-            onCancel={handleCancel}
-          />
-        </ToastProvider>
-      </ConfigProvider>
-    </QueryClientProvider>
+    <div className="flex h-full items-center justify-center p-8">
+      <p className="text-muted-foreground">
+        Photo library editor is not available in standalone mode.
+      </p>
+    </div>
   );
 }

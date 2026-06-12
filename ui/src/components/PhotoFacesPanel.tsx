@@ -18,8 +18,8 @@ const THUMB_WIDTH = 800;
 interface PhotoFacesPanelProps {
   photoId: string;
   appId: string;
-  photoWidth: number | null | undefined;
-  photoHeight: number | null | undefined;
+  photoWidth: number | null;
+  photoHeight: number | null;
   hoveredFaceId: number | null;
   onHoverFace: (faceId: number | null) => void;
   onNavigateToPerson?: (personId: string) => void;
@@ -173,8 +173,8 @@ function FaceChip({
   face: PhotoFaceOutput;
   photoId: string;
   appId: string;
-  photoWidth: number | null | undefined;
-  photoHeight: number | null | undefined;
+  photoWidth: number | null;
+  photoHeight: number | null;
   isHovered: boolean;
   onHover: (faceId: number | null) => void;
   onNavigateToPerson?: (personId: string) => void;
@@ -192,7 +192,7 @@ function FaceChip({
   const assignMutation = api.photo.assignFaceToPerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/item/{id}/faces"],
+        queryKey: ["/api/apps/photo/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],
@@ -203,7 +203,7 @@ function FaceChip({
   const createPersonMutation = api.photo.createPersonFromFace.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/item/{id}/faces"],
+        queryKey: ["/api/apps/photo/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],
@@ -214,7 +214,7 @@ function FaceChip({
   const renameMutation = api.photo.renamePerson.useMutation({
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/item/{id}/faces"],
+        queryKey: ["/api/apps/photo/{id}/faces"],
       });
       void queryClient.invalidateQueries({
         queryKey: ["/api/apps/{id}/persons"],

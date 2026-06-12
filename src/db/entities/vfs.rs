@@ -1,12 +1,11 @@
-//! `SeaORM` Entity — public.vfs table.
-//!
-//! Shared public table; photo sidecar accesses it read-only for source config.
+//! VFS entity — represents a virtual filesystem source (local, SMB, NFS, etc.).
+//! This table lives in the `public` schema and is shared across all apps.
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(schema_name = "public", table_name = "vfs")]
+#[sea_orm(table_name = "vfs")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,

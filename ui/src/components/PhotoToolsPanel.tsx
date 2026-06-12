@@ -1,4 +1,3 @@
-import { useRuntimeCtx } from "@tokimo/sdk";
 import { LoadingOutlined } from "@tokimo/ui";
 import {
   Image,
@@ -8,8 +7,9 @@ import {
   Search,
   Tags,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { api } from "@/generated/rust-api";
+import { useAppEvent } from "@/system";
 
 type ToolKey = "faces" | "exif" | "thumbnail" | "clip" | "ocr";
 
@@ -54,14 +54,11 @@ export function PhotoToolsPanel({
   photoId: string;
   onRefreshComplete?: () => void;
 }) {
-  const { shell } = useRuntimeCtx();
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, string>>({});
   // Map jobId → ToolKey for in-flight async refreshes so job_update events
   // can route back to the correct row.
   const pendingJobs = useRef<Map<string, ToolKey>>(new Map());
-  const onRefreshCompleteRef = useRef(onRefreshComplete);
-  onRefreshCompleteRef.current = onRefreshComplete;
 
   const refreshFaces = api.photo.refreshFaces.useMutation();
   const refreshExif = api.photo.refreshExif.useMutation();
@@ -69,33 +66,24 @@ export function PhotoToolsPanel({
   const refreshClip = api.photo.refreshClip.useMutation();
   const refreshOcr = api.photo.refreshOcr.useMutation();
 
-  // Subscribe to job_update via ctx.shell.ws (works in both standalone app
-  // window and extension context, unlike useAppEvent which needs WsProvider).
-  useEffect(() => {
-    const unsub = shell.ws.subscribe("job_update", (msg) => {
-      // msg.data IS the job object directly (not wrapped in { job: ... })
-      const job = msg.data as
-        | { id?: string; status?: string; error?: string }
-        | undefined;
-      if (!job?.id) return;
-      const tool = pendingJobs.current.get(job.id);
-      if (!tool) return;
-      const status = job.status;
-      if (!status || !TERMINAL_STATUSES.has(status)) return;
+  useAppEvent((event) => {
+    if (event.type !== "job_update") return;
+    const tool = pendingJobs.current.get(event.job.id);
+    if (!tool) return;
+    const status = event.job.status;
+    if (!TERMINAL_STATUSES.has(status)) return;
 
-      pendingJobs.current.delete(job.id);
-      setLoading((prev) => ({ ...prev, [tool]: false }));
-      if (status === "failed" || status === "cancelled") {
-        const errMsg =
-          job.error ?? (status === "cancelled" ? "已中断" : "失败");
-        setResults((prev) => ({ ...prev, [tool]: `❌ ${errMsg}` }));
-      } else {
-        setResults((prev) => ({ ...prev, [tool]: "✅ 已完成" }));
-        onRefreshCompleteRef.current?.();
-      }
-    });
-    return unsub;
-  }, [shell.ws]);
+    pendingJobs.current.delete(event.job.id);
+    setLoading((prev) => ({ ...prev, [tool]: false }));
+    if (status === "failed" || status === "cancelled") {
+      const msg =
+        event.job.error ?? (status === "cancelled" ? "已中断" : "失败");
+      setResults((prev) => ({ ...prev, [tool]: `❌ ${msg}` }));
+    } else {
+      setResults((prev) => ({ ...prev, [tool]: "✅ 已完成" }));
+      onRefreshComplete?.();
+    }
+  });
 
   const handleRefresh = useCallback(
     (key: ToolKey) => {

@@ -482,7 +482,7 @@ export function PhotoInfoPanel({
                         metadata: {
                           debugInfo: detail.ocrDebugInfo,
                           mergedTexts: ocrResults.map((r) => r.text),
-                        } as unknown as OcrDebugWindowMetadata as unknown as TaskMetadata,
+                        } as OcrDebugWindowMetadata as unknown as TaskMetadata,
                       });
                     }}
                   >

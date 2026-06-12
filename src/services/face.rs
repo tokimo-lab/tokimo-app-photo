@@ -1,19 +1,13 @@
-#![allow(dead_code)]
-//! Photo app — face detection & clustering service.
-//!
-//! Faithful port of the presplit `services/face.rs` (AI-detection surface only;
-//! person-management CRUD lives in `PhotoRepo`). Consumers (queue handlers and
-//! AI HTTP endpoints) are wired up in commits 3–5; the `#![allow(dead_code)]`
-//! above keeps not-yet-called public items quiet until then.
-
 use chrono::Utc;
 use sea_orm::prelude::Expr;
 use sea_orm::*;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{photo_faces, photo_persons, photos};
+use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
 
@@ -35,10 +29,7 @@ impl PhotoFaceService {
 
     /// Format a 512-d embedding as a pgvector literal: `[0.1,0.2,…]`
     fn vec_literal(embedding: &[f64]) -> String {
-        let inner: Vec<String> = embedding
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect();
+        let inner: Vec<String> = embedding.iter().map(std::string::ToString::to_string).collect();
         format!("[{}]", inner.join(","))
     }
 
@@ -146,18 +137,12 @@ impl PhotoFaceService {
             .await?
             .not_found("Photo not found")?;
 
-        let image_path = photo
-            .thumbnail_path
-            .as_deref()
-            .unwrap_or(photo.path.as_str());
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes =
-            crate::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
+        let image_bytes = crate::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
 
         let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
-        let rid = scope
-            .as_ref()
-            .map(crate::services::ai::AiCancelScope::request_id_owned);
+        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
         let detections = Self::represent(ai, image_bytes, rid).await?;
         drop(scope);
         let count = detections.len();
@@ -201,18 +186,14 @@ impl PhotoFaceService {
                 ],
             );
             let row = db.query_one_raw(stmt).await?;
-            let face_id: i32 = row
-                .as_ref()
-                .and_then(|r| r.try_get::<i32>("", "id").ok())
-                .unwrap_or(0);
+            let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
 
             // Assign to existing person or create a new one
             // Threshold 0.68: conservative — prefer splitting over merging
-            let person_id =
-                match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
-                    Some(pid) => pid,
-                    None => Self::create_person(db, photo.app_id).await?,
-                };
+            let person_id = match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
+                Some(pid) => pid,
+                None => Self::create_person(db, photo.app_id).await?,
+            };
 
             // Link face → person
             let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
@@ -267,8 +248,7 @@ impl PhotoFaceService {
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(Expr::cust(
-                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)"
-                    .to_string(),
+                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)".to_string(),
             ))
             .select_only()
             .column(photos::Column::Id)
@@ -301,5 +281,276 @@ impl PhotoFaceService {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         (success, failures, errors)
+    }
+
+    /// List all persons for an app.
+    pub async fn list_persons(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PersonOutput>, AppError> {
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r"
+                SELECT pp.id, pp.name, pp.face_count,
+                       pf.photo_id as avatar_photo_id,
+                       p.thumbnail_path as avatar_thumbnail_path
+                FROM photo_persons pp
+                LEFT JOIN photo_faces pf ON pf.id = pp.avatar_face_id
+                LEFT JOIN photos p ON p.id = pf.photo_id
+                WHERE pp.app_id = $1 AND pp.is_hidden = false
+                ORDER BY pp.face_count DESC
+                ",
+                [app_id.into()],
+            ))
+            .await?;
+
+        let mut persons = Vec::new();
+        for row in rows {
+            persons.push(PersonOutput {
+                id: row.try_get::<Uuid>("", "id").unwrap_or_default().to_string(),
+                name: row.try_get("", "name").ok().flatten(),
+                face_count: row.try_get::<i32>("", "face_count").unwrap_or(0),
+                avatar_photo_id: row.try_get::<Uuid>("", "avatar_photo_id").ok().map(|u| u.to_string()),
+                avatar_thumbnail_path: row.try_get("", "avatar_thumbnail_path").ok().flatten(),
+            });
+        }
+
+        Ok(persons)
+    }
+
+    /// Get photos containing a specific person.
+    pub async fn photos_by_person(
+        db: &DatabaseConnection,
+        person_id: Uuid,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        // Count total
+        let count_stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r"
+            SELECT COUNT(DISTINCT p.id) as cnt
+            FROM photos p
+            JOIN photo_faces pf ON pf.photo_id = p.id
+            WHERE pf.person_id = $1 AND p.deleted_at IS NULL
+            ",
+            [person_id.into()],
+        );
+        let total: i64 = db
+            .query_one_raw(count_stmt)
+            .await?
+            .and_then(|r| r.try_get::<i64>("", "cnt").ok())
+            .unwrap_or(0);
+
+        // Fetch photos via join, applying pagination
+        let photo_ids_query = photos::Entity::find()
+            .filter(photos::Column::DeletedAt.is_null())
+            .filter(Expr::cust(format!(
+                "photos.id IN (SELECT pf.photo_id FROM photo_faces pf WHERE pf.person_id = '{person_id}')"
+            )))
+            .order_by_desc(photos::Column::TakenAt)
+            .into_partial_model::<PhotoOutput>()
+            .paginate(db, page.page_size)
+            .fetch_page(page.page.saturating_sub(1))
+            .await?;
+
+        Ok(Page::new(photo_ids_query, total, page))
+    }
+
+    /// Merge two persons: move all faces from source to target, then delete source.
+    pub async fn merge_persons(db: &DatabaseConnection, target_id: Uuid, source_id: Uuid) -> Result<(), AppError> {
+        // Move all faces from source → target
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE photo_faces SET person_id = $1 WHERE person_id = $2",
+            [target_id.into(), source_id.into()],
+        );
+        db.execute_raw(stmt).await?;
+
+        // Recount faces for the target person
+        let count_stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT COUNT(*) as cnt FROM photo_faces WHERE person_id = $1",
+            [target_id.into()],
+        );
+        let new_count: i32 = db
+            .query_one_raw(count_stmt)
+            .await?
+            .and_then(|r| r.try_get::<i64>("", "cnt").ok())
+            .unwrap_or(0) as i32;
+
+        let target = photo_persons::Entity::find_by_id(target_id).one(db).await?;
+        if let Some(t) = target {
+            let mut active: photo_persons::ActiveModel = t.into();
+            active.face_count = Set(new_count);
+            active.updated_at = Set(Utc::now().fixed_offset());
+            active.update(db).await?;
+        }
+
+        // Delete the source person
+        photo_persons::Entity::delete_by_id(source_id).exec(db).await?;
+
+        Ok(())
+    }
+
+    /// Rename a person.
+    pub async fn rename_person(db: &DatabaseConnection, person_id: Uuid, name: &str) -> Result<(), AppError> {
+        let person = photo_persons::Entity::find_by_id(person_id)
+            .one(db)
+            .await?
+            .not_found("Person not found")?;
+
+        let mut active: photo_persons::ActiveModel = person.into();
+        active.name = Set(Some(name.to_string()));
+        active.updated_at = Set(Utc::now().fixed_offset());
+        active.update(db).await?;
+
+        Ok(())
+    }
+
+    /// Assign a face to an existing person.
+    ///
+    /// If the face was previously assigned to another person, that person's `face_count` is
+    /// decremented. The target person's `face_count` is incremented.
+    pub async fn assign_face_to_person(db: &DatabaseConnection, face_id: i32, person_id: Uuid) -> Result<(), AppError> {
+        let face = photo_faces::Entity::find_by_id(face_id)
+            .one(db)
+            .await?
+            .not_found("Face not found")?;
+
+        // Verify target person exists
+        let _target = photo_persons::Entity::find_by_id(person_id)
+            .one(db)
+            .await?
+            .not_found("Person not found")?;
+
+        let old_person_id = face.person_id;
+
+        // Update the face's person_id
+        let mut active: photo_faces::ActiveModel = face.into();
+        active.person_id = Set(Some(person_id));
+        active.update(db).await?;
+
+        // Decrement old person's face_count if applicable
+        if let Some(old_pid) = old_person_id
+            && old_pid != person_id
+        {
+            Self::recount_person(db, old_pid).await?;
+        }
+
+        // Recount target person
+        Self::recount_person(db, person_id).await?;
+
+        Ok(())
+    }
+
+    /// Create a new person from a face.
+    ///
+    /// Creates a new person in the same app as the photo, optionally with a name,
+    /// and assigns the face to that new person.
+    pub async fn create_person_from_face(
+        db: &DatabaseConnection,
+        face_id: i32,
+        name: Option<String>,
+    ) -> Result<PersonOutput, AppError> {
+        let face = photo_faces::Entity::find_by_id(face_id)
+            .one(db)
+            .await?
+            .not_found("Face not found")?;
+
+        // Get the photo to determine app_id
+        let photo = photos::Entity::find_by_id(face.photo_id)
+            .one(db)
+            .await?
+            .not_found("Photo not found")?;
+
+        let old_person_id = face.person_id;
+
+        // Create the new person
+        let now = Utc::now().fixed_offset();
+        let person_id = Uuid::new_v4();
+        let person_model = photo_persons::ActiveModel {
+            id: Set(person_id),
+            app_id: Set(photo.app_id),
+            name: Set(name.clone()),
+            avatar_face_id: Set(Some(face_id)),
+            face_count: Set(1),
+            is_hidden: Set(false),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        photo_persons::Entity::insert(person_model).exec(db).await?;
+
+        // Assign the face to the new person
+        let mut active: photo_faces::ActiveModel = face.into();
+        active.person_id = Set(Some(person_id));
+        active.update(db).await?;
+
+        // Decrement old person's face_count if applicable
+        if let Some(old_pid) = old_person_id {
+            Self::recount_person(db, old_pid).await?;
+        }
+
+        Ok(PersonOutput {
+            id: person_id.to_string(),
+            name,
+            face_count: 1,
+            avatar_photo_id: Some(photo.id.to_string()),
+            avatar_thumbnail_path: photo.thumbnail_path.clone(),
+        })
+    }
+
+    /// Recount `face_count` for a person and update avatar if needed.
+    async fn recount_person(db: &DatabaseConnection, person_id: Uuid) -> Result<(), AppError> {
+        let count_stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT COUNT(*) as cnt FROM photo_faces WHERE person_id = $1",
+            [person_id.into()],
+        );
+        let new_count: i32 = db
+            .query_one_raw(count_stmt)
+            .await?
+            .and_then(|r| r.try_get::<i64>("", "cnt").ok())
+            .unwrap_or(0) as i32;
+
+        if let Some(person) = photo_persons::Entity::find_by_id(person_id).one(db).await? {
+            let mut active: photo_persons::ActiveModel = person.into();
+            active.face_count = Set(new_count);
+            active.updated_at = Set(Utc::now().fixed_offset());
+            active.update(db).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Get all detected faces for a specific photo, with person info.
+    pub async fn get_photo_faces(db: &DatabaseConnection, photo_id: Uuid) -> Result<Vec<PhotoFaceOutput>, AppError> {
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r"
+                SELECT pf.id, pf.x, pf.y, pf.w, pf.h, pf.confidence,
+                       pf.person_id, pp.name as person_name
+                FROM photo_faces pf
+                LEFT JOIN photo_persons pp ON pp.id = pf.person_id
+                WHERE pf.photo_id = $1
+                ORDER BY pf.confidence DESC NULLS LAST
+                ",
+                [photo_id.into()],
+            ))
+            .await?;
+
+        let mut faces = Vec::new();
+        for row in rows {
+            faces.push(PhotoFaceOutput {
+                id: row.try_get::<i32>("", "id").unwrap_or(0),
+                x: row.try_get::<f64>("", "x").unwrap_or(0.0),
+                y: row.try_get::<f64>("", "y").unwrap_or(0.0),
+                w: row.try_get::<f64>("", "w").unwrap_or(0.0),
+                h: row.try_get::<f64>("", "h").unwrap_or(0.0),
+                confidence: row.try_get::<f64>("", "confidence").ok(),
+                person_id: row.try_get::<Uuid>("", "person_id").ok().map(|u| u.to_string()),
+                person_name: row.try_get::<String>("", "person_name").ok(),
+            });
+        }
+
+        Ok(faces)
     }
 }

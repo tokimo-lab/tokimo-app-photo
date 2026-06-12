@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetchBlob } from "@/api/client";
 import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
 import { extractRawPreview, isRawFile } from "@/shared/utils/raw-decoder";
 
@@ -52,7 +51,7 @@ export function useViewerImageLoader({
 
     (async () => {
       try {
-        const res = await apiFetchBlob(fullUrl, { signal: abort.signal });
+        const res = await fetch(fullUrl, { signal: abort.signal });
         const contentLength = res.headers.get("Content-Length");
         const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
 
@@ -112,7 +111,7 @@ export function useViewerImageLoader({
             if (abort.signal.aborted) return;
             setFullBlobUrl(URL.createObjectURL(jpegBlob));
           } else {
-            const jpegRes = await apiFetchBlob(`${fullUrl}?format=jpeg`, {
+            const jpegRes = await fetch(`${fullUrl}?format=jpeg`, {
               signal: abort.signal,
             });
             const jpegBlob = await jpegRes.blob();

@@ -1,8 +1,9 @@
+# Tokimo app manifest（供主 server 读取，注册 / spawn / 资源代理 / launchpad 展示）
 [app]
 id          = "photo"
 display     = "Photo"
 version     = "0.1.0"
-description = "TokimoPhoto — 照片库管理器，本地 / 远程 VFS、时间线、人物识别、地理标注"
+description = "Tokimo Photo — 库 / 浏览 / AI (OCR / CLIP / 人脸) / 地理 / 相册"
 
 [runtime]
 lifecycle    = "resident"
@@ -12,16 +13,13 @@ ui_dist      = "ui/dist"
 [ui]
 entry        = "assets/index.js"
 window_type  = "photo"
-category     = "system"
+category     = "app"
 icon         = "Camera"
 image        = "icon.png"
-color        = "#3b82f6"
-width        = 1400
-height       = 900
+color        = "#8b5cf6"
+width        = 1200
+height       = 800
 
-[cli]
-name        = "tokimo-app-photo"
-description = "Manage photo libraries."
 
 [database]
 schema         = "photo"

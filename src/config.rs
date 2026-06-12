@@ -1,22 +1,7 @@
-//! Photo-app sidecar settings — faithful port of presplit `apps/photo/config.rs`,
-//! re-targeted onto the sidecar-owned [`AppSettingsRepo`] (instead of the host's
-//! `SystemConfigRepo`).
-//!
-//! Two sections are stored:
-//! - `photo.geo` → [`PhotoGeoSettings`] (reverse-geocoding provider + keys)
-//! - `photo.ai`  → [`PhotoAiSettings`] (OCR / CLIP / face toggles + model names)
-//!
-//! [`PhotoAiSettings::for_app`] keeps the per-library override semantics from
-//! the presplit code: `photo_libraries.settings` JSON object lookups merged on
-//! top of the global defaults.
-
 use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 
-use crate::db::repos::app_settings_repo::AppSettingsSection;
-use crate::error::AppError;
-
-// ── PhotoGeoSettings ─────────────────────────────────────────────────────────
+use crate::db::repos::system_config_repo::SystemConfigSection;
 
 /// Photo geo-location reverse geocoding settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,9 +21,9 @@ pub struct PhotoGeoSettings {
     pub fallback_provider: Option<String>,
 }
 
-impl AppSettingsSection for PhotoGeoSettings {
-    const KEY: &'static str = "photo.geo";
-
+impl SystemConfigSection for PhotoGeoSettings {
+    const SCOPE: &'static str = "photo";
+    const SCOPE_ID: &'static str = "geo";
     fn default_value() -> Self {
         Self {
             provider: "amap".to_string(),
@@ -56,8 +41,6 @@ impl AppSettingsSection for PhotoGeoSettings {
         }
     }
 }
-
-// ── PhotoAiSettings ──────────────────────────────────────────────────────────
 
 /// Photo AI settings (OCR, CLIP, face recognition).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,9 +61,9 @@ fn default_ocr_model() -> String {
     "rapid-ocr-rust".to_string()
 }
 
-impl AppSettingsSection for PhotoAiSettings {
-    const KEY: &'static str = "photo.ai";
-
+impl SystemConfigSection for PhotoAiSettings {
+    const SCOPE: &'static str = "photo";
+    const SCOPE_ID: &'static str = "ai";
     fn default_value() -> Self {
         Self {
             ocr_enabled: true,
@@ -93,63 +76,12 @@ impl AppSettingsSection for PhotoAiSettings {
     }
 }
 
-// ── PhotoAiWorkerSettings ────────────────────────────────────────────────────
-
-/// Perception worker connection settings for the photo sidecar.
-///
-/// Mirrors the subset of [`tokimo_perception::worker::client::AiWorkerSettings`]
-/// that is configurable from the photo app's settings table. Stored under the
-/// `photo.ai_worker` key. `idle_timeout_secs` is `Option<u32>` to match the
-/// perception client's settings type (the worker uses `u32` seconds).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PhotoAiWorkerSettings {
-    #[serde(default)]
-    pub mode: tokimo_perception::worker::client::AiWorkerMode,
-    #[serde(default)]
-    pub remote_url: Option<String>,
-    #[serde(default)]
-    pub keepalive_always: bool,
-    #[serde(default)]
-    pub idle_timeout_secs: Option<u32>,
-    #[serde(default)]
-    pub worker_binary: Option<String>,
-    #[serde(default)]
-    pub socket_path: Option<String>,
-}
-
-impl Default for PhotoAiWorkerSettings {
-    fn default() -> Self {
-        Self {
-            mode: tokimo_perception::worker::client::AiWorkerMode::Auto,
-            remote_url: None,
-            keepalive_always: false,
-            idle_timeout_secs: None,
-            worker_binary: None,
-            socket_path: None,
-        }
-    }
-}
-
-impl AppSettingsSection for PhotoAiWorkerSettings {
-    const KEY: &'static str = "photo.ai_worker";
-
-    fn default_value() -> Self {
-        Self::default()
-    }
-}
-
 impl PhotoAiSettings {
     /// Resolve effective AI settings for a specific app.
     /// Per-app flags override globals; missing keys fall back to global.
-    #[allow(dead_code)] // wired up by AI services in a follow-up commit
-    pub async fn for_app(
-        db: &sea_orm::DatabaseConnection,
-        app_id: uuid::Uuid,
-    ) -> Result<Self, AppError> {
-        use crate::db::repos::app_settings_repo::AppSettingsRepo;
-
-        let global: Self = AppSettingsRepo::get(db).await?;
+    pub async fn for_app(db: &sea_orm::DatabaseConnection, app_id: uuid::Uuid) -> Result<Self, crate::error::AppError> {
+        use crate::db::repos::system_config_repo::SystemConfigRepo;
+        let global: Self = SystemConfigRepo::get(db).await?;
 
         let app = crate::db::entities::photo_libraries::Entity::find_by_id(app_id)
             .one(db)

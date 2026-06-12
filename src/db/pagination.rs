@@ -10,20 +10,15 @@ pub struct PageInput {
 
 impl Default for PageInput {
     fn default() -> Self {
-        Self {
-            page: 1,
-            page_size: 20,
-        }
+        Self { page: 1, page_size: 20 }
     }
 }
 
 impl PageInput {
-    #[allow(dead_code)]
     pub fn offset(&self) -> u64 {
-        self.page.saturating_sub(1) * self.page_size
+        (self.page.saturating_sub(1)) * self.page_size
     }
 
-    #[allow(dead_code)]
     pub fn limit(&self) -> u64 {
         self.page_size
     }
@@ -32,7 +27,6 @@ impl PageInput {
 /// Standard paginated response.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_field_names)]
 pub struct Page<T: Serialize> {
     pub items: Vec<T>,
     pub total: i64,
@@ -55,5 +49,9 @@ impl<T: Serialize> Page<T> {
             page_size: input.page_size,
             total_pages,
         }
+    }
+
+    pub fn from_parts(items: Vec<T>, total: i64, page: u64, page_size: u64) -> Self {
+        Self::new(items, total, &PageInput { page, page_size })
     }
 }

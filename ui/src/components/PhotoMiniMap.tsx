@@ -3,19 +3,6 @@
 import AMapLoader from "@amap/amap-jsapi-loader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Supercluster from "supercluster";
-
-type SuperclusterIndex = InstanceType<typeof Supercluster>;
-type ClusterFeatureLike = {
-  id?: number;
-  geometry: { coordinates: [number, number] };
-  properties: {
-    cluster?: boolean;
-    city?: string | null;
-    point_count?: number;
-    [key: string]: unknown;
-  };
-};
-
 import { api } from "@/generated/rust-api";
 import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
 import type { MapClusterSelection } from "./PhotoMapView";
@@ -74,8 +61,10 @@ function findScrollParent(el: HTMLElement): HTMLElement | null {
 
 /** Build a MapClusterSelection from a supercluster feature. */
 function buildClusterSelection(
-  sc: SuperclusterIndex,
-  feature: ClusterFeatureLike,
+  sc: Supercluster,
+  feature:
+    | Supercluster.ClusterFeature<Supercluster.AnyProps>
+    | Supercluster.PointFeature<Supercluster.AnyProps>,
 ): MapClusterSelection | null {
   const [lng, lat] = feature.geometry.coordinates;
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
@@ -135,7 +124,7 @@ export function PhotoMiniMap({
   const mapRef = useRef<AMapInstance | null>(null);
   const AMapRef = useRef<AMapSDK | null>(null);
   const markersRef = useRef<unknown[]>([]);
-  const indexRef = useRef<SuperclusterIndex | null>(null);
+  const indexRef = useRef<Supercluster | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const onViewNearbyRef = useRef(onViewNearby);
   onViewNearbyRef.current = onViewNearby;
