@@ -261,9 +261,28 @@ fn extract_exif_from_bytes(bytes: &[u8]) -> Option<ExifData> {
         .or_else(|| get_string(Tag::DateTime))
         .and_then(|s| parse_exif_date(&s));
 
-    // GPS
-    let gps_latitude = get_f64(Tag::GPSLatitude);
-    let gps_longitude = get_f64(Tag::GPSLongitude);
+    // GPS — parse from raw rational values (display_value is "22 deg 10 min …")
+    let parse_gps_coord = |tag: Tag, ref_tag: Tag| -> Option<f64> {
+        let field = exif.get_field(tag, In::PRIMARY)?;
+        let r = match &field.value {
+            Value::Rational(v) if v.len() == 3 => v,
+            _ => return None,
+        };
+        let deg = r[0].num as f64 / r[0].denom as f64;
+        let min = r[1].num as f64 / r[1].denom as f64;
+        let sec = r[2].num as f64 / r[2].denom as f64;
+        let mut coord = deg + min / 60.0 + sec / 3600.0;
+        // South/West → negative
+        let ref_val = exif
+            .get_field(ref_tag, In::PRIMARY)
+            .map(|f| f.display_value().to_string());
+        if matches!(ref_val.as_deref(), Some("S" | "W")) {
+            coord = -coord;
+        }
+        Some(coord)
+    };
+    let gps_latitude = parse_gps_coord(Tag::GPSLatitude, Tag::GPSLatitudeRef);
+    let gps_longitude = parse_gps_coord(Tag::GPSLongitude, Tag::GPSLongitudeRef);
     let gps_altitude = get_f64(Tag::GPSAltitude);
 
     // Orientation
