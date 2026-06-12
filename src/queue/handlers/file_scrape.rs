@@ -261,9 +261,14 @@ async fn apply_exif(
     }
     if let Some(ref raw) = exif.taken_at {
         let trimmed = raw.trim_matches('"');
-        // Normalize "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DD HH:MM:SS" (date colons only)
-        let normalized = trimmed.replacen(':', "-", 2);
-        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&normalized, "%Y-%m-%d %H:%M:%S") {
+        // kamadak-exif display_value() already outputs "YYYY-MM-DD HH:MM:SS" (dashes in date).
+        // Try that first; fall back to raw EXIF format "YYYY:MM:DD HH:MM:SS" (colons everywhere).
+        let parsed = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S")
+            .or_else(|_| {
+                let normalized = trimmed.replacen(':', "-", 2);
+                chrono::NaiveDateTime::parse_from_str(&normalized, "%Y-%m-%d %H:%M:%S")
+            });
+        if let Ok(naive) = parsed {
             active.taken_at = Set(Some(naive.and_utc().fixed_offset()));
         }
     }
