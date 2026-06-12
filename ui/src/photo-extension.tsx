@@ -24,7 +24,7 @@ export function createPhotoExtension(ctx: AppRuntimeCtx): PhotoExtension {
         />,
         ctx,
       ),
-    renderToolbarAiButtons: (photo) =>
+    renderToolbarSlot: (photo) =>
       withProviders(<PhotoAiToolbarButtons photo={photo} />, ctx),
   };
 }
