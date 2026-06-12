@@ -1,12 +1,139 @@
-//! App sync service — orchestrates photo library synchronization.
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
+use chrono::Utc;
+use regex::Regex;
+use sea_orm::*;
+use serde_json::json;
+use tokimo_vfs::Vfs;
+use tokio::sync::mpsc;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::db::entities::{
+    book_files, books, music_album_artists, music_albums, music_artists, music_files, music_tracks, musics,
+    photo_albums, photo_libraries, photo_persons, photos, vfs,
+};
+use crate::db::repos::book_repo::BookRepo;
+use crate::db::repos::job_repo::JobRepo;
+use crate::db::repos::media::MusicRepo;
 use crate::error::AppError;
+use crate::error::OptionExt;
+use crate::handlers::vfs::ops::{AUDIO_EXTENSIONS, BOOK_EXTENSIONS, PHOTO_EXTENSIONS, walk_files_streaming};
+use crate::queue::{AppEvent, AppEventSender};
 use crate::services::source::SourceRegistry;
 
+fn is_music_type(lib_type: &str) -> bool {
+    lib_type == "music"
+}
+
+fn is_book_type(lib_type: &str) -> bool {
+    lib_type == "book"
+}
+
+fn is_photo_type(lib_type: &str) -> bool {
+    lib_type == "photo"
+}
+
+fn domain_library_param_key(lib_type: &str) -> &'static str {
+    if is_photo_type(lib_type) {
+        "photoId"
+    } else if is_book_type(lib_type) {
+        "bookId"
+    } else {
+        "videoId"
+    }
+}
+
+/// Remote file system source types (network protocols + cloud drives).
+fn is_remote_fs_type(source_type: &str) -> bool {
+    matches!(
+        source_type,
+        "smb" | "nfs" | "webdav" | "ftp" | "sftp" | "s3" | "115cloud" | "aliyundrive" | "baidu_netdisk" | "quark"
+    )
+}
+
+/// Convert an absolute `root_path` from `app_vfs` to a VFS-relative path.
+///
+/// For local sources the DB may store the full filesystem path
+/// (e.g. `/home/william/media/movie`) while the local driver's root is already
+/// `/home/william/media`. The VFS expects a path relative to the driver root
+/// (e.g. `/movie`), so we strip the driver root prefix.
+fn to_vfs_path(root_path: &str, source: &vfs::Model) -> String {
+    let Some(driver_root) = crate::handlers::media::utils::local_driver_root(source) else {
+        return root_path.to_string();
+    };
+    if root_path.starts_with(&driver_root) && root_path.len() > driver_root.len() {
+        let rel = &root_path[driver_root.len()..];
+        if rel.starts_with('/') {
+            return rel.to_string();
+        }
+    }
+    if root_path == driver_root {
+        return "/".to_string();
+    }
+    root_path.to_string()
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStatusOutput {
+    pub app_id: String,
+    pub status: String,
+    pub last_sync_at: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncResult {
-    pub total_jobs: usize,
+    pub total_jobs: u64,
+}
+
+// ── music sync types ────────────────────────────────────────────────────
+
+/// Audio tag info extracted from a file via lofty.
+struct AudioTagInfo {
+    title: Option<String>,
+    artist: Option<String>,
+    album_artist: Option<String>,
+    album: Option<String>,
+    track_number: Option<i32>,
+    disc_number: Option<i32>,
+    year: Option<i32>,
+    genre: Option<String>,
+    duration: Option<i32>,
+    bitrate: Option<i32>,
+    sample_rate: Option<i32>,
+    codec: Option<String>,
+    mb_track_id: Option<String>,
+    mb_album_id: Option<String>,
+}
+
+/// Collected audio file info for music sync.
+struct CollectedAudioFile {
+    file_path: String,
+    dir_path: String,
+    file_size: u64,
+    mtime: i64,
+    source_id: Uuid,
+    tags: Option<AudioTagInfo>,
+}
+
+/// Grouped album info.
+struct AlbumGroup {
+    artist_name: String,
+    album_title: String,
+    year: Option<i32>,
+    dir_path: String,
+    files: Vec<CollectedAudioFile>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrackWriteOutcome {
+    Created,
+    Updated,
+    Unchanged,
 }
 
 pub struct AppSyncService;
@@ -409,27 +536,11 @@ impl AppSyncService {
             root_path
         );
 
-        // Delete all photos for this library
         photos::Entity::delete_many()
-            .filter(photos::Column::AppId.eq(library_id))
+            .filter(photos::Column::Id.is_in(stale_ids))
             .exec(db)
             .await?;
 
         Ok(())
-    }
-
-    /// Execute a full photo library sync.
-    pub async fn execute_photo_sync(
-        db: &sea_orm::DatabaseConnection,
-        _sources: &SourceRegistry,
-        _storage: &std::sync::Arc<dyn crate::services::storage::StorageProvider>,
-        library_id: Uuid,
-        _clear_data: bool,
-        _user_id: Option<Uuid>,
-    ) -> Result<SyncResult, AppError> {
-        // In the standalone app, sync is a no-op stub.
-        // The real implementation would scan VFS sources and create photo records.
-        tracing::info!("photo sync for library {library_id} (stub)");
-        Ok(SyncResult { total_jobs: 0 })
     }
 }

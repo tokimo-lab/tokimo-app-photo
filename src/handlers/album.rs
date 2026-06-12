@@ -6,17 +6,17 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::db::repos::PhotoRepo;
+use crate::AppState;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
-use crate::error::{ApiResponse, ok};
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
 /// GET /api/apps/photo/{id}/photo-albums
 pub async fn list_photo_albums(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -33,7 +33,7 @@ pub struct CreateAlbumBody {
 
 /// POST /api/apps/photo/{id}/photo-albums
 pub async fn create_album(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<CreateAlbumBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -44,7 +44,7 @@ pub async fn create_album(
 
 /// DELETE /api/photo-albums/{id}
 pub async fn delete_album(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -60,7 +60,7 @@ pub struct AlbumPhotosBody {
 
 /// POST /api/photo-albums/{id}/add-photos
 pub async fn add_photos_to_album(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<AlbumPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -72,7 +72,7 @@ pub async fn add_photos_to_album(
 
 /// POST /api/photo-albums/{id}/remove-photos
 pub async fn remove_photos_from_album(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<AlbumPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -91,7 +91,7 @@ pub struct AlbumPhotosQuery {
 
 /// GET /api/photo-albums/{id}/photos
 pub async fn list_album_photos(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<AlbumPhotosQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {

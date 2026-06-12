@@ -99,7 +99,7 @@ impl PhotoClipService {
     /// Embed a single photo: fetch image bytes, call CLIP, store vector.
     pub async fn embed_photo(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         photo_id: Uuid,
     ) -> Result<(), AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
@@ -116,7 +116,7 @@ impl PhotoClipService {
     /// resolution (512px) instead of full-size, which is ~10× faster.
     async fn embed_photo_model(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
     ) -> Result<(), AppError> {
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
@@ -136,7 +136,7 @@ impl PhotoClipService {
 
     /// Load bytes for a single photo using a pre-resolved base path (no DB lookup).
     async fn load_bytes_fast(
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
         source_base_paths: &std::collections::HashMap<Uuid, String>,
     ) -> Result<Vec<u8>, AppError> {
@@ -186,7 +186,7 @@ impl PhotoClipService {
     /// Load photo bytes optimised for CLIP (small decode size for HEIC/AVIF).
     async fn load_photo_bytes_for_clip(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
         path: &str,
     ) -> Result<Vec<u8>, AppError> {
@@ -251,7 +251,7 @@ impl PhotoClipService {
     /// List photo IDs missing a CLIP vector. Empty Vec when models not ready.
     pub async fn list_pending_photo_ids(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
     ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
@@ -285,7 +285,7 @@ impl PhotoClipService {
     /// failures are recorded as zero vectors so the photo isn't re-queued forever.
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         ids: Vec<Uuid>,
     ) -> (u32, u32, Vec<String>) {
@@ -393,7 +393,7 @@ impl PhotoClipService {
     /// Reports progress to the job record so the UI can show real-time status.
     pub async fn embed_app(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         job_id: Option<Uuid>,
     ) -> Result<u32, AppError> {
@@ -562,7 +562,7 @@ impl PhotoClipService {
     /// Search photos by text using CLIP cosine similarity.
     pub async fn search(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         query: &str,
     ) -> Result<Vec<ClipSearchResult>, AppError> {

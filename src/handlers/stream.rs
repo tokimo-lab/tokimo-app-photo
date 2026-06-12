@@ -10,11 +10,11 @@ use std::{path::Path as StdPath, sync::Arc};
 use tower::util::ServiceExt;
 use tower_http::services::ServeFile;
 
-use crate::AppCtx;
-use crate::db::repos::PhotoRepo;
+use crate::AppState;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::handlers::media::stream::mime_for;
 use crate::handlers::media::utils::resolve_local_path;
-use crate::error::{err404, err500};
+use crate::handlers::{err404, err500};
 
 const PHOTO_SERVE_CHUNK_SIZE: usize = 512 * 1024;
 const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
@@ -47,7 +47,7 @@ pub struct ImageQuery {
 
 /// GET /api/apps/photo/{photoId}/image
 pub async fn serve_photo_image(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(photo_id): Path<String>,
     Query(q): Query<ImageQuery>,
     request: Request,
@@ -77,7 +77,7 @@ pub async fn serve_photo_image(
 
 /// GET /api/apps/photo/{photoId}/live-video
 pub async fn serve_live_video(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(photo_id): Path<String>,
     request: Request,
 ) -> Response {
@@ -107,8 +107,8 @@ pub async fn serve_live_video(
 
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
 async fn load_photo_bytes(
-    state: &Arc<AppCtx>,
-    target: &crate::models::PhotoStreamTarget,
+    state: &Arc<AppState>,
+    target: &crate::apps::photo::models::PhotoStreamTarget,
 ) -> Result<Vec<u8>, String> {
     if target.source_type.as_deref().is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
@@ -144,7 +144,7 @@ async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTar
         }
     };
 
-    let ffmpeg_bin = which::which("ffmpeg").unwrap_or_else(|_| std::path::PathBuf::from("ffmpeg"));
+    let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
     let ext = filename.rsplit('.').next().unwrap_or("heic").to_lowercase();
     let tmp_path = std::env::temp_dir().join(format!("tokimo_heic_{}.{}", Uuid::new_v4(), ext));
 
@@ -186,7 +186,7 @@ async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTar
 }
 
 /// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
-async fn serve_raw_as_jpeg(state: Arc<AppCtx>, target: &crate::models::PhotoStreamTarget) -> Response {
+async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::apps::photo::models::PhotoStreamTarget) -> Response {
     let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -244,7 +244,7 @@ async fn serve_raw_as_jpeg(state: Arc<AppCtx>, target: &crate::models::PhotoStre
 
 /// Serve a file from VFS.
 async fn serve_vfs_file(
-    state: Arc<AppCtx>,
+    state: Arc<AppState>,
     path: String,
     mime_type: Option<&str>,
     source_id: Option<&str>,

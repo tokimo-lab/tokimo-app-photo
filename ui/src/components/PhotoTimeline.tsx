@@ -11,7 +11,7 @@ import {
 import {
   computeJustifiedRows,
   type JustifiedRow,
-} from "../hooks/useJustifiedLayout";
+} from "@/apps/photo/hooks/useJustifiedLayout";
 import type { PhotoOutput } from "@/generated/rust-api";
 import { useComponentPreference } from "@/shared/hooks/use-preference";
 import { useWindowActions } from "@/system";

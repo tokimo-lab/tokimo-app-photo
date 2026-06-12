@@ -4,12 +4,12 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::AppCtx;
+use crate::AppState;
 
 use super::handlers::{ai, album, batch, browse, crud, geo, person, stream, sync};
 
 #[allow(clippy::too_many_lines)]
-pub fn build_photo_app_routes() -> Router<Arc<AppCtx>> {
+pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
     Router::new()
         // ── PhotoLibrary CRUD ──
         .route(

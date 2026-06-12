@@ -1,17 +1,21 @@
-//! Photo app — notification integration (standalone stub).
+//! Photo app — notification center integration.
 //!
-//! In the monorepo, notifications go through the notification_center app.
-//! In standalone mode, we log notifications instead.
+//! Sends async-event notifications (sync completed/failed, processing
+//! progress/completed/failed) through the project's notification center.
+//! Interactive feedback (e.g. "已收藏 N 张") stays as in-window toast and
+//! does NOT go through this module.
 
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
-use serde::Serialize;
-use tracing::info;
+use serde_json::json;
+use tracing::warn;
 use uuid::Uuid;
 
-use crate::AppCtx;
+use crate::AppState;
+use crate::apps::notification_center::repos::sources::SourceDef;
+use crate::apps::notification_center::services::center::{Notification, NotificationCenter};
 
 const APP_ID: &str = "photo";
 
@@ -21,29 +25,7 @@ pub const CATEGORY_PROCESSING_PROGRESS: &str = "processing_progress";
 pub const CATEGORY_PROCESSING_COMPLETED: &str = "processing_completed";
 pub const CATEGORY_PROCESSING_FAILED: &str = "processing_failed";
 
-/// Notification source definition.
-#[derive(Debug, Clone, Serialize)]
-pub struct SourceDef {
-    pub app_id: String,
-    pub category_id: String,
-    pub label: String,
-    pub default_enabled: bool,
-    pub default_display_mode: String,
-}
-
-/// A notification to send.
-#[derive(Debug, Clone, Serialize)]
-pub struct Notification {
-    pub app_id: String,
-    pub category_id: String,
-    pub title: String,
-    pub body: Option<String>,
-    pub level: Option<String>,
-    pub action: Option<serde_json::Value>,
-    pub dedupe_key: Option<String>,
-    pub progress: Option<i32>,
-}
-
+/// Returns the SourceDef list for the photo app's notification categories.
 pub fn photo_source_defs() -> Vec<SourceDef> {
     vec![
         SourceDef {
@@ -65,6 +47,7 @@ pub fn photo_source_defs() -> Vec<SourceDef> {
             category_id: CATEGORY_PROCESSING_PROGRESS.into(),
             label: "photo.notifications.processingProgress".into(),
             default_enabled: true,
+            // Progress notifications update in-place via dedupe_key — do not toast each tick.
             default_display_mode: "center".into(),
         },
         SourceDef {
@@ -84,8 +67,15 @@ pub fn photo_source_defs() -> Vec<SourceDef> {
     ]
 }
 
+/// Lazy-register photo's notification sources for a user. Idempotent (upsert).
+pub async fn ensure_registered(state: &Arc<AppState>, user_id: Uuid) {
+    if let Err(e) = NotificationCenter::register(state, user_id, photo_source_defs()).await {
+        warn!("Failed to register photo notification sources: {e}");
+    }
+}
+
 fn open_photo_action(library_id: Uuid) -> serde_json::Value {
-    serde_json::json!({
+    json!({
         "type": "open-window",
         "windowType": "system",
         "metadata": {
@@ -95,23 +85,15 @@ fn open_photo_action(library_id: Uuid) -> serde_json::Value {
     })
 }
 
-/// Log notification (standalone mode — no notification center bus).
-fn log_notification(notification: &Notification) {
-    info!(
-        category = %notification.category_id,
-        title = %notification.title,
-        body = ?notification.body,
-        "photo notification"
-    );
-}
-
+/// Notify: photo library sync completed successfully.
 pub async fn notify_sync_completed(
-    _state: &Arc<AppCtx>,
-    _user_id: Uuid,
-    _library_id: Uuid,
+    state: &Arc<AppState>,
+    user_id: Uuid,
+    library_id: Uuid,
     library_name: &str,
-    total_jobs: usize,
+    total_jobs: u64,
 ) {
+    ensure_registered(state, user_id).await;
     let notification = Notification {
         app_id: APP_ID.into(),
         category_id: CATEGORY_SYNC_COMPLETED.into(),
@@ -122,31 +104,39 @@ pub async fn notify_sync_completed(
             None
         },
         level: Some("success".into()),
-        action: None,
+        action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        template_context: None,
     };
-    log_notification(&notification);
+    if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
+        warn!("notify_sync_completed failed: {e}");
+    }
 }
 
+/// Notify: photo library sync failed.
 pub async fn notify_sync_failed(
-    _state: &Arc<AppCtx>,
-    _user_id: Uuid,
-    _library_id: Uuid,
+    state: &Arc<AppState>,
+    user_id: Uuid,
+    library_id: Uuid,
     library_name: &str,
     error: &str,
 ) {
+    ensure_registered(state, user_id).await;
     let notification = Notification {
         app_id: APP_ID.into(),
         category_id: CATEGORY_SYNC_FAILED.into(),
         title: format!("相册「{library_name}」同步失败"),
         body: Some(error.to_string()),
         level: Some("error".into()),
-        action: None,
+        action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        template_context: None,
     };
-    log_notification(&notification);
+    if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
+        warn!("notify_sync_failed failed: {e}");
+    }
 }
 
 fn task_label(task_type: &str) -> &'static str {
@@ -163,9 +153,14 @@ fn progress_dedupe_key(library_id: Uuid, task_type: &str) -> String {
     format!("photo:processing:{library_id}:{task_type}")
 }
 
+/// Min interval between progress notifications for the same (library, task).
+/// At ~100k child jobs, per-child notifications would flood the WS + the
+/// notification center; we collapse to ~1/sec.
 const PROGRESS_THROTTLE: Duration = Duration::from_secs(1);
 static PROGRESS_THROTTLE_MAP: LazyLock<DashMap<String, Instant>> = LazyLock::new(DashMap::new);
 
+/// Returns true if we should skip this progress tick (i.e. throttled).
+/// Never throttles the final (processed == total) tick.
 fn should_throttle_progress(key: &str, processed: i64, total: i64) -> bool {
     if total > 0 && processed >= total {
         return false;
@@ -188,41 +183,56 @@ fn should_throttle_progress(key: &str, processed: i64, total: i64) -> bool {
     }
 }
 
+/// Notify: long-running worker progress. Uses dedupe_key so the same task
+/// updates one notification in place rather than spamming a new entry per tick.
 pub async fn notify_processing_progress(
-    _state: &Arc<AppCtx>,
-    _user_id: Uuid,
+    state: &Arc<AppState>,
+    user_id: Uuid,
     library_id: Uuid,
     library_name: &str,
     task_type: &str,
     processed: i64,
     total: i64,
 ) {
+    ensure_registered(state, user_id).await;
     let key = progress_dedupe_key(library_id, task_type);
     if should_throttle_progress(&key, processed, total) {
         return;
     }
     let label = task_label(task_type);
+    let pct = if total > 0 {
+        ((processed as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as i32
+    } else {
+        0
+    };
     let notification = Notification {
         app_id: APP_ID.into(),
         category_id: CATEGORY_PROCESSING_PROGRESS.into(),
         title: format!("{label} · {library_name}"),
         body: Some(format!("已处理 {processed} / {total}")),
         level: Some("info".into()),
-        action: None,
-        dedupe_key: Some(key),
-        progress: None,
+        action: Some(open_photo_action(library_id)),
+        dedupe_key: Some(key.clone()),
+        progress: Some(pct),
+        template_context: None,
     };
-    log_notification(&notification);
+    if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
+        warn!("notify_processing_progress failed: {e}");
+    }
 }
 
+/// Notify: a worker stage finished successfully. Reuses the progress dedupe
+/// key so the in-place progress notification is replaced with the completion.
 pub async fn notify_processing_completed(
-    _state: &Arc<AppCtx>,
-    _user_id: Uuid,
+    state: &Arc<AppState>,
+    user_id: Uuid,
     library_id: Uuid,
     library_name: &str,
     task_type: &str,
     processed: i64,
 ) {
+    ensure_registered(state, user_id).await;
+    // Drop any throttle timestamp so a future rerun of this task starts fresh.
     PROGRESS_THROTTLE_MAP.remove(&progress_dedupe_key(library_id, task_type));
     let label = task_label(task_type);
     let notification = Notification {
@@ -231,21 +241,27 @@ pub async fn notify_processing_completed(
         title: format!("{label}完成"),
         body: Some(format!("相册「{library_name}」共处理 {processed} 项")),
         level: Some("success".into()),
-        action: None,
+        action: Some(open_photo_action(library_id)),
+        // Different dedupe_key from progress so user keeps a completion record.
         dedupe_key: Some(format!("photo:done:{library_id}:{task_type}")),
         progress: Some(100),
+        template_context: None,
     };
-    log_notification(&notification);
+    if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
+        warn!("notify_processing_completed failed: {e}");
+    }
 }
 
+/// Notify: worker stage failed.
 pub async fn notify_processing_failed(
-    _state: &Arc<AppCtx>,
-    _user_id: Uuid,
+    state: &Arc<AppState>,
+    user_id: Uuid,
     library_id: Uuid,
     library_name: &str,
     task_type: &str,
     error: &str,
 ) {
+    ensure_registered(state, user_id).await;
     let label = task_label(task_type);
     let notification = Notification {
         app_id: APP_ID.into(),
@@ -253,14 +269,70 @@ pub async fn notify_processing_failed(
         title: format!("{label}失败"),
         body: Some(format!("相册「{library_name}」: {error}")),
         level: Some("error".into()),
-        action: None,
+        action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        template_context: None,
     };
-    log_notification(&notification);
+    if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
+        warn!("notify_processing_failed failed: {e}");
+    }
 }
 
-/// Stub: resync in-flight progress after restart.
-pub async fn resync_inflight_progress(_state: &Arc<AppCtx>) {
-    // In standalone mode, this is a no-op.
+/// Sweep `*_scan` parent jobs that are still in flight after a server restart
+/// and emit a fresh progress notification for each so the user sees in-flight
+/// work in the notification center even before the next child batch finishes.
+///
+/// Without this, a user who restarts mid-scan sees nothing until the first
+/// child completes, which for slow OCR can be several minutes.
+pub async fn resync_inflight_progress(state: &Arc<AppState>) {
+    use crate::db::entities::jobs;
+    use sea_orm::*;
+
+    let scan_types = [
+        ("photo_ocr_scan", "photo_ocr"),
+        ("photo_clip_scan", "photo_clip"),
+        ("photo_face_scan", "photo_face_detect"),
+        ("photo_geocode_scan", "photo_reverse_geocode"),
+    ];
+
+    for (scan_type, task_type) in scan_types {
+        let parents = match jobs::Entity::find()
+            .filter(jobs::Column::Type.eq(scan_type))
+            .filter(jobs::Column::Status.is_in(["waiting", "running", "pending"]))
+            .all(&state.db)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                warn!("resync_inflight_progress: query {scan_type} failed: {e}");
+                continue;
+            }
+        };
+
+        for parent in parents {
+            let Some(uid) = parent.user_id else { continue };
+            let data = &parent.data;
+            let total = data
+                .get("totalChildren")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
+            if total == 0 {
+                continue;
+            }
+            let done = data.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let app_id = parent
+                .params
+                .as_ref()
+                .and_then(|params| params.get("photoLibraryId"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok());
+            let Some(app_id) = app_id else { continue };
+            let lib_name = data
+                .get("libraryName")
+                .and_then(|v| v.as_str())
+                .map_or_else(String::new, std::string::ToString::to_string);
+            notify_processing_progress(state, uid, app_id, &lib_name, task_type, done, total).await;
+        }
+    }
 }

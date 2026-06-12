@@ -18,7 +18,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::AppCtx;
+use crate::AppState;
 use crate::db::entities::jobs;
 use crate::db::models::job::JobOutput;
 use crate::db::repos::job_repo::JobRepo;
@@ -26,7 +26,7 @@ use crate::error::AppError;
 use crate::queue::{AppEvent, CancelReason, PREEMPT_REASON};
 use sea_orm::EntityTrait;
 
-pub async fn preempt_scan_for(state: &Arc<AppCtx>, app_id: Uuid, task_type: &str) -> Result<usize, AppError> {
+pub async fn preempt_scan_for(state: &Arc<AppState>, app_id: Uuid, task_type: &str) -> Result<usize, AppError> {
     let parents = JobRepo::preempt_scans(&state.db, app_id, task_type, PREEMPT_REASON).await?;
     if parents.is_empty() {
         return Ok(0);
@@ -56,7 +56,7 @@ pub async fn preempt_scan_for(state: &Arc<AppCtx>, app_id: Uuid, task_type: &str
 /// `photo_ocr`). Used when the user fires a single-photo refresh action so
 /// the user-priority single job becomes the sole authority for that photo.
 pub async fn preempt_scan_child_for_photo(
-    state: &Arc<AppCtx>,
+    state: &Arc<AppState>,
     task_type: &str,
     photo_id: Uuid,
 ) -> Result<usize, AppError> {

@@ -18,9 +18,9 @@ use serde_json::{Value as JsonValue, json};
 use tracing::info;
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::db::repos::PhotoLibraryRepo;
-use crate::services::notifications as photo_notify;
+use crate::AppState;
+use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::apps::photo::services::notifications as photo_notify;
 use crate::db::repos::job_repo::JobRepo;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
@@ -55,7 +55,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 /// re-enqueueing children.
 pub async fn run_scan<F>(
     db: &DatabaseConnection,
-    state: &Arc<AppCtx>,
+    state: &Arc<AppState>,
     job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
@@ -194,7 +194,7 @@ pub fn parse_child_params(params: &JsonValue) -> Result<ChildContext, DynErr> {
 /// notifications for the user.
 pub async fn finalize_child(
     db: &DatabaseConnection,
-    state: &Arc<AppCtx>,
+    state: &Arc<AppState>,
     user_id: Option<Uuid>,
     ctx: &ChildContext,
     success: u32,

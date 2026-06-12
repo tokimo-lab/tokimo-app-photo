@@ -16,12 +16,22 @@ import {
   enUS as uiEnUS,
   zhCN as uiZhCN,
 } from "@tokimo/ui";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Camera } from "lucide-react";
 import { StrictMode, lazy, Suspense } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import "./index.css";
 
 const PhotoApp = lazy(() => import("./components/PhotoApp"));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+    },
+  },
+});
 
 export default defineApp({
   id: "photo",
@@ -41,15 +51,17 @@ export default defineApp({
     const locale = ctx.locale.startsWith("zh") ? uiZhCN : uiEnUS;
     root.render(
       <StrictMode>
-        <ConfigProvider locale={locale}>
-          <ToastProvider>
-            <RuntimeProvider value={ctx}>
-              <Suspense fallback={null}>
-                <PhotoApp />
-              </Suspense>
-            </RuntimeProvider>
-          </ToastProvider>
-        </ConfigProvider>
+        <QueryClientProvider client={queryClient}>
+          <ConfigProvider locale={locale}>
+            <ToastProvider>
+              <RuntimeProvider value={ctx}>
+                <Suspense fallback={null}>
+                  <PhotoApp />
+                </Suspense>
+              </RuntimeProvider>
+            </ToastProvider>
+          </ConfigProvider>
+        </QueryClientProvider>
       </StrictMode>,
     );
     return () => root.unmount();

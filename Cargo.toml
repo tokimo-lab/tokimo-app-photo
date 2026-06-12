@@ -4,50 +4,26 @@ version     = "0.1.0"
 edition     = "2024"
 rust-version = "1.94.0"
 license     = "MIT OR Apache-2.0"
-description = "Tokimo Photo — library / browse / AI (OCR / CLIP / face) / geo / albums (sidecar process)."
+description = "Tokimo Photo — 库 / 浏览 / AI (OCR / CLIP / 人脸) / 地理 / 相册"
 repository  = "https://github.com/tokimo-lab/tokimo-app-photo"
 
 [dependencies]
-# Tokimo bus (independent submodule repo, git rev pinned)
 tokimo-bus-client   = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843" }
 tokimo-bus-protocol = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843", features = ["axum"] }
 tokimo-bus-auth     = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843", features = ["axum", "cli-db"] }
 tokimo-bus-cli      = { git = "https://github.com/tokimo-lab/tokimo-bus.git", rev = "80063cb4391c5249df9cd3b570b1eabed64c3843" }
 
-# Public packages — git pinned
-tokimo-vfs            = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "17e3c7a9" }
-tokimo-vfs-core       = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "17e3c7a9" }
-tokimo-vfs-op         = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "17e3c7a9" }
-tokimo-package-image  = { git = "https://github.com/tokimo-lab/tokimo-package-image.git", rev = "0a651eb7" }
-tokimo-package-ffmpeg = { git = "https://github.com/tokimo-lab/tokimo-package-ffmpeg.git", rev = "9ea65ce9" }
-tokimo-package-utils  = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "30d2fe36" }
-tokimo-package-client-api = { git = "https://github.com/tokimo-lab/tokimo-package-client-api.git", rev = "200102b8b7654490d3cd17a2541ae3f3a6dc6017" }
-tokimo-perception     = { path = "../../packages/tokimo-perception" }
-
-# Standard deps
 clap              = { version = "4", features = ["derive", "env"] }
-tokio              = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "io-util", "sync", "fs"] }
-tokio-stream       = { version = "0.1", features = ["sync"] }
-tokio-util         = { workspace = true }
+tokio              = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
-uuid               = { version = "1", features = ["v4", "v7", "serde"] }
+uuid               = { version = "1", features = ["v4", "serde"] }
 chrono             = { version = "0.4", features = ["serde"] }
-sea-orm            = { version = "2.0.0-rc.38", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "with-uuid", "with-chrono", "with-json", "macros"] }
-sea-query          = "1.0.0-rc"
-dashmap            = "6"
+sea-orm            = { version = "2.0.0-rc.38", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "with-uuid", "with-chrono", "macros"] }
 rust-embed         = { version = "8", features = ["debug-embed"] }
 mime_guess         = "2"
 anyhow             = "1"
-axum               = { version = "0.8", features = ["json"] }
-reqwest            = { version = "0.13", default-features = false, features = ["json", "rustls", "stream", "gzip", "brotli"] }
-futures-util       = "0.3"
-bytes              = "1"
-tower              = "0.5"
-tower-http         = { version = "0.6", features = ["fs"] }
-thiserror          = "1"
-async-trait        = "0.1"
-which              = "7"
-ts-rs              = { version = "12", features = ["serde-json-impl", "uuid-impl", "chrono-impl"] }
+axum = { version = "0.8", features = ["json"] }
+ts-rs = { version = "12", features = ["serde-json-impl"] }

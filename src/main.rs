@@ -1,82 +1,182 @@
-//! Photo app — standalone sidecar process with axum + UDS.
+//! Helloworld app — 方案 3 形态：内嵌 axum + UDS。
 //!
-//! Startup flow:
-//! 1. Connect to broker (for supervisor health check)
-//! 2. Start axum router on `<runtime_dir>/apps/photo.sock`
-//! 3. Report the socket to broker via `data_plane_socket`
-//! 4. Server-side `/api/apps/photo/<rest>` proxies to this socket's `/<rest>`
+//! 启动流程：
+//! 1. 连接 broker（仅用于 supervisor 健康检查 + 可选的 cross-app `notification_center.notify`）
+//! 2. 起 axum router 监听 `<runtime_dir>/apps/helloworld.sock`
+//! 3. 把这个 sock 报给 broker（沿用 `data_plane_socket` 字段）
+//! 4. server 端的 `/api/apps/helloworld/<rest>` 全部反代到这个 sock 的 `/<rest>`
+//!
+//! 与旧版的差别：
+//! - 不再调用 `BusClient::builder().method(...).on_invoke(...)`
+//! - 业务路由改成标准 axum handler signature
+//! - 数据流 / 静态资源 / 业务方法 共用同一个 sock（同一个 axum router）
 
+/// Compile-time embedded app manifest; shared with the library crate via lib.rs.
 const MANIFEST: &str = include_str!("../tokimo-app.toml");
 
 mod app_server;
 mod assets;
-mod common;
-mod config;
+mod bus_clients;
+mod cli;
 mod db;
-mod error;
 mod handlers;
-mod models;
-mod queue;
-mod router;
-mod services;
 
 use std::sync::{Arc, OnceLock};
 
-use clap::Parser;
-use sea_orm::DatabaseConnection;
+use axum::{Json, http::StatusCode, response::IntoResponse};
+use clap::{Parser, Subcommand};
 use tokimo_bus_cli::TokimoAuthArgs;
 use tokimo_bus_client::{BusClient, ClientConfig};
 use tracing::{error, info};
 
-use crate::queue::CancellationRegistry;
-use crate::services::ai::AiRegistry;
-use crate::services::source::SourceRegistry;
-use crate::services::storage::{LocalStorage, StorageProvider};
-
-/// Shared application context passed to all handlers via axum State.
-pub struct AppCtx {
-    pub db: DatabaseConnection,
-    pub client: Arc<OnceLock<Arc<BusClient>>>,
-    pub sources: SourceRegistry,
-    pub storage: Arc<dyn StorageProvider>,
-    pub job_cancel: CancellationRegistry,
-    pub ai: Arc<AiRegistry>,
+/// 统一错误响应（与 lib.rs 共享同一定义，binary crate 内模块通过 `crate::AppError` 引用）。
+#[derive(Debug)]
+pub struct AppError {
+    pub status: StatusCode,
+    pub message: String,
 }
+
+impl AppError {
+    pub fn bad_request(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: msg.into(),
+        }
+    }
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: msg.into(),
+        }
+    }
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: msg.into(),
+        }
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        let body = serde_json::json!({ "error": self.message });
+        (self.status, Json(body)).into_response()
+    }
+}
+
+impl From<sea_orm::DbErr> for AppError {
+    fn from(e: sea_orm::DbErr) -> Self {
+        Self::internal(format!("db: {e}"))
+    }
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for AppError {}
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "tokimo-app-photo",
-    about = "Photo — Tokimo app CLI",
-    long_about = "Photo CLI — manage photo libraries, trigger sync, and run the photo server.\n\nCLI reads/writes the database directly; no main server process needed.",
+    name = "tokimo-app-helloworld",
+    about = "Helloworld — Tokimo app CLI",
+    long_about = "Helloworld CLI — directly read/write Tokimo database to manage helloworld items.\n\nCLI reads/writes the database directly; no main server process needed.",
     term_width = 100
 )]
 struct Cli {
     #[command(flatten)]
     auth: TokimoAuthArgs,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Manage helloworld items
+    #[command(
+        subcommand_required = false,
+        arg_required_else_help = false,
+        long_about = "Manage helloworld items",
+        term_width = 100
+    )]
+    Items {
+        #[command(subcommand)]
+        cmd: Option<ItemsCmd>,
+    },
+    /// Print greeting
+    Greet { name: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum ItemsCmd {
+    /// List latest 100 items
+    List,
+    /// Add a new item
+    Add {
+        /// Item content (non-empty string)
+        content: String,
+    },
+    /// Update item content
+    Update {
+        /// Item ID (UUID)
+        id: uuid::Uuid,
+        /// New content
+        content: String,
+    },
+    /// Delete specified item
+    Delete {
+        /// item ID (UUID)
+        id: uuid::Uuid,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let Cli { auth, command } = Cli::parse();
 
-    if std::env::var_os("TOKIMO_BUS_SOCKET").is_some() {
-        // Server mode: launched by supervisor with TOKIMO_BUS_SOCKET injected
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "info,tokimo_bus_client=info,tokimo_app_photo=debug".into()),
-            )
-            .init();
-        if let Err(error) = run_server().await {
-            error!(%error, "photo: fatal");
-            std::process::exit(1);
+    match command {
+        None if std::env::var_os("TOKIMO_BUS_SOCKET").is_some() => {
+            // server 模式：由 supervisor 无参拉起（注入了 TOKIMO_BUS_SOCKET），初始化 tracing
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "info,tokimo_bus_client=info,tokimo_app_helloworld=debug".into()),
+                )
+                .init();
+            if let Err(error) = run_server().await {
+                error!(%error, "helloworld: fatal");
+                std::process::exit(1);
+            }
         }
-    } else {
-        // Manual run without args: print help
-        use clap::CommandFactory;
-        let mut cmd = Cli::command();
-        tokimo_bus_cli::print_help_unified(&mut cmd);
-        std::process::exit(0);
+        None => {
+            // 人手动无参运行：打印 CLI help 而不是进 server 模式
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            tokimo_bus_cli::print_help_unified(&mut cmd);
+            std::process::exit(0);
+        }
+        Some(cmd) => {
+            // CLI 模式：纯文本错误，不输出 tracing 日志
+            let result = match cmd {
+                Command::Items { cmd: None } => {
+                    use clap::CommandFactory;
+                    let mut root = Cli::command();
+                    root.build();
+                    if let Some(items_cmd) = root.find_subcommand_mut("items") {
+                        tokimo_bus_cli::print_help_unified(items_cmd);
+                    }
+                    std::process::exit(0);
+                }
+                Command::Items { cmd: Some(c) } => cli::run_items(auth, c).await,
+                Command::Greet { name } => cli::run_greet(auth, name).await,
+            };
+            if let Err(error) = result {
+                eprintln!("Error: {error:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     Ok(())
@@ -84,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run_server() -> anyhow::Result<()> {
     let cfg = ClientConfig::from_env().map_err(|e| anyhow::anyhow!("ClientConfig: {e}"))?;
-    info!(endpoint = ?cfg.endpoint, "photo: connecting to broker");
+    info!(endpoint = ?cfg.endpoint, "helloworld: connecting to broker");
 
     let db = db::init_pool().await?;
     info!("photo: db connected (schema managed by host)");
@@ -111,22 +211,23 @@ async fn run_server() -> anyhow::Result<()> {
         &data_local_path,
     );
 
+    // BusClient 仍然存在 —— 不为暴露方法，而是：
+    // 1) 让 broker 知道 helloworld 在线（supervisor 健康检查）
+    // 2) 提供 cross-app `bus.call("notification_center", "notify", ...)` 通道
     let client_slot: Arc<OnceLock<Arc<BusClient>>> = Arc::new(OnceLock::new());
-    let ctx = Arc::new(AppCtx {
-        db: db.clone(),
+    let ctx = Arc::new(handlers::AppCtx {
+        db,
         client: Arc::clone(&client_slot),
-        sources: SourceRegistry::new(db.clone()),
-        storage: Arc::new(LocalStorage::new(format!("{data_local}/photo-storage"))),
-        job_cancel: CancellationRegistry::default(),
-        ai: Arc::new(AiRegistry::default()),
     });
 
-    let app_socket = app_server::spawn("photo", Arc::clone(&ctx))
+    // 起 axum router 监听 UDS（业务 + assets + data 都在这个 sock 上）
+    let app_socket = app_server::spawn("helloworld", Arc::clone(&ctx))
         .await
         .map_err(|e| anyhow::anyhow!("app_server spawn: {e}"))?;
 
+    // 把 sock 通过 `data_plane_socket` 上报给 broker（server 用它做反代目的地）
     let client = BusClient::builder(cfg)
-        .service("photo", env!("CARGO_PKG_VERSION"))
+        .service("helloworld", env!("CARGO_PKG_VERSION"))
         .data_plane(app_socket)
         .build()
         .await
@@ -172,10 +273,10 @@ async fn run_server() -> anyhow::Result<()> {
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
-            info!("photo: SIGINT received");
+            info!("helloworld: SIGINT received");
             client.shutdown();
         }
-        _ = shutdown => info!("photo: broker sent Shutdown"),
+        _ = shutdown => info!("helloworld: broker sent Shutdown"),
     }
 
     Ok(())

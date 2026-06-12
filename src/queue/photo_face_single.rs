@@ -5,13 +5,13 @@ use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::services::face::PhotoFaceService;
+use crate::AppState;
+use crate::apps::photo::services::face::PhotoFaceService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
     db: &DatabaseConnection,
-    state: &Arc<AppCtx>,
+    state: &Arc<AppState>,
     _job_id: Uuid,
     params: &JsonValue,
     _user_id: Option<Uuid>,

@@ -6,18 +6,18 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::AppCtx;
-use crate::db::repos::{PhotoLibraryRepo, PhotoRepo};
+use crate::AppState;
+use crate::apps::photo::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
-use crate::error::{ApiResponse, ok};
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
 /// POST /api/apps/photo/{id}/photos/reverse-geocode
 pub async fn reverse_geocode(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -30,7 +30,7 @@ pub async fn reverse_geocode(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_geocode_scan").await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_geocode_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -45,7 +45,7 @@ pub async fn reverse_geocode(
 
 /// GET /api/apps/photo/{id}/photos/map-points
 pub async fn map_points(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
@@ -55,10 +55,10 @@ pub async fn map_points(
 
 /// GET /api/apps/photo/{id}/photos/locations
 pub async fn location_stats(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    use crate::services::geo::PhotoGeoService;
+    use crate::apps::photo::services::geo::PhotoGeoService;
 
     let app_id = parse_uuid(&id)?;
     let groups = PhotoGeoService::location_stats(&state.db, app_id).await?;
@@ -77,7 +77,7 @@ pub struct LocationQuery {
 
 /// GET /api/apps/photo/{id}/photos/by-location
 pub async fn photos_by_location(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<LocationQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -111,7 +111,7 @@ pub struct BboxQuery {
 
 /// GET /api/apps/photo/{id}/photos/by-bbox
 pub async fn photos_by_bbox(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<BboxQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -128,7 +128,7 @@ pub async fn photos_by_bbox(
 
 /// GET /api/settings/photo-geo
 pub async fn get_photo_geo_settings(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
@@ -138,7 +138,7 @@ pub async fn get_photo_geo_settings(
 
 /// PUT /api/settings/photo-geo
 pub async fn update_photo_geo_settings(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Json(body): Json<crate::config::PhotoGeoSettings>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::db::repos::system_config_repo::SystemConfigRepo;
@@ -147,8 +147,8 @@ pub async fn update_photo_geo_settings(
 }
 
 /// POST /api/settings/photo-geo/test
-pub async fn test_photo_geo_connection(State(state): State<Arc<AppCtx>>) -> impl IntoResponse {
-    use crate::services::geo::reverse_geocode_dispatch;
+pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    use crate::apps::photo::services::geo::reverse_geocode_dispatch;
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
 

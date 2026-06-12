@@ -42,7 +42,7 @@ export default function PhotoApp() {
       try {
         const created = await pickWithBridge<{ id: string }>(openModalWindow, {
           component: () =>
-            import("./PhotoLibraryEditorWindow"),
+            import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
           parentWindowId: windowId,
           title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
           width: 720,

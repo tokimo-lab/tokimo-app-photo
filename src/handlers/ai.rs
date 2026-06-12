@@ -6,8 +6,8 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::AppCtx;
-use crate::db::repos::{PhotoLibraryRepo, PhotoRepo};
+use crate::AppState;
+use crate::apps::photo::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
 use crate::services::clip::PhotoClipService;
@@ -372,7 +372,7 @@ ai_stub!(refresh_thumbnail, path);
 
 /// GET /settings/ai
 pub async fn get_photo_ai_settings(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::config::PhotoAiSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
@@ -382,7 +382,7 @@ pub async fn get_photo_ai_settings(
 
 /// PUT /api/settings/photo-ai
 pub async fn update_photo_ai_settings(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Json(body): Json<crate::config::PhotoAiSettings>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::db::repos::system_config_repo::SystemConfigRepo;
@@ -391,7 +391,7 @@ pub async fn update_photo_ai_settings(
 }
 
 /// POST /api/settings/photo-ai/test
-pub async fn test_photo_ai_connection(State(state): State<Arc<AppCtx>>) -> impl IntoResponse {
+pub async fn test_photo_ai_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut results: Vec<serde_json::Value> = Vec::new();
 
     let models_ready = state.ai.models_ready();
@@ -420,7 +420,7 @@ pub async fn test_photo_ai_connection(State(state): State<Arc<AppCtx>>) -> impl 
 
 /// POST /api/apps/photo/{id}/photos/ocr-scan
 pub async fn ocr_scan(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -433,7 +433,7 @@ pub async fn ocr_scan(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -453,12 +453,12 @@ pub struct OcrSearchQuery {
 
 /// GET /api/apps/photo/{id}/photos/ocr-search?q=text
 pub async fn ocr_search(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<OcrSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results = crate::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q).await?;
+    let results = crate::apps::photo::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -469,7 +469,7 @@ pub struct ClearOcrQuery {
 
 /// DELETE /api/apps/photo/{id}/photos/ocr-results
 pub async fn clear_ocr_results(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<ClearOcrQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -519,7 +519,7 @@ pub async fn clear_ocr_results(
 
 /// DELETE /api/settings/photo-ai/ocr-results
 pub async fn clear_all_ocr_results(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let deleted = PhotoRepo::clear_all_ocr_results(&state.db).await?;
     Ok(ok(serde_json::json!({ "deleted": deleted })))
@@ -529,7 +529,7 @@ pub async fn clear_all_ocr_results(
 
 /// POST /api/apps/photo/{id}/photos/clip-embed
 pub async fn clip_embed(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -542,7 +542,7 @@ pub async fn clip_embed(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
+    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -562,12 +562,12 @@ pub struct ClipSearchQuery {
 
 /// GET /api/apps/photo/{id}/photos/clip-search?q=text
 pub async fn clip_search(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<ClipSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results = crate::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
+    let results = crate::apps::photo::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -577,7 +577,7 @@ pub async fn clip_search(
 /// and preempts any in-flight scan-child for the same photo. Returns the new
 /// job id so the frontend can subscribe to its updates.
 pub async fn refresh_clip(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -587,7 +587,7 @@ pub async fn refresh_clip(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_clip", photo_id).await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_clip", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -609,7 +609,7 @@ pub async fn refresh_clip(
 
 /// POST /api/photos/{id}/refresh-faces
 pub async fn refresh_faces(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -619,7 +619,7 @@ pub async fn refresh_faces(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_face", photo_id).await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_face", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -641,7 +641,7 @@ pub async fn refresh_faces(
 
 /// POST /api/photos/{id}/refresh-ocr
 pub async fn refresh_ocr(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -651,7 +651,7 @@ pub async fn refresh_ocr(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_ocr", photo_id).await?;
+    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_ocr", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -673,7 +673,7 @@ pub async fn refresh_ocr(
 
 /// GET /api/photos/{id}/ocr-results
 pub async fn get_photo_ocr_results(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
@@ -719,12 +719,12 @@ pub struct UpdateOcrResultInput {
 
 /// PATCH /api/photos/ocr-results/{ocr_id}
 pub async fn update_ocr_result(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(ocr_id): Path<i32>,
     Json(input): Json<UpdateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let updated =
-        crate::services::ocr::PhotoOcrService::update_ocr_result(&state.db, ocr_id, input).await?;
+        crate::apps::photo::services::ocr::PhotoOcrService::update_ocr_result(&state.db, ocr_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": updated.id.to_string(),
@@ -745,10 +745,10 @@ pub async fn update_ocr_result(
 
 /// DELETE /api/photos/ocr-results/{ocr_id}
 pub async fn delete_ocr_result(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(ocr_id): Path<i32>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    crate::services::ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
+    crate::apps::photo::services::ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
     Ok(ok(serde_json::json!({ "deleted": true })))
 }
 
@@ -765,13 +765,13 @@ pub struct CreateOcrResultInput {
 
 /// POST /api/photos/{id}/ocr-results
 pub async fn create_ocr_result(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(photo_id): Path<String>,
     Json(input): Json<CreateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&photo_id)?;
     let created =
-        crate::services::ocr::PhotoOcrService::create_ocr_result(&state.db, photo_id, input).await?;
+        crate::apps::photo::services::ocr::PhotoOcrService::create_ocr_result(&state.db, photo_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": created.id.to_string(),

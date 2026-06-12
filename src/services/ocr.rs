@@ -41,7 +41,7 @@ impl PhotoOcrService {
     pub async fn update_ocr_result(
         db: &DatabaseConnection,
         id: i32,
-        input: crate::handlers::ai::UpdateOcrResultInput,
+        input: crate::apps::photo::handlers::ai::UpdateOcrResultInput,
     ) -> Result<photo_ocr_results::Model, AppError> {
         let model = photo_ocr_results::Entity::find_by_id(id).one(db).await?;
         let Some(model) = model else {
@@ -90,7 +90,7 @@ impl PhotoOcrService {
     pub async fn create_ocr_result(
         db: &DatabaseConnection,
         photo_id: Uuid,
-        input: crate::handlers::ai::CreateOcrResultInput,
+        input: crate::apps::photo::handlers::ai::CreateOcrResultInput,
     ) -> Result<photo_ocr_results::Model, AppError> {
         let active = photo_ocr_results::ActiveModel {
             photo_id: Set(photo_id),
@@ -185,7 +185,7 @@ impl PhotoOcrService {
     /// OCR a single photo: fetch image bytes, call OCR, store results.
     pub async fn ocr_photo(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         photo_id: Uuid,
     ) -> Result<usize, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
@@ -267,7 +267,7 @@ impl PhotoOcrService {
     /// Batch OCR all unscanned photos in an app.
     pub async fn ocr_app(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
     ) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, state, app_id).await?;
@@ -286,7 +286,7 @@ impl PhotoOcrService {
     /// surface this as an error).
     pub async fn list_pending_photo_ids(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
     ) -> Result<Vec<Uuid>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
@@ -314,7 +314,7 @@ impl PhotoOcrService {
     /// per-photo failures (lenient).
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
-        state: &std::sync::Arc<crate::AppCtx>,
+        state: &std::sync::Arc<crate::AppState>,
         ids: Vec<Uuid>,
     ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;

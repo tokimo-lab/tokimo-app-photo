@@ -4,7 +4,7 @@ use sea_orm::*;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
+use crate::apps::photo::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{photo_faces, photo_persons, photos};
 use crate::db::pagination::{Page, PageInput};
@@ -139,7 +139,7 @@ impl PhotoFaceService {
 
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
 
-        let image_bytes = crate::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
+        let image_bytes = crate::apps::photo::services::ocr::load_photo_bytes(db, sources, &photo, image_path).await?;
 
         let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
         let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);

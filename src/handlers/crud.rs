@@ -5,12 +5,12 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::models::PhotoLibraryOutput;
-use crate::db::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
+use crate::AppState;
+use crate::apps::photo::models::PhotoLibraryOutput;
+use crate::apps::photo::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::error::{ApiResponse, ok, ok_empty};
+use crate::handlers::{ApiResponse, ok, ok_empty};
 use crate::services::source::normalize_source_path;
 
 use super::{
@@ -20,7 +20,7 @@ use super::{
 
 /// GET /api/apps/photo
 pub async fn list_photo_libraries(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiResponse<Vec<PhotoLibraryOutput>>>, AppError> {
     let rows = PhotoLibraryRepo::list_all(&state.db).await?;
     let outputs = to_photo_library_outputs(&state.db, rows).await?;
@@ -29,7 +29,7 @@ pub async fn list_photo_libraries(
 
 /// GET /api/apps/photo/{id}
 pub async fn get_photo_library(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<PhotoLibraryOutput>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -42,7 +42,7 @@ pub async fn get_photo_library(
 
 /// POST /api/apps/photo
 pub async fn create_photo_library(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Json(body): Json<CreatePhotoLibraryInput>,
 ) -> Result<Json<ApiResponse<PhotoLibraryOutput>>, AppError> {
     let model = PhotoLibraryRepo::create(&state.db, body.name, body.r#type, body.settings).await?;
@@ -88,7 +88,7 @@ pub async fn create_photo_library(
 
 /// PATCH /api/apps/photo/{id}
 pub async fn update_photo_library(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdatePhotoLibraryInput>,
 ) -> Result<Json<ApiResponse<PhotoLibraryOutput>>, AppError> {
@@ -130,7 +130,7 @@ pub async fn update_photo_library(
 
 /// DELETE /api/apps/photo/{id}
 pub async fn delete_photo_library(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -140,7 +140,7 @@ pub async fn delete_photo_library(
 
 /// POST /api/apps/photo/reorder
 pub async fn reorder_photo_libraries(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Json(body): Json<PhotoLibraryReorderInput>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let orders: Vec<(Uuid, i32)> = body

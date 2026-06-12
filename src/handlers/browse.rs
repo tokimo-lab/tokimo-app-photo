@@ -6,12 +6,12 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::db::repos::{ListPhotosInput, PhotoRepo};
+use crate::AppState;
+use crate::apps::photo::repos::{ListPhotosInput, PhotoRepo};
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::error::{ApiResponse, ok};
+use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
 
@@ -30,7 +30,7 @@ pub struct ListPhotosQuery {
 
 /// GET /api/apps/photo/{id}/photos
 pub async fn list_photos(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<ListPhotosQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -58,7 +58,7 @@ pub async fn list_photos(
 
 /// GET /api/apps/photo/{id}/photos/timeline
 pub async fn photo_timeline(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<ListPhotosQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -73,7 +73,7 @@ pub async fn photo_timeline(
 
 /// GET /api/apps/photo/{id}/photos/timeline-index
 pub async fn timeline_index(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -83,7 +83,7 @@ pub async fn timeline_index(
 
 /// GET /api/apps/photo/{photoId}
 pub async fn get_photo(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -100,7 +100,7 @@ pub struct FoldersQuery {
 
 /// GET /api/apps/photo/{id}/photos/folders
 pub async fn list_folders(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<FoldersQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -152,7 +152,7 @@ pub struct SimilarPhotoResult {
 
 /// GET /api/apps/photo/{photoId}/similar
 pub async fn similar_photos(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<SimilarPhotosQuery>,
 ) -> Result<Json<ApiResponse<SimilarPhotosResponse>>, AppError> {
@@ -258,7 +258,7 @@ pub struct PhotoTag {
 
 /// GET /api/apps/photo/{photoId}/tags
 pub async fn photo_tags(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<PhotoTagsResponse>>, AppError> {
     let photo_id = parse_uuid(&id)?;

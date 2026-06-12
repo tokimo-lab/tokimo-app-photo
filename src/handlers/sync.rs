@@ -6,13 +6,13 @@ use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::db::repos::PhotoLibraryRepo;
-use crate::services::notifications as photo_notify;
+use crate::AppState;
+use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::apps::photo::services::notifications as photo_notify;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
-use crate::error::{ApiResponse, ok};
+use crate::handlers::{ApiResponse, ok};
 use crate::services::app_sync::AppSyncService;
 
 // ── DTOs ──
@@ -27,7 +27,7 @@ pub struct PhotoSyncInput {
 ///
 /// Triggers an async photo library sync.
 pub async fn sync_photo(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
     Path(id): Path<String>,
     body: Option<Json<PhotoSyncInput>>,
@@ -61,7 +61,7 @@ pub async fn sync_photo(
         "photo_face_scan",
         "photo_geocode_scan",
     ] {
-        crate::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
+        crate::apps::photo::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
     }
 
     let user_id: Uuid = auth

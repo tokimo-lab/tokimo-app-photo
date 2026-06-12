@@ -7,20 +7,20 @@ use serde::Deserialize;
 use std::{path::Path as StdPath, sync::Arc};
 use uuid::Uuid;
 
-use crate::AppCtx;
-use crate::db::repos::PhotoRepo;
+use crate::AppState;
+use crate::apps::photo::repos::PhotoRepo;
 use crate::common::thread_util::named_spawn_blocking;
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::error::{ApiResponse, ok};
+use crate::handlers::{ApiResponse, ok};
 use tracing::warn;
 
 use super::parse_uuid;
 
 /// POST /api/photos/{id}/toggle-favorite
 pub async fn toggle_favorite(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
@@ -55,7 +55,7 @@ pub struct BatchFavoriteBody {
 
 /// POST /api/apps/photo/{id}/photos/batch-favorite
 pub async fn batch_favorite(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<BatchFavoriteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -73,7 +73,7 @@ pub struct BatchDeleteBody {
 
 /// POST /api/apps/photo/{id}/photos/batch-delete
 pub async fn batch_delete(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<BatchDeleteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -92,7 +92,7 @@ pub struct BatchHideBody {
 
 /// POST /api/apps/photo/{id}/photos/batch-hide
 pub async fn batch_hide(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<BatchHideBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -112,7 +112,7 @@ pub struct UpdatePhotoBody {
 
 /// PATCH /api/photos/{id}
 pub async fn update_photo(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdatePhotoBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -156,7 +156,7 @@ pub struct TrashListQuery {
 
 /// POST /api/apps/photo/{id}/photos/trash
 pub async fn trash_photos(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -168,7 +168,7 @@ pub async fn trash_photos(
 
 /// POST /api/apps/photo/{id}/photos/restore
 pub async fn restore_photos(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -180,7 +180,7 @@ pub async fn restore_photos(
 
 /// GET /api/apps/photo/{id}/photos/trash
 pub async fn list_trashed(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<TrashListQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -195,7 +195,7 @@ pub async fn list_trashed(
 
 /// POST /api/apps/photo/{id}/photos/permanent-delete
 pub async fn permanent_delete(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
@@ -250,7 +250,7 @@ pub async fn rescan(
 
 /// POST /api/apps/photo/{id}/photos/rescan
 pub async fn rescan(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
@@ -548,7 +548,7 @@ async fn detect_live_video_companion_remote(vfs: &tokimo_vfs::Vfs, photo_path: &
 
 /// POST /api/photos/{id}/refresh-exif
 pub async fn refresh_exif(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
@@ -574,7 +574,7 @@ pub async fn refresh_exif(
 
 /// POST /api/photos/{id}/refresh-thumbnail
 pub async fn refresh_thumbnail(
-    State(state): State<Arc<AppCtx>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
