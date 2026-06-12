@@ -8,6 +8,7 @@ import { AppCtxProvider } from "./AppContext";
 import PhotoApp from "./components/PhotoApp";
 import PhotoMenuBar from "./components/PhotoMenuBar";
 import { getPhotoI18n } from "./i18n";
+import { createPhotoExtension } from "./photo-extension";
 import "./index.css";
 
 export default defineApp({
@@ -29,6 +30,11 @@ export default defineApp({
     const { uiLocale } = getPhotoI18n(ctx.locale);
     const root: Root = createRoot(container);
 
+    const unregisterPhotoExtension = ctx.shell.photo.registerExtension(
+      ctx.appId,
+      createPhotoExtension(ctx),
+    );
+
     root.render(
       <StrictMode>
         <RuntimeProvider value={ctx}>
@@ -46,6 +52,9 @@ export default defineApp({
         </RuntimeProvider>
       </StrictMode>,
     );
-    return () => root.unmount();
+    return () => {
+      unregisterPhotoExtension();
+      root.unmount();
+    };
   },
 });
