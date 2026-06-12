@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::bus_clients::jobs::{self, JobFilter, photo_service_caller};
+use crate::bus_clients::jobs::{self, JobFilter, photo_caller};
 use crate::ctx::AppCtx;
 use crate::error::AppError;
 use crate::queue::cancellation::PREEMPT_REASON;
@@ -31,6 +31,7 @@ pub async fn preempt_scan_for(
     ctx: &Arc<AppCtx>,
     app_id: Uuid,
     task_type: &str,
+    user_id: Uuid,
 ) -> Result<usize, AppError> {
     let mut params_match = HashMap::new();
     params_match.insert("photoLibraryId".to_string(), app_id.to_string());
@@ -42,7 +43,7 @@ pub async fn preempt_scan_for(
     };
     let ids = jobs::preempt(
         &ctx.client(),
-        photo_service_caller(),
+        photo_caller(Some(user_id)),
         filter,
         PREEMPT_REASON,
     )
@@ -61,6 +62,7 @@ pub async fn preempt_scan_child_for_photo(
     ctx: &Arc<AppCtx>,
     task_type: &str,
     photo_id: Uuid,
+    user_id: Uuid,
 ) -> Result<usize, AppError> {
     let mut params_match = HashMap::new();
     params_match.insert("photoId".to_string(), photo_id.to_string());
@@ -72,7 +74,7 @@ pub async fn preempt_scan_child_for_photo(
     };
     let ids = jobs::preempt(
         &ctx.client(),
-        photo_service_caller(),
+        photo_caller(Some(user_id)),
         filter,
         PREEMPT_REASON,
     )

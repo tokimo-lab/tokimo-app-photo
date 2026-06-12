@@ -76,7 +76,7 @@ async fn enqueue_library_scan(
     caller_user_id: Uuid,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let app_id = parse_uuid(id)?;
-    preempt::preempt_scan_for(ctx, app_id, scan_job_type).await?;
+    preempt::preempt_scan_for(ctx, app_id, scan_job_type, caller_user_id).await?;
     let req = CreateJobRequest::new(
         scan_job_type,
         serde_json::json!({ "photoLibraryId": app_id.to_string() }),
@@ -134,7 +134,7 @@ async fn enqueue_photo_refresh(
     caller_user_id: Uuid,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let photo_id = parse_uuid(id)?;
-    preempt::preempt_scan_child_for_photo(ctx, child_task_type, photo_id).await?;
+    preempt::preempt_scan_child_for_photo(ctx, child_task_type, photo_id, caller_user_id).await?;
     let mut req = CreateJobRequest::new(
         single_job_type,
         serde_json::json!({ "photoId": photo_id.to_string() }),
