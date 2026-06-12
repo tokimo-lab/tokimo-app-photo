@@ -19,6 +19,21 @@ use crate::db::entities::photos;
 use crate::error::AppError;
 use crate::queue::cancellation::JobCancel;
 
+const PHOTO_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif",
+    "heic", "heif", "avif", "raw", "cr2", "cr3", "nef", "arw",
+    "dng", "orf", "rw2", "pef", "srw", "raf",
+];
+
+fn is_photo_file(filename: &str) -> bool {
+    let ext = std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    PHOTO_EXTENSIONS.contains(&ext.as_str())
+}
+
 pub async fn handle(
     ctx: &Arc<AppCtx>,
     _job_id: Uuid,
@@ -72,6 +87,13 @@ pub async fn handle(
         .unwrap_or(file_path)
         .to_string();
 
+    if !is_photo_file(&filename) {
+        return Ok(Some(serde_json::json!({
+            "status": "skipped",
+            "reason": "not_photo_file",
+        })));
+    }
+
     // Idempotency: skip if already imported
     let existing = photos::Entity::find()
         .filter(photos::Column::AppId.eq(library_id))
@@ -115,6 +137,7 @@ pub async fn handle(
         is_hidden: Set(false),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        scanned_at: Set(Some(now)),
         ..Default::default()
     };
 
@@ -173,7 +196,7 @@ pub async fn handle(
 async fn extract_exif_from_vfs(
     vfs: &Arc<tokimo_vfs::Vfs>,
     file_path: &str,
-) -> Option<ExifData> {
+) -> Option<tokimo_package_image::ExifData> {
     use std::path::Path;
 
     // Read first 256KB for EXIF (enough for most images)
@@ -182,166 +205,47 @@ async fn extract_exif_from_vfs(
         .await
         .ok()?;
 
-    // Try parsing EXIF from the partial read
-    extract_exif_from_bytes(&bytes).or_else(|| {
-        // For HEIC files, EXIF may be beyond 256KB — read the full file
-        let ext = Path::new(file_path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        if ext == "heic" || ext == "heif" {
-            // Can't easily read full file here; skip for now
-            None
-        } else {
-            None
-        }
+    // Try parsing EXIF from the partial read (CPU-bound, offload to blocking thread)
+    let partial = bytes.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        tokimo_package_image::extract_exif_from_bytes(&partial)
     })
-}
+    .await
+    .ok()
+    .flatten();
 
-/// Minimal EXIF data extracted from image bytes.
-struct ExifData {
-    width: Option<i32>,
-    height: Option<i32>,
-    taken_at: Option<DateTime<FixedOffset>>,
-    camera_make: Option<String>,
-    camera_model: Option<String>,
-    lens_model: Option<String>,
-    focal_length: Option<f64>,
-    aperture: Option<f64>,
-    shutter_speed: Option<String>,
-    iso: Option<i32>,
-    orientation: Option<i32>,
-    gps_latitude: Option<f64>,
-    gps_longitude: Option<f64>,
-    gps_altitude: Option<f64>,
-    raw_tags: serde_json::Value,
-}
-
-/// Extract EXIF from raw image bytes using the `kamadak-exif` crate.
-fn extract_exif_from_bytes(bytes: &[u8]) -> Option<ExifData> {
-    use exif::{In, Reader, Tag, Value};
-
-    let cursor = std::io::Cursor::new(bytes);
-    let reader = Reader::new();
-    let exif = reader.read_from_container(&mut std::io::BufReader::new(cursor)).ok()?;
-
-    let get_string = |tag: Tag| -> Option<String> {
-        exif.get_field(tag, In::PRIMARY)
-            .map(|f| f.display_value().to_string())
-            .filter(|s| !s.trim().is_empty())
-    };
-    let get_f64 = |tag: Tag| -> Option<f64> {
-        exif.get_field(tag, In::PRIMARY)
-            .and_then(|f| f.display_value().to_string().parse::<f64>().ok())
-    };
-    let get_i32 = |tag: Tag| -> Option<i32> {
-        exif.get_field(tag, In::PRIMARY)
-            .and_then(|f| f.display_value().to_string().parse::<i32>().ok())
-    };
-
-    // Image dimensions
-    let width = get_i32(Tag::PixelXDimension).or_else(|| {
-        exif.get_field(Tag::ImageWidth, In::PRIMARY)
-            .and_then(|f| match &f.value {
-                Value::Long(v) => v.first().map(|&x| x as i32),
-                _ => None,
-            })
-    });
-    let height = get_i32(Tag::PixelYDimension).or_else(|| {
-        exif.get_field(Tag::ImageLength, In::PRIMARY)
-            .and_then(|f| match &f.value {
-                Value::Long(v) => v.first().map(|&x| x as i32),
-                _ => None,
-            })
-    });
-
-    // Date
-    let taken_at = get_string(Tag::DateTimeOriginal)
-        .or_else(|| get_string(Tag::DateTime))
-        .and_then(|s| parse_exif_date(&s));
-
-    // GPS — parse from raw rational values (display_value is "22 deg 10 min …")
-    let parse_gps_coord = |tag: Tag, ref_tag: Tag| -> Option<f64> {
-        let field = exif.get_field(tag, In::PRIMARY)?;
-        let r = match &field.value {
-            Value::Rational(v) if v.len() == 3 => v,
-            _ => return None,
-        };
-        let deg = r[0].num as f64 / r[0].denom as f64;
-        let min = r[1].num as f64 / r[1].denom as f64;
-        let sec = r[2].num as f64 / r[2].denom as f64;
-        let mut coord = deg + min / 60.0 + sec / 3600.0;
-        // South/West → negative
-        let ref_val = exif
-            .get_field(ref_tag, In::PRIMARY)
-            .map(|f| f.display_value().to_string());
-        if matches!(ref_val.as_deref(), Some("S" | "W")) {
-            coord = -coord;
-        }
-        Some(coord)
-    };
-    let gps_latitude = parse_gps_coord(Tag::GPSLatitude, Tag::GPSLatitudeRef);
-    let gps_longitude = parse_gps_coord(Tag::GPSLongitude, Tag::GPSLongitudeRef);
-    let gps_altitude = get_f64(Tag::GPSAltitude);
-
-    // Orientation
-    let orientation = get_i32(Tag::Orientation);
-
-    // Camera info
-    let camera_make = get_string(Tag::Make);
-    let camera_model = get_string(Tag::Model);
-    let lens_model = get_string(Tag::LensModel);
-    let focal_length = get_f64(Tag::FocalLength);
-    let aperture = get_f64(Tag::FNumber);
-    let iso = get_i32(Tag::ISOSpeed);
-
-    let shutter_speed = get_string(Tag::ExposureTime).map(|s| format!("{s}s"));
-
-    // Collect all raw tags
-    let mut raw = serde_json::Map::new();
-    for field in exif.fields() {
-        let key = format!("{:?}", field.tag);
-        let val = field.display_value().to_string();
-        raw.insert(key, serde_json::Value::String(val));
+    if result.is_some() {
+        return result;
     }
 
-    Some(ExifData {
-        width,
-        height,
-        taken_at,
-        camera_make,
-        camera_model,
-        lens_model,
-        focal_length,
-        aperture,
-        shutter_speed,
-        iso,
-        orientation,
-        gps_latitude,
-        gps_longitude,
-        gps_altitude,
-        raw_tags: serde_json::Value::Object(raw),
-    })
-}
-
-/// Parse EXIF date format "YYYY:MM:DD HH:MM:SS" into a `DateTime<FixedOffset>`.
-fn parse_exif_date(s: &str) -> Option<DateTime<FixedOffset>> {
-    let trimmed = s.trim();
-    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y:%m:%d %H:%M:%S") {
-        return Some(naive.and_utc().fixed_offset());
+    // For HEIC files, EXIF may be beyond 256KB — read the full file
+    let ext = Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext == "heic" || ext == "heif" {
+        // HEIC EXIF may live beyond 256KB — read full file and retry
+        let full_bytes = vfs
+            .read_bytes(Path::new(file_path), 0, None)
+            .await
+            .ok()?;
+        tokio::task::spawn_blocking(move || {
+            tokimo_package_image::extract_exif_from_bytes(&full_bytes)
+        })
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
     }
-    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
-        return Some(naive.and_utc().fixed_offset());
-    }
-    None
 }
 
 /// Apply extracted EXIF data to an existing photo record.
 async fn apply_exif(
     db: &DatabaseConnection,
     photo_id: Uuid,
-    exif: &ExifData,
+    exif: &tokimo_package_image::ExifData,
 ) -> Result<(), AppError> {
     let now = Utc::now().fixed_offset();
     let mut active = photos::ActiveModel {
@@ -355,8 +259,13 @@ async fn apply_exif(
     if let Some(h) = exif.height {
         active.height = Set(Some(h));
     }
-    if let Some(ref dt) = exif.taken_at {
-        active.taken_at = Set(Some(*dt));
+    if let Some(ref raw) = exif.taken_at {
+        let trimmed = raw.trim_matches('"');
+        // Normalize "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DD HH:MM:SS" (date colons only)
+        let normalized = trimmed.replacen(':', "-", 2);
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&normalized, "%Y-%m-%d %H:%M:%S") {
+            active.taken_at = Set(Some(naive.and_utc().fixed_offset()));
+        }
     }
     if let Some(ref v) = exif.camera_make {
         active.camera_make = Set(Some(v.clone()));
@@ -391,9 +300,8 @@ async fn apply_exif(
     if let Some(v) = exif.gps_altitude {
         active.gps_altitude = Set(Some(v));
     }
-    active.exif_data = Set(Some(exif.raw_tags.clone()));
+    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
     active.updated_at = Set(Some(now));
-    active.scanned_at = Set(Some(now));
 
     active.update(db).await?;
     Ok(())
@@ -439,7 +347,7 @@ async fn detect_live_photo_companion(
                 .and_then(|s| s.to_str())
                 .unwrap_or("");
 
-            if video_stem == photo_stem {
+            if video_stem.to_lowercase() == photo_stem.to_lowercase() {
                 let video_path = entry.path;
                 photos::Entity::update_many()
                     .filter(photos::Column::Id.eq(photo_id))
@@ -474,7 +382,8 @@ fn guess_photo_mime(filename: &str) -> Option<String> {
         "avif" => Some("image/avif".into()),
         "bmp" => Some("image/bmp".into()),
         "tiff" | "tif" => Some("image/tiff".into()),
-        _ => None,
+        "svg" => Some("image/svg+xml".into()),
+        _ => Some(format!("image/{ext}")),
     }
 }
 
