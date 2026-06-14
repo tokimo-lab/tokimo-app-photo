@@ -2,11 +2,16 @@ import { AppSetupGuide, Spin } from "@tokimo/ui";
 import { FolderSearch, Image, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "@/generated/rust-api";
-import { useContainerWidth } from "@/shared/hooks/use-container-width";
-import { useSidebarCollapsed } from "@/shared/hooks/use-sidebar-collapsed";
-import { useWindowActions, useWindowId, useWindowNav } from "@/system";
-import { PickCancelled, pickWithBridge } from "@/system/window-bridge";
+import { api } from "../generated/rust-api";
+import { useContainerWidth } from "../shared/hooks/use-container-width";
+import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
+import {
+  PickCancelled,
+  pickWithBridge,
+  useWindowActions,
+  useWindowId,
+  useWindowNav,
+} from "@tokimo/sdk";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
@@ -42,7 +47,7 @@ export default function PhotoApp() {
       try {
         const created = await pickWithBridge<{ id: string }>(openModalWindow, {
           component: () =>
-            import("@/apps/settings/admin/PhotoLibraryEditorWindow"),
+            import("./PhotoLibraryEditorWindow"),
           parentWindowId: windowId,
           title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
           width: 720,

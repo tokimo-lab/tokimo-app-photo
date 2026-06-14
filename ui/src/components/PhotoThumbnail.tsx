@@ -1,7 +1,7 @@
 import { Check, Heart, ImageIcon } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoOutput } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { photoLiveVideoUrl, THUMB_WIDTH } from "./photo-utils";
 

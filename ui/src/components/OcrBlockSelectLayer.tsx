@@ -1,7 +1,7 @@
 import { useContextMenu } from "@tokimo/ui";
 import { Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PhotoOcrResultItem } from "@/generated/rust-api";
+import type { PhotoOcrResultItem } from "../generated/rust-api";
 import { useImgRect } from "./photo-overlays";
 import { isOrientationSwapped } from "./photo-utils";
 import {

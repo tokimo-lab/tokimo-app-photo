@@ -11,11 +11,9 @@ import {
 import {
   computeJustifiedRows,
   type JustifiedRow,
-} from "@/apps/photo/hooks/useJustifiedLayout";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { useComponentPreference } from "@/shared/hooks/use-preference";
-import { useWindowActions } from "@/system";
-import { getDefaultSize } from "@/system/window/window-sync";
+} from "../hooks/useJustifiedLayout";
+import type { PhotoOutput } from "../generated/rust-api";
+import { useComponentPreference, useWindowActions } from "@tokimo/sdk";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { type DateGroup, groupPhotosByDate } from "./photo-utils";
@@ -78,7 +76,7 @@ export function PhotoTimeline({
         "[data-window-id]",
       ) as HTMLElement | null;
       const parentRect = parentEl?.getBoundingClientRect();
-      const childSize = getDefaultSize("image");
+      const childSize = { width: 900, height: 600 };
       // Read info panel state to adjust fly animation target
       let infoW = 0;
       if (infoPanelOpenRef.current) infoW = 320;

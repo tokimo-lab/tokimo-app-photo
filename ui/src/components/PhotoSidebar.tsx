@@ -1,8 +1,8 @@
 import { AppSidebar, CircularProgress, Tooltip } from "@tokimo/ui";
 import { PanelLeft, PanelLeftClose, Plus, Settings } from "lucide-react";
-import type { PhotoLibraryOutput } from "@/generated/rust-api";
-import { getAvatarColor, getAvatarIcon } from "@/shared/avatar-utils";
-import { AppIcon } from "@/shared/components/icons";
+import type { PhotoLibraryOutput } from "../generated/rust-api";
+import { getAvatarColor, getAvatarIcon } from "../shared/avatar-utils";
+import { AppIcon } from "../shared/components/icons";
 
 export default function PhotoSidebar({
   libraries,

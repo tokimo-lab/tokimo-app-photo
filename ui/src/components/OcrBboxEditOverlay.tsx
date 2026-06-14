@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { PhotoOcrResultItem } from "@/generated/rust-api";
+import type { PhotoOcrResultItem } from "../generated/rust-api";
 import { useImgRect } from "./photo-overlays";
 import {
   inverseTransformCornersForOrientation,

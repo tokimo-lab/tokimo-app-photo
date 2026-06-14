@@ -1,10 +1,10 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
 import { ChevronRight, Pencil, User, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import type { PersonOutput } from "@/generated/rust-types/index";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import type { PersonOutput } from "../generated/rust-types/index";
+import { thumbUrl } from "../lib/thumb";
 import { PhotoTimeline } from "./PhotoTimeline";
 import { PAGE_SIZE } from "./photo-utils";
 

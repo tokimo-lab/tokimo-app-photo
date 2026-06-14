@@ -1,9 +1,9 @@
 import { Empty, Spin } from "@tokimo/ui";
 import { ChevronRight, FolderOpen } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 

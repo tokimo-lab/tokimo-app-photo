@@ -8,8 +8,8 @@ import {
   Tags,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { api } from "@/generated/rust-api";
-import { useAppEvent } from "@/system";
+import { api } from "../generated/rust-api";
+import { useJobEvents } from "@tokimo/sdk";
 
 type ToolKey = "faces" | "exif" | "thumbnail" | "clip" | "ocr";
 
@@ -66,23 +66,25 @@ export function PhotoToolsPanel({
   const refreshClip = api.photo.refreshClip.useMutation();
   const refreshOcr = api.photo.refreshOcr.useMutation();
 
-  useAppEvent((event) => {
-    if (event.type !== "job_update") return;
-    const tool = pendingJobs.current.get(event.job.id);
-    if (!tool) return;
-    const status = event.job.status;
-    if (!TERMINAL_STATUSES.has(status)) return;
+  useJobEvents({
+    onEvent: (event) => {
+      if (event.type !== "job_update") return;
+      const tool = pendingJobs.current.get(event.job.id);
+      if (!tool) return;
+      const status = event.job.status;
+      if (!TERMINAL_STATUSES.has(status)) return;
 
-    pendingJobs.current.delete(event.job.id);
-    setLoading((prev) => ({ ...prev, [tool]: false }));
-    if (status === "failed" || status === "cancelled") {
-      const msg =
-        event.job.error ?? (status === "cancelled" ? "已中断" : "失败");
-      setResults((prev) => ({ ...prev, [tool]: `❌ ${msg}` }));
-    } else {
-      setResults((prev) => ({ ...prev, [tool]: "✅ 已完成" }));
-      onRefreshComplete?.();
-    }
+      pendingJobs.current.delete(event.job.id);
+      setLoading((prev) => ({ ...prev, [tool]: false }));
+      if (status === "failed" || status === "cancelled") {
+        const msg =
+          event.job.error ?? (status === "cancelled" ? "已中断" : "失败");
+        setResults((prev) => ({ ...prev, [tool]: `❌ ${msg}` }));
+      } else {
+        setResults((prev) => ({ ...prev, [tool]: "✅ 已完成" }));
+        onRefreshComplete?.();
+      }
+    },
   });
 
   const handleRefresh = useCallback(

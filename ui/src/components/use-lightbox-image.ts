@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
+import { convertHeicToJpegOffThread } from "../shared/utils/heic-decoder";
 import type { AnimState } from "./lightbox-utils";
 
 interface UseLightboxImageOptions {

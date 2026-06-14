@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PAGE_SIZE } from "@/apps/photo/components/photo-utils";
+import { PAGE_SIZE } from "../components/photo-utils";
 import {
   clearViewerPhotos,
   setViewerPhotos,
-} from "@/apps/photo/components/photo-viewer-store";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
+} from "../components/photo-viewer-store";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
 
 export type TabKey =
   | "timeline"

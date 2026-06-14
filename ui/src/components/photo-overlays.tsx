@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { PhotoFaceOutput, PhotoOcrResultItem } from "@/generated/rust-api";
+import type { PhotoFaceOutput, PhotoOcrResultItem } from "../generated/rust-api";
 import {
   isOrientationSwapped,
   transformAxisAlignedBoxForOrientation,

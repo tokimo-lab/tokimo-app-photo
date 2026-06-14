@@ -15,10 +15,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { api } from "@/generated/rust-api";
-import { useComponentPreference } from "@/shared/hooks/use-preference";
-import type { MenuBarConfig } from "@/system";
-import { useMenuBar, useMessage, useWindowNav } from "@/system";
+import { api } from "../generated/rust-api";
+import { useComponentPreference, useMenuBar, useWindowNav } from "@tokimo/sdk";
+import type { MenuBarConfig } from "@tokimo/sdk";
+import { useToast } from "@tokimo/ui";
 import { DEFAULT_SIZE_INDEX, PHOTO_SIZE_LEVELS } from "./PhotoSizeSlider";
 
 // ── Shared state context (consumed by PhotoAppPage) ─────────────────────────
@@ -47,7 +47,7 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
   const { params } = useWindowNav();
   const id = params.libraryId ?? undefined;
-  const message = useMessage();
+  const message = useToast();
   const qc = useQueryClient();
 
   // Shared state — provided to page via context

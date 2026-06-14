@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CornerDownLeft, Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PhotoOcrResultItem } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
+import type { PhotoOcrResultItem } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
 
 export function OcrResultRow({
   r,

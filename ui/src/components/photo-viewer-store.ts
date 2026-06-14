@@ -3,7 +3,7 @@
  * and PhotoWindowViewer (which renders in a separate window tree).
  */
 
-import type { PhotoOutput } from "@/generated/rust-types";
+import type { PhotoOutput } from "../generated/rust-types";
 
 const store = new Map<string, PhotoOutput[]>();
 

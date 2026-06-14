@@ -11,18 +11,18 @@ import {
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlbumPickerDialog } from "@/apps/photo/components/AlbumPickerDialog";
-import { PhotoAlbumsView } from "@/apps/photo/components/PhotoAlbumsView";
-import { PhotoFoldersView } from "@/apps/photo/components/PhotoFoldersView";
-import { PhotoLocationTab } from "@/apps/photo/components/PhotoLocationTab";
-import type { MapClusterSelection } from "@/apps/photo/components/PhotoMapView";
-import { usePhotoMenuBarState } from "@/apps/photo/components/PhotoMenuBar";
-import { PhotoPeopleView } from "@/apps/photo/components/PhotoPeopleView";
-import { PhotoSelectionBar } from "@/apps/photo/components/PhotoSelectionBar";
-import { PHOTO_SIZE_LEVELS } from "@/apps/photo/components/PhotoSizeSlider";
-import { PhotoTimeline } from "@/apps/photo/components/PhotoTimeline";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { useMessage, useWindowNav } from "@/system";
+import { AlbumPickerDialog } from "../components/AlbumPickerDialog";
+import { PhotoAlbumsView } from "../components/PhotoAlbumsView";
+import { PhotoFoldersView } from "../components/PhotoFoldersView";
+import { PhotoLocationTab } from "../components/PhotoLocationTab";
+import type { MapClusterSelection } from "../components/PhotoMapView";
+import { usePhotoMenuBarState } from "../components/PhotoMenuBar";
+import { PhotoPeopleView } from "../components/PhotoPeopleView";
+import { PhotoSelectionBar } from "../components/PhotoSelectionBar";
+import { PHOTO_SIZE_LEVELS } from "../components/PhotoSizeSlider";
+import { PhotoTimeline } from "../components/PhotoTimeline";
+import type { PhotoOutput } from "../generated/rust-api";
+import { useWindowNav } from "@tokimo/sdk";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
 import { type TabKey, usePhotoData } from "./use-photo-data";
 import { usePhotoMutations } from "./use-photo-mutations";
@@ -52,7 +52,6 @@ export default function PhotoAppPage({
   const { metadata } = useWindowNav();
   const id = photoLibraryId ?? (metadata.appId as string | undefined);
   const initialDate = metadata.initialDate as string | undefined;
-  const message = useMessage();
   const rootRef = useRef<HTMLDivElement>(null);
   const [windowContent, setWindowContent] = useState<HTMLElement | null>(null);
 

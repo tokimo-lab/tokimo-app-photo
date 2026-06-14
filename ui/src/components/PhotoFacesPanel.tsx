@@ -9,9 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PersonOutput, PhotoFaceOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
+import type { PersonOutput, PhotoFaceOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
 
 const THUMB_WIDTH = 800;
 

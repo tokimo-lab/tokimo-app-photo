@@ -1,9 +1,9 @@
 import { Spin } from "@tokimo/ui";
 import { MapPin } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { useWindowActions } from "@/system";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { useWindowActions } from "@tokimo/sdk";
 import type { MapClusterSelection } from "./PhotoMapView";
 import { PhotoMapView } from "./PhotoMapView";
 import { PhotoTimeline } from "./PhotoTimeline";

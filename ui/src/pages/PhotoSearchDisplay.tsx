@@ -1,6 +1,6 @@
 import { Empty, Spin } from "@tokimo/ui";
 import { ScanText, Sparkles, X } from "lucide-react";
-import { thumbUrl } from "@/lib/thumb";
+import { thumbUrl } from "../lib/thumb";
 
 // ── OCR search results banner ──────────────────────────────────────────
 

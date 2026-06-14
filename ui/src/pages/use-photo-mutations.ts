@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
 
 interface UsePhotoMutationsParams {
   id: string | undefined;

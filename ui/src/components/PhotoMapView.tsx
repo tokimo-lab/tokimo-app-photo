@@ -4,10 +4,9 @@ import { Empty, Spin } from "@tokimo/ui";
 import { Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
-import { api } from "@/generated/rust-api";
-import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
-import { useComponentPreference } from "@/shared/hooks/use-preference";
-import { useWindowNav } from "@/system";
+import { api } from "../generated/rust-api";
+import { thumbUrl as photoThumbUrl } from "../lib/thumb";
+import { useComponentPreference, useWindowNav } from "@tokimo/sdk";
 import {
   type AMapInstance,
   type AMapSDK,

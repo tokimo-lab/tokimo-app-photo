@@ -1,6 +1,6 @@
-import type { PhotoOutput } from "@/generated/rust-api";
-import { rustUrl } from "@/lib/rust-api-runtime";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoOutput } from "../generated/rust-api";
+import { rustUrl } from "../lib/rust-api-runtime";
+import { thumbUrl } from "../lib/thumb";
 
 export const PAGE_SIZE = 80;
 export const THUMB_WIDTH = 320;

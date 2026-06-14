@@ -1,4 +1,4 @@
-import type { WindowState } from "@/system/window/window-types";
+import type { WindowState } from "@tokimo/sdk";
 
 export function stripExifQuotes(value: string): string {
   if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PhotoOutput } from "@/generated/rust-types";
+import type { PhotoOutput } from "../generated/rust-types";
 import {
   ANIM_DURATION,
   type AnimState,

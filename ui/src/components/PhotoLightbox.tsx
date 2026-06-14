@@ -1,10 +1,10 @@
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
-import { useComponentPreference } from "@/shared/hooks/use-preference";
+import type { PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
+import { useComponentPreference } from "@tokimo/sdk";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import {
   ANIM_DURATION,

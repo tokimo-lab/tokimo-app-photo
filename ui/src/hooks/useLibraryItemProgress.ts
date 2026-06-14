@@ -1,12 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/generated/rust-api";
-import type { PhotoLibraryOutput } from "@/generated/rust-types";
+import { api } from "../generated/rust-api";
+import type { PhotoLibraryOutput } from "../generated/rust-types";
 import {
-  type AppEntityEventData,
+  type AppEntityEvent as AppEntityEventData,
   useAppEntityEvents,
-} from "@/system/events/useAppEntityEvents";
-import { useJobEvents } from "@/system/events/useJobEvents";
+  useJobEvents,
+} from "@tokimo/sdk";
 
 const PHOTO_SCAN_JOB_TYPES = [
   "file_scrape",

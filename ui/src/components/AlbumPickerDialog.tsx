@@ -1,9 +1,9 @@
 import { Button, Modal, Spin } from "@tokimo/ui";
 import { Grid3x3, Plus } from "lucide-react";
 import { useState } from "react";
-import type { PhotoAlbumOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoAlbumOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
 
 export function AlbumPickerDialog({
   appId,

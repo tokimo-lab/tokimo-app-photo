@@ -2,7 +2,7 @@ import {
   createMutation,
   createPathMutation,
   createQuery,
-} from "../../lib/rust-api-runtime";
+} from "../lib/rust-api-runtime";
 import type {
   PersonOutput,
   PhotoAlbumOutput,
@@ -11,7 +11,7 @@ import type {
   PhotoLibraryOutput,
   PhotoOutput,
   PhotoTagsResponse,
-} from "../rust-types/index";
+} from "./rust-types/index";
 
 // ── Input types (hand-maintained) ───────────────────────────────────────────
 
@@ -767,3 +767,17 @@ export const photoApi = {
     path: "/api/apps/photo/settings/ai/test",
   }),
 } as const;
+
+// Alias for standard import convention
+export const api = photoApi;
+
+// Re-export types so both `@/generated/rust-api` and `@/generated/rust-types` work
+export type {
+  PersonOutput,
+  PhotoAlbumOutput,
+  PhotoDetailOutput,
+  PhotoFaceOutput,
+  PhotoLibraryOutput,
+  PhotoOutput,
+  PhotoTagsResponse,
+} from "./rust-types/index";

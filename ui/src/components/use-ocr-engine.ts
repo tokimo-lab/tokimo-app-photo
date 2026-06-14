@@ -1,6 +1,6 @@
 import type { OcrEngine } from "@tokiomo/tokimo-wasm";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PhotoOcrResultItem } from "@/generated/rust-api";
+import type { PhotoOcrResultItem } from "../generated/rust-api";
 import type { ImgRect } from "./photo-overlays";
 import {
   isOrientationSwapped,

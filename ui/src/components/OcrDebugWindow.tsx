@@ -1,5 +1,5 @@
-import { getOcrModelName } from "@/lib/ocr-models";
-import type { WindowState } from "@/system/window/window-types";
+import { getOcrModelName } from "../lib/ocr-models";
+import type { WindowState } from "@tokimo/sdk";
 
 interface OcrDebugInfo {
   detModel: string;

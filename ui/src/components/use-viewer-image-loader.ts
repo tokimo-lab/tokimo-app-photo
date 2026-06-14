@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { convertHeicToJpegOffThread } from "@/shared/utils/heic-decoder";
-import { extractRawPreview, isRawFile } from "@/shared/utils/raw-decoder";
+import { convertHeicToJpegOffThread } from "../shared/utils/heic-decoder";
+import { extractRawPreview, isRawFile } from "../shared/utils/raw-decoder";
 
 interface ViewerImageLoaderOptions {
   photoId: string;

@@ -6,12 +6,11 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/generated/rust-api";
-import type { PhotoOutput } from "@/generated/rust-types";
-import { thumbUrl as photoThumbUrl } from "@/lib/thumb";
-import { useComponentPreference } from "@/shared/hooks/use-preference";
-import { useWindowActions } from "@/system";
-import type { WindowState } from "@/system/window/window-types";
+import { api } from "../generated/rust-api";
+import type { PhotoOutput } from "../generated/rust-types";
+import { thumbUrl as photoThumbUrl } from "../lib/thumb";
+import { useComponentPreference, useWindowActions } from "@tokimo/sdk";
+import type { WindowState } from "@tokimo/sdk";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoSidebar } from "./PhotoInfoSidebar";
 import { PhotoLightbox } from "./PhotoLightbox";

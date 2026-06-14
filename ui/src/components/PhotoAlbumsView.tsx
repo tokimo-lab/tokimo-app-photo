@@ -1,9 +1,9 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
 import { Grid3x3, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { PhotoAlbumOutput, PhotoOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { thumbUrl } from "@/lib/thumb";
+import type { PhotoAlbumOutput, PhotoOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { thumbUrl } from "../lib/thumb";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { PAGE_SIZE } from "./photo-utils";

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { api } from "@/generated/rust-api";
-import type { PhotoDetailOutput, PhotoOutput } from "@/generated/rust-types";
+import { api } from "../generated/rust-api";
+import type { PhotoDetailOutput, PhotoOutput } from "../generated/rust-types";
 import { PhotoInfoPanel } from "./PhotoInfoPanel";
 
 interface PhotoInfoSidebarProps {

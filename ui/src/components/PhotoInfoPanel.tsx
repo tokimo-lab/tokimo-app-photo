@@ -11,12 +11,13 @@ import {
   Tag,
 } from "lucide-react";
 import { type ReactNode, useCallback } from "react";
-import type { PhotoDetailOutput } from "@/generated/rust-api";
-import { api } from "@/generated/rust-api";
-import { getOcrModelName } from "@/lib/ocr-models";
-import { thumbUrl } from "@/lib/thumb";
-import { useDateFormat, useOptionalWindowId, useWindowActions } from "@/system";
-import type { TaskMetadata } from "@/system/window/window-types";
+import type { PhotoDetailOutput } from "../generated/rust-api";
+import { api } from "../generated/rust-api";
+import { getOcrModelName } from "../lib/ocr-models";
+import { thumbUrl } from "../lib/thumb";
+import { useDateFormat } from "@tokimo/ui";
+import { useWindowActions, useWindowId } from "@tokimo/sdk";
+import type { TaskMetadata } from "@tokimo/sdk";
 import type { ExifWindowMetadata } from "./ExifWindow";
 import { stripExifQuotes } from "./ExifWindow";
 import {
@@ -76,7 +77,7 @@ export function PhotoInfoPanel({
   onAddOcr?: () => void;
 }) {
   const { openWindow, openModalWindow } = useWindowActions();
-  const parentWindowId = useOptionalWindowId();
+  const parentWindowId = useWindowId();
   const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(
