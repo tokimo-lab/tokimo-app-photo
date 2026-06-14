@@ -6,8 +6,8 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::queue::parent_child;
-use crate::apps::photo::services::face::PhotoFaceService;
+use crate::queue::parent_child;
+use crate::services::face::PhotoFaceService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
@@ -21,8 +21,9 @@ pub async fn handle(
     check_cancel(cancel)?;
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
+    let ai = state.ai_worker.get().expect("AI worker not initialized");
     let (success, failures, errors) =
-        PhotoFaceService::process_photo_ids(db, &state.ai, &state.sources, vec![ctx.photo_id]).await;
+        PhotoFaceService::process_photo_ids(db, ai, &state.sources, vec![ctx.photo_id]).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors

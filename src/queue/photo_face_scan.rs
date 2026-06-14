@@ -6,8 +6,8 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::queue::parent_child;
-use crate::apps::photo::services::face::PhotoFaceService;
+use crate::queue::parent_child;
+use crate::services::face::PhotoFaceService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(
@@ -19,7 +19,7 @@ pub async fn handle(
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let ai = state.ai.clone();
+    let ai = state.ai_worker.get().cloned().expect("AI worker not initialized");
     parent_child::run_scan(
         db,
         state,

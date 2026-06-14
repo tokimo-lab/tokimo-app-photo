@@ -6,8 +6,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::models::PhotoLibraryOutput;
-use crate::apps::photo::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
+use crate::models::PhotoLibraryOutput;
+use crate::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::{ApiResponse, ok, ok_empty};

@@ -41,7 +41,7 @@ impl PhotoOcrService {
     pub async fn update_ocr_result(
         db: &DatabaseConnection,
         id: i32,
-        input: crate::apps::photo::handlers::ai::UpdateOcrResultInput,
+        input: crate::handlers::ai::UpdateOcrResultInput,
     ) -> Result<photo_ocr_results::Model, AppError> {
         let model = photo_ocr_results::Entity::find_by_id(id).one(db).await?;
         let Some(model) = model else {
@@ -90,7 +90,7 @@ impl PhotoOcrService {
     pub async fn create_ocr_result(
         db: &DatabaseConnection,
         photo_id: Uuid,
-        input: crate::apps::photo::handlers::ai::CreateOcrResultInput,
+        input: crate::handlers::ai::CreateOcrResultInput,
     ) -> Result<photo_ocr_results::Model, AppError> {
         let active = photo_ocr_results::ActiveModel {
             photo_id: Set(photo_id),
@@ -206,13 +206,14 @@ impl PhotoOcrService {
         // Bridge the owning job's cancel token to the AI worker's /v1/cancel
         // so that `cancel_one(job_id, ...)` actually terminates the in-flight
         // ONNX session instead of letting it chew CPU until the batch ends.
-        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo_id);
+        let ai = state.ai_client();
+        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
         let request_id = cancel_scope
             .as_ref()
             .map(crate::services::ai::AiCancelScope::request_id_owned);
 
         let (results, debug_info) = Self::ocr_image(
-            &state.ai,
+            ai,
             image_bytes,
             Some(&model_name),
             aux_model_name.as_deref(),
@@ -293,7 +294,7 @@ impl PhotoOcrService {
         if !settings.ocr_enabled {
             return Err(AppError::Internal("OCR not enabled".into()));
         }
-        if !state.ai.is_ocr_enabled() || !state.ai.ocr_models_ready() {
+        if !state.is_ocr_enabled() || !state.ocr_models_ready() {
             warn!("[photo_ocr] OCR model files not found, skipping batch for app {app_id}");
             return Ok(Vec::new());
         }

@@ -3,7 +3,7 @@ use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::apps::photo::models::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::models::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
 use crate::db::entities::{photo_albums, photos, vfs};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;

@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::apps::photo::repos::PhotoLibraryRepo;
+use crate::repos::PhotoLibraryRepo;
 use crate::db::entities::{
     book_files, books, music_album_artists, music_albums, music_artists, music_files, music_tracks, musics,
     photo_albums, photo_libraries, photo_persons, photos, vfs,

@@ -24,8 +24,10 @@ use tokimo_vfs_core::model::obj::FileInfo;
 use tokimo_vfs_core::model::storage::{ConnectionState, StorageCapabilities, StorageStatus};
 use tracing::{error, warn};
 
-use crate::apps::docs::services::markdown_sync::ATTACHMENTS_MANIFEST;
 use crate::services::storage::StorageProvider;
+
+/// Name of the per-directory attachment manifest file.
+const ATTACHMENTS_MANIFEST: &str = ".attachments.json";
 
 /// Callback interface for VFS write events.
 ///

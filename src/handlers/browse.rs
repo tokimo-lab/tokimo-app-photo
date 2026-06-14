@@ -7,7 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::repos::{ListPhotosInput, PhotoRepo};
+use crate::repos::{ListPhotosInput, PhotoRepo};
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
@@ -297,7 +297,7 @@ pub async fn photo_tags(
         .collect::<Result<_, _>>()?;
 
     let tag_results = state
-        .ai
+        .ai_client()
         .clip_classify(image_vec)
         .await
         .map_err(|e| AppError::Internal(format!("CLIP classify: {e}")))?;

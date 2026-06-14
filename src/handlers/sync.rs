@@ -7,8 +7,8 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::repos::PhotoLibraryRepo;
-use crate::apps::photo::services::notifications as photo_notify;
+use crate::repos::PhotoLibraryRepo;
+use crate::services::notifications as photo_notify;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
@@ -61,7 +61,7 @@ pub async fn sync_photo(
         "photo_face_scan",
         "photo_geocode_scan",
     ] {
-        crate::apps::photo::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
+        crate::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
     }
 
     let user_id: Uuid = auth
@@ -71,7 +71,7 @@ pub async fn sync_photo(
 
     let db = state.db.clone();
     let sources = state.sources.clone();
-    let storage = state.storage.clone();
+    let storage = state.storage.get().cloned().expect("storage not initialized");
     let state_for_task = state.clone();
     let library_name = library.name.clone();
 

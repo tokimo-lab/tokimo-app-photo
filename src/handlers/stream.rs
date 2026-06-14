@@ -11,7 +11,7 @@ use tower::util::ServiceExt;
 use tower_http::services::ServeFile;
 
 use crate::AppState;
-use crate::apps::photo::repos::PhotoRepo;
+use crate::repos::PhotoRepo;
 use crate::handlers::media::stream::mime_for;
 use crate::handlers::media::utils::resolve_local_path;
 use crate::handlers::{err404, err500};
@@ -108,7 +108,7 @@ pub async fn serve_live_video(
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
 async fn load_photo_bytes(
     state: &Arc<AppState>,
-    target: &crate::apps::photo::models::PhotoStreamTarget,
+    target: &crate::models::PhotoStreamTarget,
 ) -> Result<Vec<u8>, String> {
     if target.source_type.as_deref().is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
@@ -186,7 +186,7 @@ async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTar
 }
 
 /// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
-async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::apps::photo::models::PhotoStreamTarget) -> Response {
+async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::models::PhotoStreamTarget) -> Response {
     let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -194,7 +194,8 @@ async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::apps::photo::mo
         hasher.finish()
     });
 
-    if let Ok(bytes) = state.storage.download(&cache_key).await {
+    let storage = state.storage.get().expect("storage not initialized");
+    if let Ok(bytes) = storage.download(&cache_key).await {
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "image/jpeg")
@@ -215,7 +216,7 @@ async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::apps::photo::mo
         Err(e) => return err500::<()>(format!("image conversion failed: {e}")).into_response(),
     };
 
-    let storage = Arc::clone(&state.storage);
+    let storage = state.storage.get().cloned().expect("storage not initialized");
     let key = cache_key.clone();
     let buf = jpeg_bytes.clone();
     tokio::spawn(async move {

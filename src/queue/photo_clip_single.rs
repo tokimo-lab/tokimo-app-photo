@@ -6,7 +6,7 @@ use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::services::clip::PhotoClipService;
+use crate::services::clip::PhotoClipService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(

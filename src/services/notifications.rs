@@ -14,10 +14,94 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::notification_center::repos::sources::SourceDef;
-use crate::apps::notification_center::services::center::{Notification, NotificationCenter};
 
 const APP_ID: &str = "photo";
+
+// ── Local type stubs (replacing cross-crate `notification_center` imports) ──
+
+/// Definition for upserting a notification source.
+pub struct SourceDef {
+    pub app_id: String,
+    pub category_id: String,
+    pub label: String,
+    pub default_enabled: bool,
+    pub default_display_mode: String,
+}
+
+/// A notification to send through the center.
+pub struct Notification {
+    pub app_id: String,
+    pub category_id: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub level: Option<String>,
+    pub action: Option<serde_json::Value>,
+    pub dedupe_key: Option<String>,
+    pub progress: Option<i32>,
+    pub template_context: Option<serde_json::Value>,
+}
+
+/// Bus-client-based notification center for standalone apps.
+///
+/// Sends notifications via the `notification_center` sidecar service,
+/// matching the pattern used by the helloworld app.
+pub struct NotificationCenter;
+
+impl NotificationCenter {
+    /// Register notification sources (no-op in standalone mode — the
+    /// notification center sidecar handles this on first `notify`).
+    pub async fn register(
+        _state: &Arc<AppState>,
+        _user_id: Uuid,
+        _sources: Vec<SourceDef>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Standalone apps rely on the notification center sidecar to
+        // auto-register sources on first notification. No-op here.
+        Ok(())
+    }
+
+    /// Send a notification through the notification center sidecar via bus.
+    pub async fn notify(
+        state: &Arc<AppState>,
+        user_id: Uuid,
+        notification: Notification,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Some(client) = state.bus_client.get() else {
+            warn!("BusClient not bound — cannot send notification");
+            return Ok(());
+        };
+
+        let payload = json!({
+            "user_id": user_id.to_string(),
+            "app_id": notification.app_id,
+            "category_id": notification.category_id,
+            "title": notification.title,
+            "body": notification.body,
+            "level": notification.level,
+            "action": notification.action,
+            "dedupe_key": notification.dedupe_key,
+            "progress": notification.progress,
+        });
+        let bytes = serde_json::to_vec(&payload)?;
+
+        use tokimo_bus_protocol::CallerCtx;
+        client
+            .invoke(
+                "notification_center",
+                "notify",
+                bytes,
+                CallerCtx {
+                    user_id: Some(user_id.to_string()),
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    workspace: None,
+                    caller_app_id: Some(APP_ID.to_string()),
+                },
+            )
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+        Ok(())
+    }
+}
 
 pub const CATEGORY_SYNC_COMPLETED: &str = "sync_completed";
 pub const CATEGORY_SYNC_FAILED: &str = "sync_failed";
@@ -312,7 +396,10 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
 
         for parent in parents {
             let Some(uid) = parent.user_id else { continue };
-            let data = &parent.data;
+            let data = match &parent.data {
+                Some(d) => d,
+                None => continue,
+            };
             let total = data
                 .get("totalChildren")
                 .and_then(serde_json::Value::as_i64)
@@ -323,8 +410,7 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
             let done = data.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
                 .params
-                .as_ref()
-                .and_then(|params| params.get("photoLibraryId"))
+                .get("photoLibraryId")
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok());
             let Some(app_id) = app_id else { continue };

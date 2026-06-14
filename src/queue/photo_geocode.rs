@@ -6,8 +6,8 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::queue::parent_child;
-use crate::apps::photo::services::geo::PhotoGeoService;
+use crate::queue::parent_child;
+use crate::services::geo::PhotoGeoService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 
 pub async fn handle(

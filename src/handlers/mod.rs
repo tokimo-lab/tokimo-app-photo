@@ -4,16 +4,20 @@ pub mod batch;
 pub mod browse;
 pub mod crud;
 pub mod geo;
+pub mod media;
 pub mod person;
 pub mod stream;
 pub mod sync;
+pub mod user;
+pub mod vfs;
 
-use serde::Deserialize;
+use axum::{http::StatusCode, response::Json};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::apps::photo::models::PhotoLibraryOutput;
-use crate::apps::photo::repos::PhotoLibraryRepo;
-use crate::db::entities::vfs;
+use crate::models::PhotoLibraryOutput;
+use crate::repos::PhotoLibraryRepo;
+use crate::db::entities::vfs as vfs_entity;
 use crate::db::{ApiDateTimeExt, OptionalApiDateTimeExt};
 use crate::error::AppError;
 
@@ -26,6 +30,56 @@ pub use geo::*;
 pub use person::*;
 pub use stream::*;
 pub use sync::*;
+
+// ── Shared response types ──
+
+#[derive(Serialize)]
+pub struct ApiResponse<T: Serialize> {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub fn ok<T: Serialize>(data: T) -> Json<ApiResponse<T>> {
+    Json(ApiResponse {
+        success: true,
+        data: Some(data),
+        error: None,
+    })
+}
+
+pub fn ok_empty() -> Json<ApiResponse<()>> {
+    Json(ApiResponse {
+        success: true,
+        data: None,
+        error: None,
+    })
+}
+
+fn err_resp<T: Serialize>(status: StatusCode, msg: String) -> (StatusCode, Json<ApiResponse<T>>) {
+    (
+        status,
+        Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(msg),
+        }),
+    )
+}
+
+pub fn err400<T: Serialize>(msg: String) -> (StatusCode, Json<ApiResponse<T>>) {
+    err_resp(StatusCode::BAD_REQUEST, msg)
+}
+
+pub fn err404<T: Serialize>(msg: String) -> (StatusCode, Json<ApiResponse<T>>) {
+    err_resp(StatusCode::NOT_FOUND, msg)
+}
+
+pub fn err500<T: Serialize>(msg: String) -> (StatusCode, Json<ApiResponse<T>>) {
+    err_resp(StatusCode::INTERNAL_SERVER_ERROR, msg)
+}
 
 // ── Input DTOs ──
 
@@ -113,8 +167,8 @@ pub(crate) async fn to_photo_library_output(
     let source_tuples = PhotoLibraryRepo::parse_sources(&model.sources);
     let mut sources = Vec::with_capacity(source_tuples.len());
     for (source_id, root_path, is_default_download) in &source_tuples {
-        let fs = vfs::Entity::find_by_id(*source_id).one(db).await?;
-        sources.push(crate::apps::photo::models::PhotoLibrarySourceOutput {
+        let fs = vfs_entity::Entity::find_by_id(*source_id).one(db).await?;
+        sources.push(crate::models::PhotoLibrarySourceOutput {
             source_id: source_id.to_string(),
             root_path: root_path.clone(),
             sort_order: sources.len() as i32,

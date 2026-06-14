@@ -123,11 +123,12 @@ impl PhotoClipService {
 
         let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
 
-        let cancel_scope = crate::services::ai::AiCancelScope::start(&state.ai, photo.id);
+        let ai = state.ai_client();
+        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo.id);
         let request_id = cancel_scope
             .as_ref()
             .map(crate::services::ai::AiCancelScope::request_id_owned);
-        let vec = Self::embed_image(&state.ai, image_bytes, request_id).await?;
+        let vec = Self::embed_image(ai, image_bytes, request_id).await?;
         drop(cancel_scope);
         Self::store_vector(db, photo.id, &vec).await?;
 
@@ -258,7 +259,7 @@ impl PhotoClipService {
         if !settings.clip_enabled {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
-        if !state.ai.is_clip_enabled() || !state.ai.clip_models_ready() {
+        if !state.is_clip_enabled() || !state.clip_models_ready() {
             warn!("[photo_clip] CLIP model files not found, skipping batch for app {app_id}");
             return Ok(Vec::new());
         }
@@ -336,9 +337,10 @@ impl PhotoClipService {
                 let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                 let result = match bytes_result {
                     Ok(image_bytes) => {
-                        let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                        let ai = state_c.ai_client();
+                        let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
                         let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
-                        let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
+                        let embed_result = Self::embed_image(ai, image_bytes, rid).await;
                         drop(scope);
                         match embed_result {
                             Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
@@ -402,7 +404,7 @@ impl PhotoClipService {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
 
-        if !state.ai.is_clip_enabled() || !state.ai.clip_models_ready() {
+        if !state.is_clip_enabled() || !state.clip_models_ready() {
             warn!("[photo_clip] CLIP model files not found, skipping batch for app {app_id}");
             return Ok(0);
         }
@@ -480,9 +482,10 @@ impl PhotoClipService {
                     let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
                     let result = match bytes_result {
                         Ok(image_bytes) => {
-                            let scope = crate::services::ai::AiCancelScope::start(&state_c.ai, photo_id);
+                            let ai = state_c.ai_client();
+                            let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
                             let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
-                            let embed_result = Self::embed_image(&state_c.ai, image_bytes, rid).await;
+                            let embed_result = Self::embed_image(ai, image_bytes, rid).await;
                             drop(scope);
                             match embed_result {
                                 Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
@@ -571,7 +574,7 @@ impl PhotoClipService {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
 
-        let text_vec = Self::embed_text(&state.ai, query, None).await?;
+        let text_vec = Self::embed_text(state.ai_client(), query, None).await?;
         let vec_str = Self::format_vector(&text_vec);
 
         let rows = db

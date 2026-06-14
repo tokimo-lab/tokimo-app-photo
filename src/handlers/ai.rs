@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::apps::photo::repos::{PhotoLibraryRepo, PhotoRepo};
+use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
 use crate::services::clip::PhotoClipService;
@@ -394,10 +394,10 @@ pub async fn update_photo_ai_settings(
 pub async fn test_photo_ai_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut results: Vec<serde_json::Value> = Vec::new();
 
-    let models_ready = state.ai.models_ready();
-    let ocr_ready = models_ready && state.ai.is_ocr_enabled();
-    let clip_ready = models_ready && state.ai.is_clip_enabled();
-    let face_ready = models_ready && state.ai.is_face_enabled();
+    let models_ready = state.models_ready();
+    let ocr_ready = models_ready && state.is_ocr_enabled();
+    let clip_ready = models_ready && state.is_clip_enabled();
+    let face_ready = models_ready && state.is_face_enabled();
 
     let detail = format!(
         "OCR: {}, CLIP: {}, Face: {}",
@@ -433,7 +433,7 @@ pub async fn ocr_scan(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
+    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -458,7 +458,7 @@ pub async fn ocr_search(
     Query(q): Query<OcrSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results = crate::apps::photo::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q).await?;
+    let results = crate::services::ocr::PhotoOcrService::search_ocr_text(&state.db, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -505,10 +505,11 @@ pub async fn clear_ocr_results(
 
     let widths = [64, 128, 160, 240, 320, 480, 640, 960, 1280, 1920];
     let mut deleted = 0u64;
+    let storage = state.storage.get().expect("storage not initialized");
     for pid in &photo_ids {
         for w in &widths {
             let key = format!("thumbs/photo/{pid}.{w}x0.webp");
-            if state.storage.delete(&key).await.is_ok() {
+            if storage.delete(&key).await.is_ok() {
                 deleted += 1;
             }
         }
@@ -542,7 +543,7 @@ pub async fn clip_embed(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
+    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -567,7 +568,7 @@ pub async fn clip_search(
     Query(q): Query<ClipSearchQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results = crate::apps::photo::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
+    let results = crate::services::clip::PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 
@@ -587,7 +588,7 @@ pub async fn refresh_clip(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_clip", photo_id).await?;
+    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_clip", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -619,7 +620,7 @@ pub async fn refresh_faces(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_face", photo_id).await?;
+    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_face", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -651,7 +652,7 @@ pub async fn refresh_ocr(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_child_for_photo(&state, "photo_ocr", photo_id).await?;
+    crate::services::preempt::preempt_scan_child_for_photo(&state, "photo_ocr", photo_id).await?;
 
     let (job, _alias_target) = crate::db::repos::job_repo::JobRepo::enqueue_with_dedupe(
         &state.db,
@@ -724,7 +725,7 @@ pub async fn update_ocr_result(
     Json(input): Json<UpdateOcrResultInput>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let updated =
-        crate::apps::photo::services::ocr::PhotoOcrService::update_ocr_result(&state.db, ocr_id, input).await?;
+        crate::services::ocr::PhotoOcrService::update_ocr_result(&state.db, ocr_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": updated.id.to_string(),
@@ -748,7 +749,7 @@ pub async fn delete_ocr_result(
     State(state): State<Arc<AppState>>,
     Path(ocr_id): Path<i32>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    crate::apps::photo::services::ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
+    crate::services::ocr::PhotoOcrService::delete_ocr_result(&state.db, ocr_id).await?;
     Ok(ok(serde_json::json!({ "deleted": true })))
 }
 
@@ -771,7 +772,7 @@ pub async fn create_ocr_result(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&photo_id)?;
     let created =
-        crate::apps::photo::services::ocr::PhotoOcrService::create_ocr_result(&state.db, photo_id, input).await?;
+        crate::services::ocr::PhotoOcrService::create_ocr_result(&state.db, photo_id, input).await?;
 
     Ok(ok(serde_json::json!({
         "id": created.id.to_string(),

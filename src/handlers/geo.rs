@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::apps::photo::repos::{PhotoLibraryRepo, PhotoRepo};
+use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
@@ -30,7 +30,7 @@ pub async fn reverse_geocode(
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
-    crate::apps::photo::services::preempt::preempt_scan_for(&state, app_id, "photo_geocode_scan").await?;
+    crate::services::preempt::preempt_scan_for(&state, app_id, "photo_geocode_scan").await?;
 
     crate::db::repos::job_repo::JobRepo::create_job(
         &state.db,
@@ -58,7 +58,7 @@ pub async fn location_stats(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    use crate::apps::photo::services::geo::PhotoGeoService;
+    use crate::services::geo::PhotoGeoService;
 
     let app_id = parse_uuid(&id)?;
     let groups = PhotoGeoService::location_stats(&state.db, app_id).await?;
@@ -148,7 +148,7 @@ pub async fn update_photo_geo_settings(
 
 /// POST /api/settings/photo-geo/test
 pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    use crate::apps::photo::services::geo::reverse_geocode_dispatch;
+    use crate::services::geo::reverse_geocode_dispatch;
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
 

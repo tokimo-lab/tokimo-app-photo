@@ -8,7 +8,7 @@ use std::{path::Path as StdPath, sync::Arc};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::apps::photo::repos::PhotoRepo;
+use crate::repos::PhotoRepo;
 use crate::common::thread_util::named_spawn_blocking;
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
@@ -583,9 +583,10 @@ pub async fn refresh_thumbnail(
         .await?
         .not_found("Photo not found")?;
 
+    let storage = state.storage.get().expect("storage not initialized");
     for w in [64, 128, 160, 240, 320, 480, 640, 960, 1280, 1920] {
         let key = format!("thumbs/photo/{id}.{w}x0.webp");
-        let _ = state.storage.delete(&key).await;
+        let _ = storage.delete(&key).await;
     }
 
     Ok(ok(serde_json::json!({ "status": "ok" })))

@@ -1,0 +1,37 @@
+//! `SeaORM` Entity for musics table.
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "musics")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    #[sea_orm(column_type = "Text")]
+    pub name: String,
+    #[sea_orm(column_type = "Text")]
+    pub r#type: String,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub avatar: Option<Json>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub description: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub poster_path: Option<String>,
+    pub scrape_enabled: bool,
+    pub sort_order: i32,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub settings: Option<Json>,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub sources: Json,
+    #[sea_orm(column_type = "Text")]
+    pub sync_status: String,
+    pub last_sync_at: Option<DateTimeWithTimeZone>,
+    pub created_at: Option<DateTimeWithTimeZone>,
+    pub updated_at: Option<DateTimeWithTimeZone>,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}

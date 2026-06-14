@@ -19,7 +19,7 @@ use crate::AppState;
 use crate::handlers::{ApiResponse, err400, err404, err500, ok};
 use crate::services::source::normalize_source_path;
 
-use super::types::{VIDEO_EXTENSIONS, VideoFileInfo, WalkProgress, WalkStats, WalkVideoFilesRequest};
+use super::vfs_types::{VIDEO_EXTENSIONS, VideoFileInfo, WalkProgress, WalkStats, WalkVideoFilesRequest};
 
 /// Max concurrent `vfs.list()` calls during walk.
 const WALK_CONCURRENCY: usize = 8;
