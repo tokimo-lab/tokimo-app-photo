@@ -22,11 +22,11 @@ export function isRawFile(filename?: string | null): boolean {
   return false;
 }
 
-let _wasmPromise: Promise<typeof import("@tokiomo/tokimo-wasm")> | null = null;
+let _wasmPromise: Promise<typeof import("@tokimo/tokimo-wasm")> | null = null;
 
 function loadWasm() {
   if (!_wasmPromise) {
-    _wasmPromise = import("@tokiomo/tokimo-wasm");
+    _wasmPromise = import("@tokimo/tokimo-wasm");
   }
   return _wasmPromise;
 }

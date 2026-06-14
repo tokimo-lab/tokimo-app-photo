@@ -1,4 +1,4 @@
-import type { OcrEngine } from "@tokiomo/tokimo-wasm";
+import type { OcrEngine } from "@tokimo/tokimo-wasm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOcrResultItem } from "../generated/rust-api";
 import type { ImgRect } from "./photo-overlays";
@@ -8,10 +8,10 @@ import {
 } from "./photo-utils";
 
 // Lazy-loaded WASM module
-let _wasmPromise: Promise<typeof import("@tokiomo/tokimo-wasm")> | null = null;
+let _wasmPromise: Promise<typeof import("@tokimo/tokimo-wasm")> | null = null;
 function loadWasm() {
   if (!_wasmPromise) {
-    _wasmPromise = import("@tokiomo/tokimo-wasm");
+    _wasmPromise = import("@tokimo/tokimo-wasm");
   }
   return _wasmPromise;
 }

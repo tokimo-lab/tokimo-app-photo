@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ICON_COMPONENT_MAP } from "../../lib/icon-catalog";
+import { ICON_COMPONENT_MAP } from "../../../lib/icon-catalog";
 
 /** Check whether an icon value is a lucide icon reference (e.g. "lucide:film") */
 export function isLucideIcon(icon: string | undefined | null): boolean {

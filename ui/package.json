@@ -8,18 +8,20 @@
     "dev": "vite build --watch"
   },
   "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
+    "@tanstack/react-query": "^5.0.0",
+    "@tanstack/react-virtual": "^3.0.0",
     "@tokimo/sdk": "github:tokimo-lab/tokimo-package-sdk#b5db80a47b715e10f450a4157018ec7eb38d723e",
     "@tokimo/ui": "github:tokimo-lab/tokimo-ui#b3a7fa8af87ad6e5d71954c4adf9683b131c72f7",
     "@tokimo/viewers": "github:tokimo-lab/tokimo-viewers#e24d846955a2dbe3595a68bca75449836db2e54e",
-    "@tanstack/react-query": "^5.0.0",
-    "@tanstack/react-virtual": "^3.0.0",
     "dayjs": "^1.11.0",
     "i18next": "^23.0.0",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-i18next": "^15.0.0",
-    "supercluster": "^8.0.0"
+    "supercluster": "^8.0.0",
+    "@tokimo/tokimo-wasm": "file:../../../packages/tokimo-wasm"
   },
   "devDependencies": {
     "@tokimo/app-builder": "github:tokimo-lab/tokimo-app-builder#2085574f7c070c20a32bce6a254348e16dfee01d",
@@ -27,6 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vite-plugin-wasm": "^3.4.1"
   }
 }
