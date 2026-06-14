@@ -13,252 +13,252 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
     Router::new()
         // ── PhotoLibrary CRUD ──
         .route(
-            "/api/apps/photo",
+            "/",
             get(crud::list_photo_libraries).post(crud::create_photo_library),
         )
-        .route("/api/apps/photo/reorder", post(crud::reorder_photo_libraries))
+        .route("/reorder", post(crud::reorder_photo_libraries))
         // ── Library-scoped browse ──
         .route(
-            "/api/apps/photo/{id}/photos",
+            "/{id}/photos",
             get(browse::list_photos),
         )
         .route(
-            "/api/apps/photo/{id}/photos/timeline",
+            "/{id}/photos/timeline",
             get(browse::photo_timeline),
         )
         .route(
-            "/api/apps/photo/{id}/photos/folders",
+            "/{id}/photos/folders",
             get(browse::list_folders),
         )
         .route(
-            "/api/apps/photo/{id}/photos/timeline-index",
+            "/{id}/photos/timeline-index",
             get(browse::timeline_index),
         )
         // ── Albums ──
         .route(
-            "/api/apps/photo/{id}/photo-albums",
+            "/{id}/photo-albums",
             get(album::list_photo_albums).post(album::create_album),
         )
         .route(
-            "/api/apps/photo/albums/{id}",
+            "/albums/{id}",
             delete(album::delete_album),
         )
         .route(
-            "/api/apps/photo/albums/{id}/photos",
+            "/albums/{id}/photos",
             get(album::list_album_photos),
         )
         .route(
-            "/api/apps/photo/albums/{id}/add-photos",
+            "/albums/{id}/add-photos",
             post(album::add_photos_to_album),
         )
         .route(
-            "/api/apps/photo/albums/{id}/remove-photos",
+            "/albums/{id}/remove-photos",
             post(album::remove_photos_from_album),
         )
         // ── Individual photo (single photo by photoId) ──
         .route(
-            "/api/apps/photo/item/{id}",
+            "/item/{id}",
             get(browse::get_photo).patch(batch::update_photo),
         )
         .route(
-            "/api/apps/photo/item/{id}/toggle-favorite",
+            "/item/{id}/toggle-favorite",
             post(batch::toggle_favorite),
         )
         .route(
-            "/api/apps/photo/item/{id}/toggle-hidden",
+            "/item/{id}/toggle-hidden",
             post(batch::toggle_hidden),
         )
         .route(
-            "/api/apps/photo/item/{id}/image",
+            "/item/{id}/image",
             get(stream::serve_photo_image),
         )
         .route(
-            "/api/apps/photo/item/{id}/live-video",
+            "/item/{id}/live-video",
             get(stream::serve_live_video),
         )
         .route(
-            "/api/apps/photo/item/{id}/similar",
+            "/item/{id}/similar",
             get(browse::similar_photos),
         )
         .route(
-            "/api/apps/photo/item/{id}/tags",
+            "/item/{id}/tags",
             get(browse::photo_tags),
         )
         .route(
-            "/api/apps/photo/item/{id}/faces",
+            "/item/{id}/faces",
             get(person::get_photo_faces),
         )
         .route(
-            "/api/apps/photo/item/{id}/faces/{faceId}/assign",
+            "/item/{id}/faces/{faceId}/assign",
             patch(person::assign_face_to_person),
         )
         .route(
-            "/api/apps/photo/item/{id}/faces/{faceId}/create-person",
+            "/item/{id}/faces/{faceId}/create-person",
             post(person::create_person_from_face),
         )
         .route(
-            "/api/apps/photo/item/{id}/refresh-faces",
+            "/item/{id}/refresh-faces",
             post(ai::refresh_faces),
         )
         .route(
-            "/api/apps/photo/item/{id}/refresh-ocr",
+            "/item/{id}/refresh-ocr",
             post(ai::refresh_ocr),
         )
         .route(
-            "/api/apps/photo/item/{id}/refresh-clip",
+            "/item/{id}/refresh-clip",
             post(ai::refresh_clip),
         )
         .route(
-            "/api/apps/photo/item/{id}/refresh-exif",
+            "/item/{id}/refresh-exif",
             post(batch::refresh_exif),
         )
         .route(
-            "/api/apps/photo/item/{id}/refresh-thumbnail",
+            "/item/{id}/refresh-thumbnail",
             post(batch::refresh_thumbnail),
         )
         .route(
-            "/api/apps/photo/item/{id}/ocr-results",
+            "/item/{id}/ocr-results",
             get(ai::get_photo_ocr_results).post(ai::create_ocr_result),
         )
         // ── Batch operations (library-scoped) ──
         .route(
-            "/api/apps/photo/{id}/photos/batch-favorite",
+            "/{id}/photos/batch-favorite",
             post(batch::batch_favorite),
         )
         .route(
-            "/api/apps/photo/{id}/photos/batch-delete",
+            "/{id}/photos/batch-delete",
             post(batch::batch_delete),
         )
         .route(
-            "/api/apps/photo/{id}/photos/batch-hide",
+            "/{id}/photos/batch-hide",
             post(batch::batch_hide),
         )
         .route(
-            "/api/apps/photo/{id}/photos/trash",
+            "/{id}/photos/trash",
             get(batch::list_trashed).post(batch::trash_photos),
         )
         .route(
-            "/api/apps/photo/{id}/photos/restore",
+            "/{id}/photos/restore",
             post(batch::restore_photos),
         )
         .route(
-            "/api/apps/photo/{id}/photos/permanent-delete",
+            "/{id}/photos/permanent-delete",
             post(batch::permanent_delete),
         )
         .route(
-            "/api/apps/photo/{id}/photos/rescan",
+            "/{id}/photos/rescan",
             post(batch::rescan),
         )
         // ── Geo ──
         .route(
-            "/api/apps/photo/{id}/photos/reverse-geocode",
+            "/{id}/photos/reverse-geocode",
             post(geo::reverse_geocode),
         )
         .route(
-            "/api/apps/photo/{id}/photos/map-points",
+            "/{id}/photos/map-points",
             get(geo::map_points),
         )
         .route(
-            "/api/apps/photo/{id}/photos/locations",
+            "/{id}/photos/locations",
             get(geo::location_stats),
         )
         .route(
-            "/api/apps/photo/{id}/photos/by-location",
+            "/{id}/photos/by-location",
             get(geo::photos_by_location),
         )
         .route(
-            "/api/apps/photo/{id}/photos/by-bbox",
+            "/{id}/photos/by-bbox",
             get(geo::photos_by_bbox),
         )
         // ── AI / OCR / CLIP / Face (library-scoped) ──
         .route(
-            "/api/apps/photo/{id}/photos/ocr-scan",
+            "/{id}/photos/ocr-scan",
             post(ai::ocr_scan),
         )
         .route(
-            "/api/apps/photo/{id}/photos/ocr-search",
+            "/{id}/photos/ocr-search",
             get(ai::ocr_search),
         )
         .route(
-            "/api/apps/photo/{id}/photos/ocr-results",
+            "/{id}/photos/ocr-results",
             delete(ai::clear_ocr_results),
         )
         .route(
-            "/api/apps/photo/{id}/photos/face-results",
+            "/{id}/photos/face-results",
             delete(ai::clear_face_results),
         )
         .route(
-            "/api/apps/photo/{id}/photos/clip-results",
+            "/{id}/photos/clip-results",
             delete(ai::clear_clip_results),
         )
         .route(
-            "/api/apps/photo/{id}/photos/thumbnails",
+            "/{id}/photos/thumbnails",
             delete(ai::clear_thumbnails),
         )
         .route(
-            "/api/apps/photo/{id}/photos/clip-embed",
+            "/{id}/photos/clip-embed",
             post(ai::clip_embed),
         )
         .route(
-            "/api/apps/photo/{id}/photos/clip-search",
+            "/{id}/photos/clip-search",
             get(ai::clip_search),
         )
         .route(
-            "/api/apps/photo/{id}/photos/face-detect",
+            "/{id}/photos/face-detect",
             post(person::face_detect),
         )
         // ── Persons (library-scoped) ──
         .route(
-            "/api/apps/photo/{id}/persons",
+            "/{id}/persons",
             get(person::list_persons),
         )
         .route(
-            "/api/apps/photo/{id}/persons/merge",
+            "/{id}/persons/merge",
             post(person::merge_persons),
         )
         .route(
-            "/api/apps/photo/{id}/persons/{personId}/photos",
+            "/{id}/persons/{personId}/photos",
             get(person::person_photos),
         )
         .route(
-            "/api/apps/photo/{id}/persons/{personId}",
+            "/{id}/persons/{personId}",
             patch(person::rename_person),
         )
         // ── OCR result CRUD (non-scoped) ──
         .route(
-            "/api/apps/photo/ocr-results/{ocr_id}",
+            "/ocr-results/{ocr_id}",
             patch(ai::update_ocr_result).delete(ai::delete_ocr_result),
         )
         // ── Settings (global) ──
         .route(
-            "/api/apps/photo/settings/geo",
+            "/settings/geo",
             get(geo::get_photo_geo_settings).put(geo::update_photo_geo_settings),
         )
         .route(
-            "/api/apps/photo/settings/geo/test",
+            "/settings/geo/test",
             post(geo::test_photo_geo_connection),
         )
         .route(
-            "/api/apps/photo/settings/ai",
+            "/settings/ai",
             get(ai::get_photo_ai_settings).put(ai::update_photo_ai_settings),
         )
         .route(
-            "/api/apps/photo/settings/ai/test",
+            "/settings/ai/test",
             post(ai::test_photo_ai_connection),
         )
         .route(
-            "/api/apps/photo/settings/ai/ocr-results",
+            "/settings/ai/ocr-results",
             delete(ai::clear_all_ocr_results),
         )
         // ── PhotoLibrary detail (must come after named routes) ──
         .route(
-            "/api/apps/photo/{id}",
+            "/{id}",
             get(crud::get_photo_library)
                 .patch(crud::update_photo_library)
                 .delete(crud::delete_photo_library),
         )
         .route(
-            "/api/apps/photo/{id}/sync",
+            "/{id}/sync",
             post(sync::sync_photo),
         )
 }
