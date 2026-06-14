@@ -20,9 +20,8 @@ use crate::error::AppError;
 use crate::queue::cancellation::JobCancel;
 
 const PHOTO_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif",
-    "heic", "heif", "avif", "raw", "cr2", "cr3", "nef", "arw",
-    "dng", "orf", "rw2", "pef", "srw", "raf",
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic", "heif", "avif", "raw",
+    "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "srw", "raf",
 ];
 
 fn is_photo_file(filename: &str) -> bool {
@@ -42,10 +41,7 @@ pub async fn handle(
     _cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     // Verify this is a photo library job
-    let lib_type = params
-        .get("libType")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let lib_type = params.get("libType").and_then(|v| v.as_str()).unwrap_or("");
     if lib_type != "photo" {
         tracing::warn!("file_scrape: unexpected libType={lib_type}, expected 'photo'");
         return Ok(Some(serde_json::json!({
@@ -162,12 +158,16 @@ pub async fn handle(
 
             // Fallback: if EXIF didn't provide dimensions, read from image header
             if !got_dims
-                && let Ok(bytes) = vfs.read_bytes(std::path::Path::new(&fp), 0, Some(512 * 1024)).await
+                && let Ok(bytes) = vfs
+                    .read_bytes(std::path::Path::new(&fp), 0, Some(512 * 1024))
+                    .await
             {
                 let dim_bytes = bytes.clone();
                 if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
                     tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
-                }).await {
+                })
+                .await
+                {
                     let _ = photos::ActiveModel {
                         id: Set(photo_id),
                         width: Set(Some(w)),
@@ -226,10 +226,7 @@ async fn extract_exif_from_vfs(
         .to_lowercase();
     if ext == "heic" || ext == "heif" {
         // HEIC EXIF may live beyond 256KB — read full file and retry
-        let full_bytes = vfs
-            .read_bytes(Path::new(file_path), 0, None)
-            .await
-            .ok()?;
+        let full_bytes = vfs.read_bytes(Path::new(file_path), 0, None).await.ok()?;
         tokio::task::spawn_blocking(move || {
             tokimo_package_image::extract_exif_from_bytes(&full_bytes)
         })
@@ -263,8 +260,8 @@ async fn apply_exif(
         let trimmed = raw.trim_matches('"');
         // kamadak-exif display_value() already outputs "YYYY-MM-DD HH:MM:SS" (dashes in date).
         // Try that first; fall back to raw EXIF format "YYYY:MM:DD HH:MM:SS" (colons everywhere).
-        let parsed = chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S")
-            .or_else(|_| {
+        let parsed =
+            chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S").or_else(|_| {
                 let normalized = trimmed.replacen(':', "-", 2);
                 chrono::NaiveDateTime::parse_from_str(&normalized, "%Y-%m-%d %H:%M:%S")
             });
@@ -305,7 +302,9 @@ async fn apply_exif(
     if let Some(v) = exif.gps_altitude {
         active.gps_altitude = Set(Some(v));
     }
-    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
+    active.exif_data = Set(Some(
+        serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
+    ));
     active.updated_at = Set(Some(now));
 
     active.update(db).await?;
@@ -405,12 +404,18 @@ fn extract_date_from_filename(filename: &str) -> Option<DateTime<FixedOffset>> {
     }
 
     // Pattern: PixPin_YYYY-MM-DD_HH-MM-SS
-    if let Some(caps) = regex_match(r"^PixPin_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})", name) {
+    if let Some(caps) = regex_match(
+        r"^PixPin_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})",
+        name,
+    ) {
         return parse_date_parts(&caps);
     }
 
     // Pattern: Screenshot_YYYYMMDD-HHMMSS
-    if let Some(caps) = regex_match(r"^Screenshot_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})", name) {
+    if let Some(caps) = regex_match(
+        r"^Screenshot_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})",
+        name,
+    ) {
         return parse_date_parts(&caps);
     }
 
@@ -424,8 +429,7 @@ fn extract_date_from_filename(filename: &str) -> Option<DateTime<FixedOffset>> {
         let year: i32 = caps.get(1)?.parse().ok()?;
         let month: u32 = caps.get(2)?.parse().ok()?;
         let day: u32 = caps.get(3)?.parse().ok()?;
-        let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-            .and_hms_opt(0, 0, 0)?;
+        let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(0, 0, 0)?;
         return Some(naive.and_utc().fixed_offset());
     }
 
@@ -452,7 +456,6 @@ fn parse_date_parts(parts: &[String]) -> Option<DateTime<FixedOffset>> {
     let hour: u32 = parts.get(3)?.parse().ok()?;
     let min: u32 = parts.get(4)?.parse().ok()?;
     let sec: u32 = parts.get(5)?.parse().ok()?;
-    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-        .and_hms_opt(hour, min, sec)?;
+    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, min, sec)?;
     Some(naive.and_utc().fixed_offset())
 }

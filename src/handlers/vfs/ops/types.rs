@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 pub const PHOTO_EXTENSIONS: [&str; 22] = [
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".avif", ".raw", ".cr2",
-    ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".avif",
+    ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 /// Video extensions used for Live Photo companion detection.

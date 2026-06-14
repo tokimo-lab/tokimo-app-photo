@@ -25,9 +25,9 @@ use crate::db::repos::photo_repo::PhotoRepo;
 use crate::error::AppError;
 use crate::handlers::user::AuthUser;
 use crate::services::clip::PhotoClipService;
+use crate::services::geo::reverse_geocode_dispatch;
 use crate::services::ocr::PhotoOcrService;
 use crate::services::preempt;
-use crate::services::geo::reverse_geocode_dispatch;
 
 use super::{ok, ok_simple, parse_uuid};
 
@@ -269,14 +269,19 @@ pub async fn refresh_exif(
     let vfs = ctx.sources.ensure_vfs(&source_id.to_string()).await?;
 
     let fp = std::path::Path::new(&photo.path);
-    let bytes = vfs.read_bytes(fp, 0, Some(256 * 1024)).await
+    let bytes = vfs
+        .read_bytes(fp, 0, Some(256 * 1024))
+        .await
         .map_err(|e| AppError::Internal(format!("read photo bytes: {e}")))?;
 
     // Extract EXIF
     let partial = bytes.clone();
     let exif_result = tokio::task::spawn_blocking(move || {
         tokimo_package_image::extract_exif_from_bytes(&partial)
-    }).await.ok().flatten();
+    })
+    .await
+    .ok()
+    .flatten();
 
     let mut got_dims = false;
     if let Some(ref exif) = exif_result {
@@ -289,7 +294,9 @@ pub async fn refresh_exif(
         let dim_bytes = bytes.clone();
         if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
             tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
-        }).await {
+        })
+        .await
+        {
             let now = chrono::Utc::now().fixed_offset();
             photos::ActiveModel {
                 id: sea_orm::Set(photo_id),
@@ -364,7 +371,9 @@ async fn apply_exif_update(
     if let Some(v) = exif.gps_altitude {
         active.gps_altitude = Set(Some(v));
     }
-    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
+    active.exif_data = Set(Some(
+        serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
+    ));
     active.updated_at = Set(Some(now));
     active.update(db).await?;
     Ok(())
@@ -484,13 +493,21 @@ pub async fn test_photo_geo_connection(
     // Test 2: Map / browser key (provider-specific, optional)
     match settings.provider.as_str() {
         "amap" => {
-            if let Some(js_key) = settings.amap_js_api_key.as_deref().filter(|k| !k.is_empty()) {
+            if let Some(js_key) = settings
+                .amap_js_api_key
+                .as_deref()
+                .filter(|k| !k.is_empty())
+            {
                 let map_result = test_amap_js_key(&http, js_key).await;
                 results.push(map_result);
             }
         }
         "tianditu" => {
-            if let Some(bk) = settings.tianditu_browser_key.as_deref().filter(|k| !k.is_empty()) {
+            if let Some(bk) = settings
+                .tianditu_browser_key
+                .as_deref()
+                .filter(|k| !k.is_empty())
+            {
                 let map_result = test_tianditu_browser_key(&http, bk).await;
                 results.push(map_result);
             }

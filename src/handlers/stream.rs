@@ -152,10 +152,7 @@ async fn load_photo_bytes(
 }
 
 /// Serve a HEIC/HEIF photo by converting it to JPEG on-the-fly via libvips.
-async fn serve_heic_as_jpeg(
-    ctx: &AppCtx,
-    target: &crate::models::PhotoStreamTarget,
-) -> Response {
+async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTarget) -> Response {
     let raw_bytes = match load_photo_bytes(ctx, &target.path, target.source_id.as_deref()).await {
         Ok(b) => b,
         Err(e) => {

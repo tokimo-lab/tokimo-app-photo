@@ -71,12 +71,19 @@ impl AppSyncService {
             library.name, library_id
         );
 
-        let result = Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id).await;
+        let result =
+            Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id).await;
 
         match &result {
             Ok(sync_result) => {
                 let now = Utc::now();
-                PhotoLibraryRepo::update_sync_status(db, library_id, "completed", Some(now.fixed_offset())).await?;
+                PhotoLibraryRepo::update_sync_status(
+                    db,
+                    library_id,
+                    "completed",
+                    Some(now.fixed_offset()),
+                )
+                .await?;
                 info!(
                     "Photo sync completed: \"{}\" — {} jobs dispatched",
                     library.name, sync_result.total_jobs
@@ -84,7 +91,9 @@ impl AppSyncService {
             }
             Err(err) => {
                 error!("Photo sync failed for \"{}\": {}", library.name, err);
-                if let Err(e) = PhotoLibraryRepo::update_sync_status(db, library_id, "failed", None).await {
+                if let Err(e) =
+                    PhotoLibraryRepo::update_sync_status(db, library_id, "failed", None).await
+                {
                     warn!("photo sync {library_id}: failed to mark sync_status=failed: {e}");
                 }
             }
@@ -114,7 +123,8 @@ impl AppSyncService {
 
         // Clean up old finished jobs
         let filter = photo_library_filter(library_id, None);
-        let _ = jobs_client::cleanup(client, jobs_client::photo_caller(Some(user_id)), filter).await;
+        let _ =
+            jobs_client::cleanup(client, jobs_client::photo_caller(Some(user_id)), filter).await;
 
         let source_tuples = PhotoLibraryRepo::parse_sources(&library.sources);
         if source_tuples.is_empty() {
@@ -131,13 +141,7 @@ impl AppSyncService {
                 .ok_or_else(|| AppError::NotFound(format!("source {source_id} not found")))?;
 
             let jobs = Self::sync_fs_source(
-                db,
-                sources,
-                bus_client,
-                library_id,
-                &source,
-                root_path,
-                user_id,
+                db, sources, bus_client, library_id, &source, root_path, user_id,
             )
             .await?;
             total_jobs += jobs;
@@ -147,10 +151,7 @@ impl AppSyncService {
     }
 
     /// Clear all photo data for a library, including derived tables.
-    async fn clear_library_data(
-        db: &DatabaseConnection,
-        library_id: Uuid,
-    ) -> Result<(), AppError> {
+    async fn clear_library_data(db: &DatabaseConnection, library_id: Uuid) -> Result<(), AppError> {
         info!("Clearing data for photo library {library_id}");
 
         let txn = db.begin().await?;
@@ -218,7 +219,16 @@ impl AppSyncService {
     fn is_remote_fs_type(source_type: &str) -> bool {
         matches!(
             source_type,
-            "smb" | "nfs" | "webdav" | "ftp" | "sftp" | "s3" | "115cloud" | "aliyundrive" | "baidu_netdisk" | "quark"
+            "smb"
+                | "nfs"
+                | "webdav"
+                | "ftp"
+                | "sftp"
+                | "s3"
+                | "115cloud"
+                | "aliyundrive"
+                | "baidu_netdisk"
+                | "quark"
         )
     }
 
@@ -321,7 +331,10 @@ impl AppSyncService {
         let walk_stats = walk_handle
             .await
             .map_err(|e| {
-                AppError::Internal(format!("Walk task panicked for source \"{}\": {}", source.name, e))
+                AppError::Internal(format!(
+                    "Walk task panicked for source \"{}\": {}",
+                    source.name, e
+                ))
             })?
             .map_err(|e| {
                 AppError::Internal(format!(
@@ -332,7 +345,13 @@ impl AppSyncService {
 
         info!(
             "[{}({})] Walk done: {} dirs, {} files found, {} unchanged (skipped), {} jobs queued under \"{}\"",
-            source.name, source_type, walk_stats.visited_dirs, walk_stats.found_files, skipped, total_jobs, vfs_root
+            source.name,
+            source_type,
+            walk_stats.visited_dirs,
+            walk_stats.found_files,
+            skipped,
+            total_jobs,
+            vfs_root
         );
 
         // Cleanup missing photos

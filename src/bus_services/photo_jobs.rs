@@ -405,7 +405,9 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppCtx>) -> BusClientBuilder
                 };
                 let result = cancellation::scope(
                     cur,
-                    crate::queue::handlers::file_scrape::handle(&ctx, job_id, &params, user_id, &cancel),
+                    crate::queue::handlers::file_scrape::handle(
+                        &ctx, job_id, &params, user_id, &cancel,
+                    ),
                 )
                 .await;
                 poller.abort();

@@ -63,7 +63,10 @@ pub async fn batch_hide(
         .get("photoIds")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    let hidden: bool = body.get("hidden").and_then(serde_json::Value::as_bool).unwrap_or(true);
+    let hidden: bool = body
+        .get("hidden")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
     let ids = parse_ids(&photo_ids);
     let count = PhotoRepo::batch_set_hidden(&ctx.db, &ids, hidden).await?;
     ok(serde_json::json!({ "updated": count }))
@@ -147,7 +150,10 @@ pub async fn rescan(
     }
 
     // Mark library as syncing
-    crate::db::repos::library_repo::PhotoLibraryRepo::update_sync_status(&ctx.db, uid, "syncing", None).await?;
+    crate::db::repos::library_repo::PhotoLibraryRepo::update_sync_status(
+        &ctx.db, uid, "syncing", None,
+    )
+    .await?;
 
     // Trigger VFS walk + photo import in background
     let db = ctx.db.clone();
