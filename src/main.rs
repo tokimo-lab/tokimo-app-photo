@@ -10,6 +10,7 @@
 const MANIFEST: &str = include_str!("../tokimo-app.toml");
 
 mod app_server;
+mod assets;
 mod bus_clients;
 mod common;
 mod config;

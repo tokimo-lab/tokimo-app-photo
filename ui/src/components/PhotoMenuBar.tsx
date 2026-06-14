@@ -42,11 +42,16 @@ export function usePhotoMenuBarState(): PhotoMenuBarState {
   return ctx;
 }
 
+function parseLibraryId(route: string): string | undefined {
+  const match = route.match(/^\/library\/([^/]+)/);
+  return match?.[1];
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function PhotoMenuBar({ children }: { children: ReactNode }) {
-  const { params } = useWindowNav();
-  const id = params.libraryId ?? undefined;
+  const { route } = useWindowNav();
+  const id = parseLibraryId(route);
   const message = useToast();
   const qc = useQueryClient();
 

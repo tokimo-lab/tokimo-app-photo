@@ -10,9 +10,11 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::routing::get;
 use tokimo_bus_protocol::{BusListener, DataPlaneSocket};
 use tracing::{error, info};
 
+use crate::assets;
 use crate::state::AppState;
 
 /// 起 axum server 监听本地 socket，返回 `DataPlaneSocket` 用于上报 broker。
@@ -20,7 +22,9 @@ pub async fn spawn(service: &str, ctx: Arc<AppState>) -> anyhow::Result<DataPlan
     let (listener, socket) = BusListener::bind_for_app(service)?;
     info!(?socket, "photo: app server listening");
 
-    let router = crate::router::build_photo_app_routes().with_state(ctx);
+    let router = crate::router::build_photo_app_routes()
+        .route("/assets/{*path}", get(assets::serve))
+        .with_state(ctx);
 
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, router).await {

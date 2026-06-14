@@ -768,8 +768,11 @@ export const photoApi = {
   }),
 } as const;
 
-// Alias for standard import convention
-export const api = photoApi;
+// Namespace wrapper for backward compatibility with component imports
+// Components use `api.photo.list` etc.
+export const api = {
+  photo: photoApi,
+};
 
 // Re-export types so both `@/generated/rust-api` and `@/generated/rust-types` work
 export type {

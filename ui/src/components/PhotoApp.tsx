@@ -1,24 +1,26 @@
 import { AppSetupGuide, Spin } from "@tokimo/ui";
 import { FolderSearch, Image, Plus, Upload } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../generated/rust-api";
 import { useContainerWidth } from "../shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
 import {
-  PickCancelled,
-  pickWithBridge,
   useWindowActions,
-  useWindowId,
   useWindowNav,
 } from "@tokimo/sdk";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoSidebar from "./PhotoSidebar";
 
+function parseLibraryId(route: string): string | null {
+  const match = route.match(/^\/library\/([^/]+)/);
+  return match?.[1] ?? null;
+}
+
 export default function PhotoApp() {
   const { t } = useTranslation();
-  const { params, replace } = useWindowNav();
+  const { route, replace } = useWindowNav();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
   const { collapsed: sidebarCollapsed, onToggleCollapse } = useSidebarCollapsed(
@@ -26,47 +28,43 @@ export default function PhotoApp() {
     containerWidth > 0 && containerWidth < 720,
   );
 
-  const windowId = useWindowId();
   const { openModalWindow } = useWindowActions();
 
-  const activeLibraryId = params.libraryId ?? null;
+  const activeLibraryId = useMemo(() => parseLibraryId(route), [route]);
 
   useEffect(() => {
     if (!libraries?.length) return;
-    if (params.libraryId) {
-      const valid = libraries.some((l) => l.id === params.libraryId);
+    const currentLibraryId = parseLibraryId(route);
+    if (currentLibraryId) {
+      const valid = libraries.some((l) => l.id === currentLibraryId);
       if (!valid) replace(`/library/${libraries[0].id}`);
       return;
     }
     replace(`/library/${libraries[0].id}`);
-  }, [libraries, params.libraryId, replace]);
+  }, [libraries, route, replace]);
 
   const openEditorModal = useCallback(
-    async (opts: { photoId?: string } = {}) => {
+    (opts: { photoId?: string } = {}) => {
       const isEdit = !!opts.photoId;
-      try {
-        const created = await pickWithBridge<{ id: string }>(openModalWindow, {
-          component: () =>
-            import("./PhotoLibraryEditorWindow"),
-          parentWindowId: windowId,
-          title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
-          width: 720,
-          height: 640,
-          noResize: true,
-          noMinimize: true,
-          metadata: isEdit
-            ? ({ photoId: opts.photoId } as Record<string, unknown>)
-            : undefined,
-        });
-        if (!isEdit) {
-          replace(`/library/${created.id}`);
-        }
-      } catch (err) {
-        if (err instanceof PickCancelled) return;
+      openModalWindow({
+        component: () => import("./PhotoLibraryEditorWindow"),
+        title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
+        width: 720,
+        height: 640,
+        metadata: {
+          ...(isEdit ? { photoId: opts.photoId } : {}),
+          onSaved: (id: string) => {
+            replace(`/library/${id}`);
+          },
+        } as Record<string, unknown>,
+      });
+    },
+    [openModalWindow, replace],
+  );
         throw err;
       }
     },
-    [openModalWindow, windowId, replace],
+    [openModalWindow, replace],
   );
 
   const handleSelectLibrary = (id: string) => {
