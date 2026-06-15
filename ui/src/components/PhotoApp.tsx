@@ -11,6 +11,7 @@ import {
 } from "@tokimo/sdk";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import PhotoAppPage from "../pages/PhotoAppPage";
+import PhotoMenuBar from "./PhotoMenuBar";
 import PhotoSidebar from "./PhotoSidebar";
 
 function parseLibraryId(route: string): string | null {
@@ -58,11 +59,6 @@ export default function PhotoApp() {
           },
         } as Record<string, unknown>,
       });
-    },
-    [openModalWindow, replace],
-  );
-        throw err;
-      }
     },
     [openModalWindow, replace],
   );
@@ -125,11 +121,13 @@ export default function PhotoApp() {
       />
       <div className="relative min-w-0 flex-1 overflow-auto">
         {activeLibraryId && (
-          <PhotoAppPage
-            key={activeLibraryId}
-            photoLibraryId={activeLibraryId}
-            syncing={!!syncProgress[activeLibraryId]?.isActive}
-          />
+          <PhotoMenuBar>
+            <PhotoAppPage
+              key={activeLibraryId}
+              photoLibraryId={activeLibraryId}
+              syncing={!!syncProgress[activeLibraryId]?.isActive}
+            />
+          </PhotoMenuBar>
         )}
       </div>
     </div>

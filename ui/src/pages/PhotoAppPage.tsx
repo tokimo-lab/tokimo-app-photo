@@ -22,7 +22,7 @@ import { PhotoSelectionBar } from "../components/PhotoSelectionBar";
 import { PHOTO_SIZE_LEVELS } from "../components/PhotoSizeSlider";
 import { PhotoTimeline } from "../components/PhotoTimeline";
 import type { PhotoOutput } from "../generated/rust-api";
-import { useWindowNav } from "@tokimo/sdk";
+import { useToast, useWindowNav } from "@tokimo/sdk";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
 import { type TabKey, usePhotoData } from "./use-photo-data";
 import { usePhotoMutations } from "./use-photo-mutations";
@@ -49,9 +49,11 @@ export default function PhotoAppPage({
   photoLibraryId?: string;
   syncing?: boolean;
 }) {
-  const { metadata } = useWindowNav();
+  const nav = useWindowNav();
+  const metadata = (nav as unknown as { metadata?: Record<string, unknown> }).metadata ?? {};
   const id = photoLibraryId ?? (metadata.appId as string | undefined);
   const initialDate = metadata.initialDate as string | undefined;
+  const message = useToast();
   const rootRef = useRef<HTMLDivElement>(null);
   const [windowContent, setWindowContent] = useState<HTMLElement | null>(null);
 

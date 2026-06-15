@@ -16,9 +16,8 @@ import {
   useState,
 } from "react";
 import { api } from "../generated/rust-api";
-import { useComponentPreference, useMenuBar, useWindowNav } from "@tokimo/sdk";
+import { useComponentPreference, useMenuBar, useToast, useWindowNav } from "@tokimo/sdk";
 import type { MenuBarConfig } from "@tokimo/sdk";
-import { useToast } from "@tokimo/ui";
 import { DEFAULT_SIZE_INDEX, PHOTO_SIZE_LEVELS } from "./PhotoSizeSlider";
 
 // ── Shared state context (consumed by PhotoAppPage) ─────────────────────────
