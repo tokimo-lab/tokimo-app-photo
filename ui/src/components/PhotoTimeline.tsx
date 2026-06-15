@@ -13,11 +13,12 @@ import {
   type JustifiedRow,
 } from "../hooks/useJustifiedLayout";
 import type { PhotoOutput } from "../generated/rust-api";
-import { useComponentPreference, useWindowActions } from "@tokimo/sdk";
+import { useComponentPreference, useViewer } from "@tokimo/sdk";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { type DateGroup, groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
+import { thumbUrl } from "../lib/thumb";
 
 const PHOTO_GAP = 4;
 const HEADER_HEIGHT = 30;
@@ -62,7 +63,7 @@ export function PhotoTimeline({
   targetRowHeight?: number;
 }) {
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
-  const { openWindow } = useWindowActions();
+  const viewer = useViewer();
   const infoPanelPref = useComponentPreference<{ open?: boolean }>(
     "photo-viewer-info",
   );
@@ -134,18 +135,27 @@ export function PhotoTimeline({
         }
       }
 
-      openWindow({
+      viewer.openViewer({
         type: "image",
         title: photo.filename,
         route: `/photos/${photo.id}`,
-        appId,
-        sourceType: "photo",
-        sourceId: photo.id,
-        initialX,
-        initialY,
+        metadata: {
+          appId,
+          sourceType: "photo",
+          sourceId: photo.id,
+          dataSource: photos.map((p) => ({
+            id: p.id,
+            src: `/api/apps/photo/item/${p.id}/image`,
+            thumbnail: thumbUrl("photo", p.id, 300),
+            width: p.width,
+            height: p.height,
+            alt: p.filename,
+          })),
+          index: photos.findIndex((p) => p.id === photo.id),
+        },
       });
     },
-    [openWindow, appId],
+    [viewer, appId, photos],
   );
 
   // ── Measure available content width for justified layout ─────
