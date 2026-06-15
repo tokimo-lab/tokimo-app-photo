@@ -21,6 +21,7 @@ import { Camera } from "lucide-react";
 import { StrictMode, lazy, Suspense } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import "./index.css";
+import { createPhotoExtension } from "./photo-extension";
 
 const PhotoApp = lazy(() => import("./components/PhotoApp"));
 
@@ -47,6 +48,8 @@ export default defineApp({
   },
   translations: {},
   mount(container, ctx): Dispose {
+    // Register photo extension for AI enhancement in shell viewer
+    ctx.shell.photo?.registerExtension("photo", createPhotoExtension(ctx));
     const root: Root = createRoot(container);
     const locale = ctx.locale.startsWith("zh") ? uiZhCN : uiEnUS;
     root.render(

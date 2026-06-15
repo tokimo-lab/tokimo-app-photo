@@ -15,8 +15,8 @@ import type { PhotoDetailOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { getOcrModelName } from "../lib/ocr-models";
 import { thumbUrl } from "../lib/thumb";
+import { useWindowId } from "@tokimo/sdk";
 import { useDateFormat } from "@tokimo/ui";
-import { useWindowActions, useWindowId } from "@tokimo/sdk";
 import type { TaskMetadata } from "@tokimo/sdk";
 import type { ExifWindowMetadata } from "./ExifWindow";
 import { stripExifQuotes } from "./ExifWindow";
@@ -76,8 +76,10 @@ export function PhotoInfoPanel({
   } | null;
   onAddOcr?: () => void;
 }) {
-  const { openWindow, openModalWindow } = useWindowActions();
-  const parentWindowId = useWindowId();
+  const openWindow = () => {};
+  const openModalWindow = () => "";
+  let parentWindowId: string | null = null;
+  try { parentWindowId = useWindowId(); } catch { parentWindowId = null; }
   const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(

@@ -1,7 +1,6 @@
 import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import type { PhotoDetailOutput } from "../generated/rust-api";
-
 const DEFAULT_LONG_FORMAT = "YYYY-MM-DD HH:mm:ss";
 
 export const WEEKDAYS = [
