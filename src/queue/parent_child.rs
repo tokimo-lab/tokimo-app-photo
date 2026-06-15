@@ -76,13 +76,12 @@ where
     // Idempotency: if a previous (crashed) run already enqueued children,
     // skip the enqueue phase and just transition to waiting again.
     if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id).one(db).await
-        && self_job.data.as_ref().and_then(|d| d.get("totalChildren")).is_some()
+        && self_job.data.get("totalChildren").is_some()
     {
         info!("[{task_type}_scan] resuming parent {job_id}: children already enqueued");
         let total = self_job
             .data
-            .as_ref()
-            .and_then(|d| d.get("totalChildren"))
+            .get("totalChildren")
             .and_then(serde_json::Value::as_i64)
             .unwrap_or(0);
         if total == 0 {

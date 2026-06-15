@@ -24,7 +24,7 @@ import "./index.css";
 
 const PhotoApp = lazy(() => import("./components/PhotoApp"));
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,

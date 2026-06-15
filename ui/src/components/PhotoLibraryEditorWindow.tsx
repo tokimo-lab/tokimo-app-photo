@@ -1,25 +1,57 @@
-import { useWindowActions } from "@tokimo/sdk";
-import type { ShellWindowHandle } from "@tokimo/sdk";
+import { useWindowActions, type WindowState } from "@tokimo/sdk";
+import { useState } from "react";
+import { queryClient } from "../index";
+import { getBridge, type ModalBridge } from "../modal-bridge";
+import { withProviders } from "../shared/providers";
 import PhotoLibraryEditor from "./PhotoLibraryEditor";
 
-export default function PhotoLibraryEditorWindow({
+type LibraryEditorBridge = Extract<ModalBridge, { kind: "library-editor" }>;
+
+function PhotoLibraryEditorContent({
   win,
+  bridge,
 }: {
-  win: ShellWindowHandle;
+  win: WindowState;
+  bridge: LibraryEditorBridge;
 }) {
-  const meta = win.metadata as Record<string, unknown>;
-  const photoId = meta.photoId as string | undefined;
-  const onSaved = meta.onSaved as ((id: string) => void) | undefined;
+  const { closeWindow } = useWindowActions();
+  const photoId =
+    typeof win.metadata?.photoId === "string"
+      ? win.metadata.photoId
+      : undefined;
 
   return (
     <PhotoLibraryEditor
       photoId={photoId}
-      onSaved={(id) => {
-        onSaved?.(id);
-        win.close();
+      onSaved={(savedId) => {
+        bridge.onSaved?.(savedId);
+        closeWindow(win.id);
       }}
-      onDeleted={() => win.close()}
-      onCancel={() => win.close()}
+      onDeleted={() => {
+        bridge.onDeleted?.();
+        closeWindow(win.id);
+      }}
+      onCancel={() => closeWindow(win.id)}
     />
+  );
+}
+
+export default function PhotoLibraryEditorWindow({
+  win,
+}: {
+  win: WindowState;
+}) {
+  const bridgeId =
+    typeof win.metadata?.bridgeId === "string"
+      ? win.metadata.bridgeId
+      : undefined;
+  const [bridge] = useState(() => (bridgeId ? getBridge(bridgeId) : undefined));
+
+  if (bridge?.kind !== "library-editor") return null;
+
+  return withProviders(
+    bridge.ctx,
+    queryClient,
+    <PhotoLibraryEditorContent win={win} bridge={bridge} />,
   );
 }

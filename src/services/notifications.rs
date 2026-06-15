@@ -396,10 +396,7 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
 
         for parent in parents {
             let Some(uid) = parent.user_id else { continue };
-            let data = match &parent.data {
-                Some(d) => d,
-                None => continue,
-            };
+            let data = &parent.data;
             let total = data
                 .get("totalChildren")
                 .and_then(serde_json::Value::as_i64)
@@ -410,7 +407,8 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
             let done = data.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
                 .params
-                .get("photoLibraryId")
+                .as_ref()
+                .and_then(|p| p.get("photoLibraryId"))
                 .and_then(|v| v.as_str())
                 .and_then(|s| Uuid::parse_str(s).ok());
             let Some(app_id) = app_id else { continue };

@@ -12,6 +12,7 @@ const MANIFEST: &str = include_str!("../tokimo-app.toml");
 mod app_server;
 mod assets;
 mod bus_clients;
+mod bus_services;
 mod common;
 mod config;
 mod db;
@@ -154,12 +155,11 @@ async fn run_server() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("app_server spawn: {e}"))?;
 
     // 把 sock 通过 `data_plane_socket` 上报给 broker
-    let client = BusClient::builder(cfg)
+    let builder = BusClient::builder(cfg)
         .service("photo", env!("CARGO_PKG_VERSION"))
-        .data_plane(app_socket)
-        .build()
-        .await
-        .map_err(|e| anyhow::anyhow!("bus build: {e}"))?;
+        .data_plane(app_socket);
+    let builder = bus_services::photo_jobs::register(builder, Arc::clone(&ctx));
+    let client = builder.build().await.map_err(|e| anyhow::anyhow!("bus build: {e}"))?;
     client_slot
         .set(Arc::clone(&client))
         .map_err(|_| anyhow::anyhow!("client_slot already set"))?;

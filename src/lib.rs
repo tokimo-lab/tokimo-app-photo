@@ -4,6 +4,7 @@
 pub(crate) const MANIFEST: &str = include_str!("../tokimo-app.toml");
 
 pub mod bus_clients;
+pub mod bus_services;
 pub mod common;
 pub mod config;
 pub mod db;

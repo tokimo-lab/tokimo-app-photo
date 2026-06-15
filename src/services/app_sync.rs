@@ -1,15 +1,17 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use regex::Regex;
 use sea_orm::*;
 use serde_json::json;
+use tokimo_bus_client::BusClient;
 use tokimo_vfs::Vfs;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest};
 use crate::repos::PhotoLibraryRepo;
 use crate::db::entities::{
     book_files, books, music_album_artists, music_albums, music_artists, music_files, music_tracks, musics,
@@ -144,6 +146,7 @@ impl AppSyncService {
     /// Reads from `photo_libraries` table, parses sources, walks VFS,
     /// and creates `photo_scrape` jobs for new/changed files.
     pub async fn execute_photo_sync(
+        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,
@@ -193,6 +196,7 @@ impl AppSyncService {
 
     /// Core photo sync logic.
     async fn do_photo_sync(
+        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,
@@ -326,6 +330,7 @@ impl AppSyncService {
 
     /// Walk a single VFS source, check DB for existing photos, create scrape jobs.
     async fn sync_fs_source(
+        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,

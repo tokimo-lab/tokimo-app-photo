@@ -33,10 +33,11 @@ impl JobRepo {
             r#type: Set(job_type.to_string()),
             status: Set("pending".to_string()),
             user_id: Set(user_id),
+            app_id: Set(None),
             parent_job_id: Set(None),
             task_type: Set(None),
-            params: Set(params),
-            data: Set(data),
+            params: Set(Some(params)),
+            data: Set(data.unwrap_or(JsonValue::Null)),
             progress: Set(0),
             retry_count: Set(0),
             max_retries: Set(3),
@@ -106,10 +107,11 @@ impl JobRepo {
             r#type: Set(job_type.to_string()),
             status: Set("pending".to_string()),
             user_id: Set(user_id),
+            app_id: Set(None),
             parent_job_id: Set(parent_job_id),
             task_type: Set(task_type),
-            params: Set(params),
-            data: Set(data),
+            params: Set(Some(params)),
+            data: Set(data.unwrap_or(JsonValue::Null)),
             progress: Set(0),
             retry_count: Set(0),
             max_retries: Set(3),
@@ -139,10 +141,11 @@ impl JobRepo {
                 r#type: Set(job_type.to_string()),
                 status: Set("pending".to_string()),
                 user_id: Set(user_id),
+                app_id: Set(None),
                 parent_job_id: Set(None),
                 task_type: Set(None),
-                params: Set(params),
-                data: Set(data),
+                params: Set(Some(params)),
+                data: Set(data.unwrap_or(JsonValue::Null)),
                 progress: Set(0),
                 retry_count: Set(0),
                 max_retries: Set(3),
@@ -175,10 +178,11 @@ impl JobRepo {
                 r#type: Set(job_type.to_string()),
                 status: Set("pending".to_string()),
                 user_id: Set(user_id),
+                app_id: Set(None),
                 parent_job_id: Set(Some(parent_job_id)),
                 task_type: Set(Some(task_type)),
-                params: Set(params),
-                data: Set(data),
+                params: Set(Some(params)),
+                data: Set(data.unwrap_or(JsonValue::Null)),
                 progress: Set(0),
                 retry_count: Set(0),
                 max_retries: Set(3),
@@ -213,9 +217,11 @@ impl JobRepo {
         let mut ids = Vec::new();
         for job in jobs {
             // Check if this job's params contain the app_id
-            if let Some(lib_id) = job.params.get("photoLibraryId").and_then(|v| v.as_str()) {
-                if lib_id == app_id.to_string() {
-                    ids.push(job.id);
+            if let Some(params) = &job.params {
+                if let Some(lib_id) = params.get("photoLibraryId").and_then(|v| v.as_str()) {
+                    if lib_id == app_id.to_string() {
+                        ids.push(job.id);
+                    }
                 }
             }
         }
@@ -277,9 +283,11 @@ impl JobRepo {
 
         let mut ids = Vec::new();
         for job in jobs {
-            if let Some(pid) = job.params.get("photoId").and_then(|v| v.as_str()) {
-                if pid == photo_id.to_string() {
-                    ids.push(job.id);
+            if let Some(params) = &job.params {
+                if let Some(pid) = params.get("photoId").and_then(|v| v.as_str()) {
+                    if pid == photo_id.to_string() {
+                        ids.push(job.id);
+                    }
                 }
             }
         }

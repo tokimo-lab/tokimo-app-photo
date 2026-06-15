@@ -20,12 +20,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AvatarPicker } from "./avatar-picker";
 import type { PhotoLibraryOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
+import { apiVfsList } from "../api/vfs-hooks";
 import { parseAvatar } from "../shared/avatar-utils";
-import { useToast } from "@tokimo/sdk";
+import { useToast } from "@tokimo/ui";
 import type { AvatarData } from "../types/avatar";
 import PhotoReprocessTools from "./PhotoReprocessTools";
 import { StorageBindingsField } from "@tokimo/ui";
 import type { VideoBinding } from "@tokimo/ui";
+import { useRuntimeCtx } from "@tokimo/sdk";
 
 const PHOTO_TYPES = [
   { value: "photo", label: "照片" },
@@ -48,9 +50,10 @@ export default function PhotoLibraryEditor({
   const message = useToast();
   const qc = useQueryClient();
   const [form] = Form.useForm();
+  const ctx = useRuntimeCtx();
 
   const { data: libraries = [] } = api.photo.list.useQuery();
-  const { data: vfsSources = [] } = api.vfs.list.useQuery();
+  const { data: vfsSources = [] } = apiVfsList.useQuery();
   const library = photoId ? libraries.find((c) => c.id === photoId) : undefined;
 
   const [avatar, setAvatar] = useState<AvatarData | null>(null);
@@ -225,6 +228,7 @@ export default function PhotoLibraryEditor({
               sources={vfsSources}
               form={form}
               initialSources={library?.sources}
+              shell={ctx.shell}
             />
           </div>
 

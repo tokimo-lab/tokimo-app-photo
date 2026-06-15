@@ -11,3 +11,4 @@ pub mod vfs_types;
 pub mod walk;
 
 pub mod app_sync;
+pub mod scrape;

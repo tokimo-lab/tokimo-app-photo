@@ -6,9 +6,11 @@ import { api } from "../generated/rust-api";
 import { useContainerWidth } from "../shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
 import {
+  useRuntimeCtx,
   useWindowActions,
   useWindowNav,
 } from "@tokimo/sdk";
+import { registerBridge } from "../modal-bridge";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoMenuBar from "./PhotoMenuBar";
@@ -29,6 +31,7 @@ export default function PhotoApp() {
     containerWidth > 0 && containerWidth < 720,
   );
 
+  const ctx = useRuntimeCtx();
   const { openModalWindow } = useWindowActions();
 
   const activeLibraryId = useMemo(() => parseLibraryId(route), [route]);
@@ -47,20 +50,25 @@ export default function PhotoApp() {
   const openEditorModal = useCallback(
     (opts: { photoId?: string } = {}) => {
       const isEdit = !!opts.photoId;
+      const bridgeId = registerBridge({
+        kind: "library-editor",
+        ctx,
+        onSaved: (id: string) => {
+          replace(`/library/${id}`);
+        },
+      });
       openModalWindow({
         component: () => import("./PhotoLibraryEditorWindow"),
         title: isEdit ? "TokimoPhoto · 设置" : "TokimoPhoto · 新建图库",
         width: 720,
         height: 640,
         metadata: {
+          bridgeId,
           ...(isEdit ? { photoId: opts.photoId } : {}),
-          onSaved: (id: string) => {
-            replace(`/library/${id}`);
-          },
         } as Record<string, unknown>,
       });
     },
-    [openModalWindow, replace],
+    [openModalWindow, replace, ctx],
   );
 
   const handleSelectLibrary = (id: string) => {

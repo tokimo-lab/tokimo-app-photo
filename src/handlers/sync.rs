@@ -76,7 +76,7 @@ pub async fn sync_photo(
     let library_name = library.name.clone();
 
     tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&db, &sources, &storage, uid, false, Some(user_id)).await {
+        match AppSyncService::execute_photo_sync(&state.bus_client, &db, &sources, &storage, uid, false, Some(user_id)).await {
             Ok(result) => {
                 info!("photo sync completed, {} jobs dispatched", result.total_jobs);
                 photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)
