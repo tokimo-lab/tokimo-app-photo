@@ -1,4 +1,4 @@
-import type { AvatarData } from "@/types/avatar";
+import type { AvatarData } from "../types/avatar";
 
 /** Parse a JSON value from the API into a typed AvatarData, or null */
 export function parseAvatar(value: unknown): AvatarData | null {

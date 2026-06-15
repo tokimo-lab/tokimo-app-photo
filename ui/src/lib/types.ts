@@ -1,4 +1,4 @@
-import type { AccentColor, Lang, PresetAccentColor } from "@/types";
+import type { AccentColor, Lang, PresetAccentColor } from "../types";
 
 export type {
   AccentColor,
@@ -8,7 +8,7 @@ export type {
   TitleBarStyle,
   User,
   UserSettings,
-} from "@/types";
+} from "../types";
 
 export type Theme = "light" | "dark";
 export type ThemeMode = "auto" | Theme;

@@ -1,15 +1,25 @@
-/**
- * Photo Library Editor Window — standalone stub.
- *
- * In the shell this is a full settings/admin window. In standalone mode
- * we provide a minimal placeholder so the dynamic import in PhotoApp
- * resolves without error.
- */
+import { useWindowActions } from "@tokimo/sdk";
+import type { ShellWindowHandle } from "@tokimo/sdk";
+import PhotoLibraryEditor from "./PhotoLibraryEditor";
 
-export default function PhotoLibraryEditorWindow() {
+export default function PhotoLibraryEditorWindow({
+  win,
+}: {
+  win: ShellWindowHandle;
+}) {
+  const meta = win.metadata as Record<string, unknown>;
+  const photoId = meta.photoId as string | undefined;
+  const onSaved = meta.onSaved as ((id: string) => void) | undefined;
+
   return (
-    <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500">
-      图库编辑器在独立模式下不可用
-    </div>
+    <PhotoLibraryEditor
+      photoId={photoId}
+      onSaved={(id) => {
+        onSaved?.(id);
+        win.close();
+      }}
+      onDeleted={() => win.close()}
+      onCancel={() => win.close()}
+    />
   );
 }
