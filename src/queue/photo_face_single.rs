@@ -14,7 +14,7 @@ pub async fn handle(
     state: &Arc<AppState>,
     _job_id: Uuid,
     params: &JsonValue,
-    _user_id: Option<Uuid>,
+    user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
@@ -25,6 +25,7 @@ pub async fn handle(
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
     let ai = state.ai_worker.get().expect("AI worker not initialized");
-    let count = PhotoFaceService::detect_faces(db, ai, &state.sources, photo_uuid).await?;
+    let bus = state.bus_client.get();
+    let count = PhotoFaceService::detect_faces(db, ai, &state.sources, photo_uuid, bus, user_id).await?;
     Ok(Some(json!({ "faceCount": count })))
 }

@@ -4,6 +4,7 @@ use sea_orm::*;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::bus_clients::person as person_bus;
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{photo_faces, photo_persons, photos};
 use crate::db::pagination::{Page, PageInput};
@@ -126,11 +127,16 @@ impl PhotoFaceService {
     }
 
     /// Detect faces in a single photo and store embeddings.
+    ///
+    /// When `bus_client` and `user_id` are provided, face results are also
+    /// registered with the person app via bus for cross-app person matching.
     pub async fn detect_faces(
         db: &DatabaseConnection,
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         photo_id: Uuid,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
     ) -> Result<usize, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
@@ -157,13 +163,39 @@ impl PhotoFaceService {
             .exec(db)
             .await?;
 
-        for det in &detections {
-            // Skip low-quality faces: too small or low confidence produce poor embeddings
-            let face_size = f64::from(det.w).min(f64::from(det.h));
-            if f64::from(det.confidence) < 0.65 || face_size < 30.0 {
-                continue;
-            }
+        // Filter to quality-passing faces first, then register those with person app.
+        // This ensures face_index in register_faces matches face_index in match_face.
+        let quality_faces: Vec<_> = detections
+            .iter()
+            .filter(|det| {
+                let face_size = f64::from(det.w).min(f64::from(det.h));
+                f64::from(det.confidence) >= 0.65 && face_size >= 30.0
+            })
+            .collect();
 
+        let image_hash = photo_id.to_string();
+        if let (Some(bc), Some(uid)) = (bus_client, user_id) {
+            let face_values: Vec<serde_json::Value> = quality_faces
+                .iter()
+                .enumerate()
+                .map(|(i, det)| {
+                    serde_json::json!({
+                        "index": i,
+                        "x": det.x,
+                        "y": det.y,
+                        "w": det.w,
+                        "h": det.h,
+                        "confidence": det.confidence,
+                    })
+                })
+                .collect();
+            let caller = person_bus::photo_caller(Some(uid));
+            if let Err(e) = person_bus::register_faces(bc, caller, &image_hash, "photo", &photo_id.to_string(), face_values).await {
+                warn!("[photo_face] person.register_faces failed for photo {photo_id}: {e}");
+            }
+        }
+
+        for (face_index, det) in quality_faces.iter().enumerate() {
             let embedding_f64: Vec<f64> = det.embedding.iter().map(|v| f64::from(*v)).collect();
             let vec_lit = Self::vec_literal(&embedding_f64);
 
@@ -188,11 +220,34 @@ impl PhotoFaceService {
             let row = db.query_one_raw(stmt).await?;
             let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
 
-            // Assign to existing person or create a new one
-            // Threshold 0.68: conservative — prefer splitting over merging
-            let person_id = match Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68).await? {
-                Some(pid) => pid,
-                None => Self::create_person(db, photo.app_id).await?,
+            // Assign to existing person or create a new one.
+            // Try person app bus first (if available), fall back to local matching.
+            let person_id = if let (Some(bc), Some(uid)) = (bus_client, user_id) {
+                let caller = person_bus::photo_caller(Some(uid));
+                match person_bus::match_face(bc, caller, &image_hash, face_index as i32).await {
+                    Ok(resp) if resp.person_id.is_some() => resp.person_id.unwrap(),
+                    Ok(_) => {
+                        // Person app has no match — create a new local person
+                        Self::create_person(db, photo.app_id).await?
+                    }
+                    Err(e) => {
+                        warn!("[photo_face] person.match_face failed for photo {photo_id} face {face_index}: {e}");
+                        Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68)
+                            .await?
+                            .unwrap_or_else(|| Uuid::nil())
+                    }
+                }
+            } else {
+                Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68)
+                    .await?
+                    .unwrap_or_else(|| Uuid::nil())
+            };
+
+            // If local fallback returned nil, create a new person
+            let person_id = if person_id == Uuid::nil() {
+                Self::create_person(db, photo.app_id).await?
+            } else {
+                person_id
             };
 
             // Link face → person
@@ -217,6 +272,8 @@ impl PhotoFaceService {
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         app_id: Uuid,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
     ) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, ai, app_id).await?;
         if pending.is_empty() {
@@ -224,7 +281,7 @@ impl PhotoFaceService {
         }
         let total = pending.len();
         info!("[photo_face] Processing {total} photos for app {app_id}");
-        let (success, _, _) = Self::process_photo_ids(db, ai, sources, pending).await;
+        let (success, _, _) = Self::process_photo_ids(db, ai, sources, pending, bus_client, user_id).await;
         info!("[photo_face] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -264,12 +321,14 @@ impl PhotoFaceService {
         ai: &std::sync::Arc<tokimo_perception::worker::client::AiWorkerClient>,
         sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
         ids: Vec<Uuid>,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
     ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;
         let mut failures = 0u32;
         let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
-            match Self::detect_faces(db, ai, sources, photo_id).await {
+            match Self::detect_faces(db, ai, sources, photo_id, bus_client, user_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;
