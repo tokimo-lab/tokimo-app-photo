@@ -190,8 +190,13 @@ impl PhotoFaceService {
                 })
                 .collect();
             let caller = person_bus::photo_caller(Some(uid));
-            if let Err(e) = person_bus::register_faces(bc, caller, &image_hash, "photo", &photo_id.to_string(), face_values).await {
-                warn!("[photo_face] person.register_faces failed for photo {photo_id}: {e}");
+            // 尝试同步调用，失败时创建 job 异步重试
+            if let Err(e) = person_bus::register_faces(bc, caller.clone(), &image_hash, "photo", &photo_id.to_string(), face_values.clone()).await {
+                warn!("[photo_face] person.register_faces failed for photo {photo_id}, creating retry job: {e}");
+                // 创建 job 异步重试，保证最终一致
+                if let Err(e2) = person_bus::register_faces_via_job(bc, caller, &image_hash, "photo", &photo_id.to_string(), face_values).await {
+                    warn!("[photo_face] failed to create retry job for photo {photo_id}: {e2}");
+                }
             }
         }
 

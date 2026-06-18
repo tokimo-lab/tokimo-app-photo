@@ -17,6 +17,8 @@ pub mod photo_clip_single;
 pub mod photo_face_single;
 pub mod photo_ocr_single;
 
+pub mod person_sync;
+
 pub mod handlers;
 
 use serde::Serialize;

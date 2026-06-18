@@ -145,6 +145,8 @@ async fn run_server() -> anyhow::Result<()> {
 
     // Register job type handlers with main server
     bus_clients::jobs::register_handler(&client, "file_scrape", "dispatch_file_scrape").await?;
+    bus_clients::jobs::register_handler(&client, "person_sync_delete_source", "dispatch_person_sync_delete_source").await?;
+    bus_clients::jobs::register_handler(&client, "person_sync_register_faces", "dispatch_person_sync_register_faces").await?;
 
     // Sync all VFS sources now that bus client is available
     if let Err(e) = ctx.sources.sync_all().await {

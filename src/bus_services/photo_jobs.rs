@@ -39,6 +39,8 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
 
 pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuilder {
     let ctx_file = ctx.clone();
+    let ctx_delete_source = ctx.clone();
+    let ctx_register_faces = ctx.clone();
 
     builder
         .method(decl(
@@ -57,12 +59,50 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
+        .method(decl(
+            "dispatch_person_sync_delete_source",
+            "Job handler: sync delete source with person app (with retry)",
+        ))
+        .on_invoke("dispatch_person_sync_delete_source", move |req| {
+            let ctx = ctx_delete_source.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::person_sync::handle_delete_source(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|_| b"{}".to_vec())
+                .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl(
+            "dispatch_person_sync_register_faces",
+            "Job handler: sync register faces with person app (with retry)",
+        ))
+        .on_invoke("dispatch_person_sync_register_faces", move |req| {
+            let ctx = ctx_register_faces.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::person_sync::handle_register_faces(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|_| b"{}".to_vec())
+                .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
         .method(decl("capabilities", "Return photo bus service capabilities"))
         .on_invoke("capabilities", |_req| async move {
             serde_json::to_vec(&serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),
                 "methods": [
                     "dispatch_file_scrape",
+                    "dispatch_person_sync_delete_source",
+                    "dispatch_person_sync_register_faces",
                     "capabilities",
                 ],
             }))
