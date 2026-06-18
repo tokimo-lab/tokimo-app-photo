@@ -131,18 +131,10 @@ async fn load_photo_bytes(
         .map_err(|e| format!("VFS read failed: {e}"))
 }
 
-/// Serve a HEIC/HEIF photo by converting it to JPEG on-the-fly via libvips.
-async fn serve_heic_as_jpeg(ctx: &AppCtx, target: &crate::models::PhotoStreamTarget) -> Response {
-    let raw_bytes = match load_photo_bytes(ctx, &target.path, target.source_id.as_deref()).await {
-        Ok(b) => b,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("failed to load HEIC file: {e}"),
-            )
-                .into_response();
-        }
-    };
+/// Convert raw HEIC/HEIF bytes to JPEG using FFmpeg CLI.
+async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8>, String> {
+    use std::process::Stdio;
+    use uuid::Uuid;
 
     let ffmpeg_bin = tokimo_package_hls::resolve_ffmpeg_binary();
     let ext = filename.rsplit('.').next().unwrap_or("heic").to_lowercase();

@@ -90,28 +90,6 @@ async fn run_server() -> anyhow::Result<()> {
     let db = db::init_pool().await?;
     info!("photo: db connected (schema managed by host)");
 
-    let ai_settings: crate::config::PhotoAiWorkerSettings =
-        crate::db::repos::app_settings_repo::AppSettingsRepo::get(&db)
-            .await
-            .unwrap_or_default();
-    let data_local_path = std::env::var("TOKIMO_DATA_LOCAL_PATH").map_or_else(
-        |_| std::path::PathBuf::from("./.data/local"),
-        std::path::PathBuf::from,
-    );
-    let perception_settings = tokimo_perception::worker::client::AiWorkerSettings {
-        mode: ai_settings.mode,
-        remote_url: ai_settings.remote_url,
-        keepalive_always: ai_settings.keepalive_always,
-        idle_timeout_secs: ai_settings.idle_timeout_secs,
-        worker_binary: ai_settings.worker_binary,
-        socket_path: ai_settings.socket_path,
-        models_dir: None,
-    };
-    let ai = tokimo_perception::worker::client::AiWorkerClient::from_settings(
-        &perception_settings,
-        &data_local_path,
-    );
-
     // Reset any sync statuses stuck at "syncing" from a previous crash
     use sea_orm::ConnectionTrait;
     db.execute_unprepared("UPDATE photo.photo_libraries SET sync_status = 'idle' WHERE sync_status = 'syncing'")
@@ -164,35 +142,15 @@ async fn run_server() -> anyhow::Result<()> {
         .set(Arc::clone(&client))
         .map_err(|_| anyhow::anyhow!("client_slot already set"))?;
 
-    // Wire the notification module so it can send real notifications via the bus.
-    crate::services::notifications::init(Arc::clone(&client));
+    info!("photo: registered with broker");
 
-    // Register job handlers with the main server (appId inferred from bus caller).
-    bus_clients::jobs::register_handler(&client, "photo_clip_scan", "dispatch_photo_clip_scan")
-        .await?;
-    bus_clients::jobs::register_handler(&client, "photo_clip", "dispatch_photo_clip").await?;
-    bus_clients::jobs::register_handler(&client, "photo_clip_single", "dispatch_photo_clip_single")
-        .await?;
-    bus_clients::jobs::register_handler(&client, "photo_face_scan", "dispatch_photo_face_scan")
-        .await?;
-    bus_clients::jobs::register_handler(&client, "photo_face", "dispatch_photo_face").await?;
-    bus_clients::jobs::register_handler(&client, "photo_face_single", "dispatch_photo_face_single")
-        .await?;
-    bus_clients::jobs::register_handler(&client, "photo_ocr_scan", "dispatch_photo_ocr_scan")
-        .await?;
-    bus_clients::jobs::register_handler(&client, "photo_ocr", "dispatch_photo_ocr").await?;
-    bus_clients::jobs::register_handler(&client, "photo_ocr_single", "dispatch_photo_ocr_single")
-        .await?;
-    bus_clients::jobs::register_handler(
-        &client,
-        "photo_geocode_scan",
-        "dispatch_photo_geocode_scan",
-    )
-    .await?;
-    bus_clients::jobs::register_handler(&client, "photo_geocode", "dispatch_photo_geocode").await?;
+    // Register job type handlers with main server
     bus_clients::jobs::register_handler(&client, "file_scrape", "dispatch_file_scrape").await?;
 
-    info!("photo: registered with broker");
+    // Sync all VFS sources now that bus client is available
+    if let Err(e) = ctx.sources.sync_all().await {
+        tracing::warn!(err = ?e, "photo: initial source sync had errors");
+    }
 
     let shutdown = {
         let client = Arc::clone(&client);

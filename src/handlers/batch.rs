@@ -28,22 +28,14 @@ pub async fn toggle_favorite(
     Ok(ok(serde_json::json!({ "isFavorite": is_favorite })))
 }
 
-pub async fn batch_hide(
-    State(ctx): State<Arc<AppCtx>>,
-    Path(_id): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let photo_ids: Vec<String> = body
-        .get("photoIds")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let hidden: bool = body
-        .get("hidden")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true);
-    let ids = parse_ids(&photo_ids);
-    let count = PhotoRepo::batch_set_hidden(&ctx.db, &ids, hidden).await?;
-    ok(serde_json::json!({ "updated": count }))
+/// POST /api/photos/{id}/toggle-hidden
+pub async fn toggle_hidden(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let uid = parse_uuid(&id)?;
+    let is_hidden = PhotoRepo::toggle_hidden(&state.db, uid).await?;
+    Ok(ok(serde_json::json!({ "isHidden": is_hidden })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,32 +195,8 @@ pub async fn permanent_delete(
     let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let deleted = PhotoRepo::permanent_delete(&state.db, lib_id, &photo_ids).await?;
 
-pub async fn rescan(
-    State(ctx): State<Arc<AppCtx>>,
-    Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = parse_uuid(&id)?;
-
-    let library = crate::db::repos::library_repo::PhotoLibraryRepo::get_by_id(&ctx.db, uid)
-        .await?
-        .not_found(format!("photo library {id} not found"))?;
-
-    if library.sync_status == "syncing" {
-        return Err(AppError::Conflict(
-            "Photo library is already syncing".into(),
-        ));
-    }
-
-    // Mark library as syncing
-    crate::db::repos::library_repo::PhotoLibraryRepo::update_sync_status(
-        &ctx.db, uid, "syncing", None,
-    )
-    .await?;
-
-    // Trigger VFS walk + photo import in background
-    let db = ctx.db.clone();
-    let sources = Arc::clone(&ctx.sources);
-    let bus_client = Arc::clone(&ctx.client);
+    let storage = state.storage.get().cloned().expect("storage not initialized");
+    let ids = photo_ids.clone();
     tokio::spawn(async move {
         for pid in &ids {
             let pid_str = pid.to_string();
