@@ -9,10 +9,9 @@ use tokimo_bus_client::BusClient;
 use tokimo_bus_protocol::CallerCtx;
 use uuid::Uuid;
 
-use crate::db::entities::jobs;
 use crate::error::AppError;
 
-pub type Job = jobs::Model;
+pub type Job = JobView;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +50,7 @@ impl CreateJobRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryJobsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -165,70 +164,28 @@ pub struct JobView {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<JobView> for Job {
-    fn from(view: JobView) -> Self {
-        Self {
-            id: view.id,
-            r#type: view.job_type,
-            status: view.status,
-            user_id: view.user_id,
-            app_id: None,
-            parent_job_id: view.parent_job_id,
-            task_type: view.task_type,
-            params: Some(view.params),
-            data: view.data.unwrap_or_default(),
-            progress: view.progress,
-            retry_count: 0,
-            max_retries: 3,
-            error: view.error,
-            started_at: view.started_at,
-            completed_at: view.completed_at,
-            created_at: view.created_at,
-            updated_at: view.updated_at,
-            dedupe_key: None,
-            alias_job_id: None,
-            priority: view.priority,
-        }
-    }
-}
-
-/// CallerCtx for service-level operations (no user context).
-pub fn service_caller() -> CallerCtx {
+pub fn photo_caller(user_id: Option<Uuid>) -> CallerCtx {
     CallerCtx {
-        user_id: None,
+        user_id: user_id.map(|id| id.to_string()),
         request_id: Uuid::new_v4().to_string(),
         workspace: None,
         caller_app_id: Some("photo".to_string()),
     }
 }
 
-/// Build a `JobFilter` that matches jobs belonging to a specific photo library.
-pub fn photo_library_filter(library_id: Uuid, status: Option<&str>) -> JobFilter {
-    let mut params_match = HashMap::new();
-    params_match.insert("photoId".to_string(), library_id.to_string());
-    JobFilter {
-        status: status.map(String::from),
-        params_match: Some(params_match),
-        ..Default::default()
-    }
+/// CallerCtx for service-level operations (no user context).
+pub fn photo_service_caller() -> CallerCtx {
+    photo_caller(None)
 }
 
-pub async fn create(client: &BusClient, caller: CallerCtx, request: CreateJobRequest) -> Result<Job, AppError> {
-    let response = invoke_json(client, "create", caller, &request).await?;
-    serde_json::from_slice::<JobView>(&response)
-        .map(Job::from)
-        .map_err(|error| AppError::Internal(format!("jobs.create decode: {error}")))
-}
-
-pub async fn enqueue_with_dedupe(
+pub async fn create(
     client: &BusClient,
     caller: CallerCtx,
     request: CreateJobRequest,
 ) -> Result<Job, AppError> {
-    let response = invoke_json(client, "enqueue_with_dedupe", caller, &request).await?;
+    let response = invoke_json(client, "create", caller, &request).await?;
     serde_json::from_slice::<JobView>(&response)
-        .map(Job::from)
-        .map_err(|error| AppError::Internal(format!("jobs.enqueue_with_dedupe decode: {error}")))
+        .map_err(|error| AppError::Internal(format!("jobs.create decode: {error}")))
 }
 
 pub async fn query(
@@ -237,10 +194,15 @@ pub async fn query(
     request: QueryJobsRequest,
 ) -> Result<QueryJobsResponse, AppError> {
     let response = invoke_json(client, "query", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|error| AppError::Internal(format!("jobs.query decode: {error}")))
+    serde_json::from_slice(&response)
+        .map_err(|error| AppError::Internal(format!("jobs.query decode: {error}")))
 }
 
-pub async fn cancel(client: &BusClient, caller: CallerCtx, request: CancelJobRequest) -> Result<(), AppError> {
+pub async fn cancel(
+    client: &BusClient,
+    caller: CallerCtx,
+    request: CancelJobRequest,
+) -> Result<(), AppError> {
     let _ = invoke_json(client, "cancel", caller, &request).await?;
     Ok(())
 }
@@ -266,7 +228,7 @@ pub async fn batch_children(
     };
     let jobs = match parsed {
         BatchChildrenResponse::Jobs(items) | BatchChildrenResponse::Wrapped { jobs: items } => {
-            items.into_iter().map(Job::from).collect()
+            items
         }
         BatchChildrenResponse::Inserted { .. } | BatchChildrenResponse::Other(_) => Vec::new(),
     };
@@ -280,7 +242,6 @@ pub async fn update_status(
 ) -> Result<Job, AppError> {
     let response = invoke_json(client, "update_status", caller, &request).await?;
     serde_json::from_slice::<JobView>(&response)
-        .map(Job::from)
         .map_err(|error| AppError::Internal(format!("jobs.update_status decode: {error}")))
 }
 
@@ -298,12 +259,14 @@ pub async fn update_progress(
     };
     let response = invoke_json(client, "update_progress", caller, &request).await?;
     serde_json::from_slice::<JobView>(&response)
-        .map(Job::from)
         .map_err(|error| AppError::Internal(format!("jobs.update_progress decode: {error}")))
 }
 
 // ── Filter-based types + methods ───────────────────────────────────────────────
 
+/// OS-layer generic job filter — matches host-side `JobFilter`.
+/// Business semantics are encoded in `params_match`;
+/// the bus layer only does JSONB equality matching.
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct JobFilter {
@@ -384,8 +347,18 @@ pub struct PreemptResponse {
 }
 
 /// Bulk-cancel jobs matching the given filter (app_id scoped via caller).
-pub async fn cancel_by_filter(client: &BusClient, caller: CallerCtx, filter: JobFilter) -> Result<u64, AppError> {
-    let response = invoke_json(client, "cancel_by_filter", caller, &CancelByFilterRequest { filter }).await?;
+pub async fn cancel_by_filter(
+    client: &BusClient,
+    caller: CallerCtx,
+    filter: JobFilter,
+) -> Result<u64, AppError> {
+    let response = invoke_json(
+        client,
+        "cancel_by_filter",
+        caller,
+        &CancelByFilterRequest { filter },
+    )
+    .await?;
     let resp: CancelByFilterResponse = serde_json::from_slice(&response)
         .map_err(|e| AppError::Internal(format!("jobs.cancel_by_filter decode: {e}")))?;
     Ok(resp.cancelled)
@@ -405,14 +378,19 @@ pub async fn progress_summary(
         &ProgressSummaryRequest { filter, job_types },
     )
     .await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.progress_summary decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("jobs.progress_summary decode: {e}")))
 }
 
 /// Delete finished (completed/cancelled/failed) jobs matching the filter.
-pub async fn cleanup(client: &BusClient, caller: CallerCtx, filter: JobFilter) -> Result<u64, AppError> {
+pub async fn cleanup(
+    client: &BusClient,
+    caller: CallerCtx,
+    filter: JobFilter,
+) -> Result<u64, AppError> {
     let response = invoke_json(client, "cleanup", caller, &CleanupRequest { filter }).await?;
-    let resp: CleanupResponse =
-        serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.cleanup decode: {e}")))?;
+    let resp: CleanupResponse = serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("jobs.cleanup decode: {e}")))?;
     Ok(resp.deleted)
 }
 
@@ -433,8 +411,8 @@ pub async fn preempt(
         },
     )
     .await?;
-    let resp: PreemptResponse =
-        serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.preempt decode: {e}")))?;
+    let resp: PreemptResponse = serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("jobs.preempt decode: {e}")))?;
     Ok(resp.cancelled_ids)
 }
 
@@ -444,8 +422,8 @@ async fn invoke_json<T: Serialize>(
     caller: CallerCtx,
     request: &T,
 ) -> Result<Vec<u8>, AppError> {
-    let payload =
-        serde_json::to_vec(request).map_err(|error| AppError::Internal(format!("jobs.{method} encode: {error}")))?;
+    let payload = serde_json::to_vec(request)
+        .map_err(|error| AppError::Internal(format!("jobs.{method} encode: {error}")))?;
     client
         .invoke("jobs", method, payload, caller)
         .await
@@ -453,7 +431,14 @@ async fn invoke_json<T: Serialize>(
 }
 
 /// Register a single job handler mapping with the main server.
-pub async fn register_handler(client: &BusClient, job_type: &str, method: &str) -> Result<(), AppError> {
+///
+/// The main server infers `appId` from the bus caller context (broker-stamped),
+/// so the sidecar cannot spoof its identity.
+pub async fn register_handler(
+    client: &BusClient,
+    job_type: &str,
+    method: &str,
+) -> Result<(), AppError> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Req<'a> {
