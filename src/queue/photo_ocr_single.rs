@@ -11,8 +11,8 @@ use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::services::ocr::PhotoOcrService;
 use crate::queue::cancellation::{JobCancel, check_cancel};
+use crate::services::ocr::PhotoOcrService;
 
 pub async fn handle(
     db: &DatabaseConnection,

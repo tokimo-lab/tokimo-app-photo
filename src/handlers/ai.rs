@@ -138,10 +138,7 @@ async fn enqueue_photo_refresh(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let photo_id = parse_uuid(id)?;
     preempt::preempt_scan_child_for_photo(ctx, child_task_type, photo_id, caller_user_id).await?;
-    let mut req = CreateJobRequest::new(
-        single_job_type,
-        serde_json::json!({ "photoId": photo_id.to_string() }),
-    );
+    let mut req = CreateJobRequest::new(single_job_type, serde_json::json!({ "photoId": photo_id.to_string() }));
     req.dedupe_key = Some(photo_id.to_string());
     // 1000 == host `JobPriority::UserAction` — user-initiated refreshes jump the queue.
     req.priority = Some(1000);
@@ -170,8 +167,7 @@ pub async fn ocr_search(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let app_id = parse_uuid(&id)?;
     let results = PhotoOcrService::search_ocr_text(&ctx.db, app_id, &q.q).await?;
-    let value = serde_json::to_value(results)
-        .map_err(|e| AppError::Internal(format!("ocr_search serialize: {e}")))?;
+    let value = serde_json::to_value(results).map_err(|e| AppError::Internal(format!("ocr_search serialize: {e}")))?;
     ok(value)
 }
 
@@ -183,8 +179,7 @@ pub async fn clip_search(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let app_id = parse_uuid(&id)?;
     let results = PhotoClipService::search(&ctx.db, &ctx.ai, app_id, &q.q).await?;
-    let value = serde_json::to_value(results)
-        .map_err(|e| AppError::Internal(format!("clip_search serialize: {e}")))?;
+    let value = serde_json::to_value(results).map_err(|e| AppError::Internal(format!("clip_search serialize: {e}")))?;
     ok(value)
 }
 
@@ -276,12 +271,10 @@ pub async fn refresh_exif(
 
     // Extract EXIF
     let partial = bytes.clone();
-    let exif_result = tokio::task::spawn_blocking(move || {
-        tokimo_package_image::extract_exif_from_bytes(&partial)
-    })
-    .await
-    .ok()
-    .flatten();
+    let exif_result = tokio::task::spawn_blocking(move || tokimo_package_image::extract_exif_from_bytes(&partial))
+        .await
+        .ok()
+        .flatten();
 
     let mut got_dims = false;
     if let Some(ref exif) = exif_result {
@@ -292,10 +285,8 @@ pub async fn refresh_exif(
     // Fallback: read dimensions from image header if EXIF didn't provide them
     if !got_dims {
         let dim_bytes = bytes.clone();
-        if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
-            tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
-        })
-        .await
+        if let Ok(Some((w, h))) =
+            tokio::task::spawn_blocking(move || tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)).await
         {
             let now = chrono::Utc::now().fixed_offset();
             photos::ActiveModel {
@@ -371,9 +362,7 @@ async fn apply_exif_update(
     if let Some(v) = exif.gps_altitude {
         active.gps_altitude = Set(Some(v));
     }
-    active.exif_data = Set(Some(
-        serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
-    ));
+    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
     active.updated_at = Set(Some(now));
     active.update(db).await?;
     Ok(())
@@ -384,9 +373,7 @@ ai_stub!(refresh_thumbnail, path);
 // ── Settings: photo-ai ───────────────────────────────────────────────────────
 
 /// GET /settings/ai
-pub async fn get_photo_ai_settings(
-    State(ctx): State<Arc<AppCtx>>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn get_photo_ai_settings(State(ctx): State<Arc<AppCtx>>) -> Result<Json<serde_json::Value>, AppError> {
     let settings: PhotoAiSettings = AppSettingsRepo::get(&ctx.db).await?;
     ok(settings)
 }
@@ -405,9 +392,7 @@ pub async fn update_photo_ai_settings(
 /// Reports whether the perception worker has loaded the required models.
 /// Faithful port of the presplit `test_photo_ai_connection`: reads live model
 /// readiness from the linked [`AiWorkerClient`].
-pub async fn test_photo_ai_connection(
-    State(ctx): State<Arc<AppCtx>>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn test_photo_ai_connection(State(ctx): State<Arc<AppCtx>>) -> Result<Json<serde_json::Value>, AppError> {
     let models_ready = ctx.ai.models_ready();
     let ocr_ready = models_ready && ctx.ai.is_ocr_enabled();
     let clip_ready = models_ready && ctx.ai.is_clip_enabled();
@@ -432,9 +417,7 @@ pub async fn test_photo_ai_connection(
 // ── Settings: photo-geo ──────────────────────────────────────────────────────
 
 /// GET /settings/geo
-pub async fn get_photo_geo_settings(
-    State(ctx): State<Arc<AppCtx>>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn get_photo_geo_settings(State(ctx): State<Arc<AppCtx>>) -> Result<Json<serde_json::Value>, AppError> {
     let settings: PhotoGeoSettings = AppSettingsRepo::get(&ctx.db).await?;
     ok(settings)
 }
@@ -449,9 +432,7 @@ pub async fn update_photo_geo_settings(
 }
 
 /// POST /settings/geo/test — test all configured keys for the current provider
-pub async fn test_photo_geo_connection(
-    State(ctx): State<Arc<AppCtx>>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn test_photo_geo_connection(State(ctx): State<Arc<AppCtx>>) -> Result<Json<serde_json::Value>, AppError> {
     let settings: PhotoGeoSettings = AppSettingsRepo::get(&ctx.db).await?;
     let http = reqwest::Client::new();
     let mut results: Vec<serde_json::Value> = Vec::new();
@@ -475,11 +456,7 @@ pub async fn test_photo_geo_connection(
                     .into_iter()
                     .flatten()
                     .collect();
-                    if parts.is_empty() {
-                        None
-                    } else {
-                        Some(parts.join(""))
-                    }
+                    if parts.is_empty() { None } else { Some(parts.join("")) }
                 })
                 .unwrap_or_else(|| "OK".to_string());
             serde_json::json!({ "name": "serverApi", "success": true, "detail": addr })
@@ -493,21 +470,13 @@ pub async fn test_photo_geo_connection(
     // Test 2: Map / browser key (provider-specific, optional)
     match settings.provider.as_str() {
         "amap" => {
-            if let Some(js_key) = settings
-                .amap_js_api_key
-                .as_deref()
-                .filter(|k| !k.is_empty())
-            {
+            if let Some(js_key) = settings.amap_js_api_key.as_deref().filter(|k| !k.is_empty()) {
                 let map_result = test_amap_js_key(&http, js_key).await;
                 results.push(map_result);
             }
         }
         "tianditu" => {
-            if let Some(bk) = settings
-                .tianditu_browser_key
-                .as_deref()
-                .filter(|k| !k.is_empty())
-            {
+            if let Some(bk) = settings.tianditu_browser_key.as_deref().filter(|k| !k.is_empty()) {
                 let map_result = test_tianditu_browser_key(&http, bk).await;
                 results.push(map_result);
             }
@@ -561,9 +530,7 @@ async fn test_tianditu_browser_key(http: &reqwest::Client, tk: &str) -> serde_js
 }
 
 /// Clear all OCR results across all photos (library-level).
-pub async fn clear_all_ocr_results(
-    State(ctx): State<Arc<AppCtx>>,
-) -> Result<Json<serde_json::Value>, AppError> {
+pub async fn clear_all_ocr_results(State(ctx): State<Arc<AppCtx>>) -> Result<Json<serde_json::Value>, AppError> {
     PhotoRepo::clear_all_ocr_results(&ctx.db).await?;
     ok_simple()
 }

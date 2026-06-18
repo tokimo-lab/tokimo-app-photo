@@ -7,10 +7,7 @@ use crate::error::AppError;
 pub struct MusicRepo;
 
 impl MusicRepo {
-    pub async fn get_by_id(
-        db: &impl ConnectionTrait,
-        id: Uuid,
-    ) -> Result<Option<musics::Model>, AppError> {
+    pub async fn get_by_id(db: &impl ConnectionTrait, id: Uuid) -> Result<Option<musics::Model>, AppError> {
         Ok(musics::Entity::find_by_id(id).one(db).await?)
     }
 

@@ -19,9 +19,9 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::db::repos::job_repo::JobRepo;
 use crate::repos::PhotoLibraryRepo;
 use crate::services::notifications as photo_notify;
-use crate::db::repos::job_repo::JobRepo;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
 

@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::bus_clients::jobs;
-use crate::repos::PhotoLibraryRepo;
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::{ApiResponse, ok};
+use crate::repos::PhotoLibraryRepo;
 
 use super::parse_uuid;
 
@@ -26,7 +26,9 @@ pub async fn face_detect(
 
     crate::services::preempt::preempt_scan_for(&state, app_id, "photo_face_scan").await?;
 
-    let client = state.bus_client.get()
+    let client = state
+        .bus_client
+        .get()
         .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
     jobs::create(
         client,
@@ -153,9 +155,7 @@ pub async fn create_person_from_face(
         .parse()
         .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
 
-    let person =
-        crate::services::face::PhotoFaceService::create_person_from_face(&state.db, fid, body.name)
-            .await?;
+    let person = crate::services::face::PhotoFaceService::create_person_from_face(&state.db, fid, body.name).await?;
 
     Ok(ok(serde_json::to_value(person).unwrap()))
 }

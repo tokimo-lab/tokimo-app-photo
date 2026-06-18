@@ -66,24 +66,14 @@ impl AppSyncService {
             .await?
             .not_found("photo library not found")?;
 
-        info!(
-            "Starting photo sync for \"{}\" (id={})",
-            library.name, library_id
-        );
+        info!("Starting photo sync for \"{}\" (id={})", library.name, library_id);
 
-        let result =
-            Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id).await;
+        let result = Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id).await;
 
         match &result {
             Ok(sync_result) => {
                 let now = Utc::now();
-                PhotoLibraryRepo::update_sync_status(
-                    db,
-                    library_id,
-                    "completed",
-                    Some(now.fixed_offset()),
-                )
-                .await?;
+                PhotoLibraryRepo::update_sync_status(db, library_id, "completed", Some(now.fixed_offset())).await?;
                 info!(
                     "Photo sync completed: \"{}\" — {} jobs dispatched",
                     library.name, sync_result.total_jobs
@@ -91,9 +81,7 @@ impl AppSyncService {
             }
             Err(err) => {
                 error!("Photo sync failed for \"{}\": {}", library.name, err);
-                if let Err(e) =
-                    PhotoLibraryRepo::update_sync_status(db, library_id, "failed", None).await
-                {
+                if let Err(e) = PhotoLibraryRepo::update_sync_status(db, library_id, "failed", None).await {
                     warn!("photo sync {library_id}: failed to mark sync_status=failed: {e}");
                 }
             }
@@ -123,8 +111,7 @@ impl AppSyncService {
 
         // Clean up old finished jobs
         let filter = photo_library_filter(library_id, None);
-        let _ =
-            jobs_client::cleanup(client, jobs_client::photo_caller(Some(user_id)), filter).await;
+        let _ = jobs_client::cleanup(client, jobs_client::photo_caller(Some(user_id)), filter).await;
 
         let source_tuples = PhotoLibraryRepo::parse_sources(&library.sources);
         if source_tuples.is_empty() {
@@ -140,10 +127,7 @@ impl AppSyncService {
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("source {source_id} not found")))?;
 
-            let jobs = Self::sync_fs_source(
-                db, sources, bus_client, library_id, &source, root_path, user_id,
-            )
-            .await?;
+            let jobs = Self::sync_fs_source(db, sources, bus_client, library_id, &source, root_path, user_id).await?;
             total_jobs += jobs;
         }
 
@@ -219,16 +203,7 @@ impl AppSyncService {
     fn is_remote_fs_type(source_type: &str) -> bool {
         matches!(
             source_type,
-            "smb"
-                | "nfs"
-                | "webdav"
-                | "ftp"
-                | "sftp"
-                | "s3"
-                | "115cloud"
-                | "aliyundrive"
-                | "baidu_netdisk"
-                | "quark"
+            "smb" | "nfs" | "webdav" | "ftp" | "sftp" | "s3" | "115cloud" | "aliyundrive" | "baidu_netdisk" | "quark"
         )
     }
 
@@ -273,9 +248,10 @@ impl AppSyncService {
         let (tx, mut rx) = mpsc::channel::<FileInfo>(256);
         let walk_root = vfs_root.clone();
         let walk_source_id = source_id_str.clone();
-        let walk_handle = tokio::spawn(async move {
-            walk_files_streaming(vfs, &walk_root, &walk_source_id, &PHOTO_EXTENSIONS, tx).await
-        });
+        let walk_handle =
+            tokio::spawn(
+                async move { walk_files_streaming(vfs, &walk_root, &walk_source_id, &PHOTO_EXTENSIONS, tx).await },
+            );
 
         // Pre-load existing photo paths for this source to detect new vs changed
         let existing_photos = Self::load_existing_paths(db, library_id, source.id).await?;
@@ -316,9 +292,7 @@ impl AppSyncService {
 
             // Flush batch periodically
             if jobs_batch.len() >= Self::JOB_BATCH_FLUSH_SIZE {
-                total_jobs +=
-                    Self::create_scrape_jobs(client, library_id, std::mem::take(&mut jobs_batch))
-                        .await?;
+                total_jobs += Self::create_scrape_jobs(client, library_id, std::mem::take(&mut jobs_batch)).await?;
             }
         }
 
@@ -330,12 +304,7 @@ impl AppSyncService {
         // Wait for walk to complete
         let walk_stats = walk_handle
             .await
-            .map_err(|e| {
-                AppError::Internal(format!(
-                    "Walk task panicked for source \"{}\": {}",
-                    source.name, e
-                ))
-            })?
+            .map_err(|e| AppError::Internal(format!("Walk task panicked for source \"{}\": {}", source.name, e)))?
             .map_err(|e| {
                 AppError::Internal(format!(
                     "Failed to walk source \"{}\" root={}: {}",
@@ -345,13 +314,7 @@ impl AppSyncService {
 
         info!(
             "[{}({})] Walk done: {} dirs, {} files found, {} unchanged (skipped), {} jobs queued under \"{}\"",
-            source.name,
-            source_type,
-            walk_stats.visited_dirs,
-            walk_stats.found_files,
-            skipped,
-            total_jobs,
-            vfs_root
+            source.name, source_type, walk_stats.visited_dirs, walk_stats.found_files, skipped, total_jobs, vfs_root
         );
 
         // Cleanup missing photos

@@ -11,10 +11,10 @@ use tower::util::ServiceExt;
 use tower_http::services::ServeFile;
 
 use crate::AppState;
-use crate::repos::PhotoRepo;
 use crate::handlers::media::stream::mime_for;
 use crate::handlers::media::utils::resolve_local_path;
 use crate::handlers::{err404, err500};
+use crate::repos::PhotoRepo;
 
 const PHOTO_SERVE_CHUNK_SIZE: usize = 512 * 1024;
 const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
@@ -106,10 +106,7 @@ pub async fn serve_live_video(
 }
 
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
-async fn load_photo_bytes(
-    state: &Arc<AppState>,
-    target: &crate::models::PhotoStreamTarget,
-) -> Result<Vec<u8>, String> {
+async fn load_photo_bytes(state: &Arc<AppState>, target: &crate::models::PhotoStreamTarget) -> Result<Vec<u8>, String> {
     if target.source_type.as_deref().is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
         return tokio::fs::read(&abs_path)

@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::bus_clients::jobs;
-use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::{ApiResponse, ok};
+use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 
 use super::parse_uuid;
 
@@ -27,7 +27,9 @@ pub async fn reverse_geocode(
 
     crate::services::preempt::preempt_scan_for(&state, app_id, "photo_geocode_scan").await?;
 
-    let client = state.bus_client.get()
+    let client = state
+        .bus_client
+        .get()
         .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
     jobs::create(
         client,
@@ -146,9 +148,9 @@ pub async fn update_photo_geo_settings(
 
 /// POST /api/settings/photo-geo/test
 pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    use crate::services::geo::reverse_geocode_dispatch;
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
+    use crate::services::geo::reverse_geocode_dispatch;
 
     let settings: PhotoGeoSettings = match SystemConfigRepo::get(&state.db).await {
         Ok(s) => s,

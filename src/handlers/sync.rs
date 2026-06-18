@@ -7,13 +7,13 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::repos::PhotoLibraryRepo;
-use crate::services::notifications as photo_notify;
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
+use crate::repos::PhotoLibraryRepo;
 use crate::services::app_sync::AppSyncService;
+use crate::services::notifications as photo_notify;
 
 // ── DTOs ──
 
@@ -76,7 +76,9 @@ pub async fn sync_photo(
     let library_name = library.name.clone();
 
     tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&state.bus_client, &db, &sources, &storage, uid, false, Some(user_id)).await {
+        match AppSyncService::execute_photo_sync(&state.bus_client, &db, &sources, &storage, uid, false, Some(user_id))
+            .await
+        {
             Ok(result) => {
                 info!("photo sync completed, {} jobs dispatched", result.total_jobs);
                 photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)

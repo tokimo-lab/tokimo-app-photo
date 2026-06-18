@@ -46,6 +46,16 @@ pub async fn handle(
         .ok_or("Missing photoId")?;
     let app_uuid = Uuid::parse_str(app_uuid)?;
 
-    photo::handle(db, state, source_id, app_uuid, source_uuid, file_path, file_size, user_id).await?;
+    photo::handle(
+        db,
+        state,
+        source_id,
+        app_uuid,
+        source_uuid,
+        file_path,
+        file_size,
+        user_id,
+    )
+    .await?;
     Ok(())
 }

@@ -4,12 +4,12 @@ use sea_orm::*;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{photo_faces, photo_persons, photos};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
+use crate::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
 
 // ── PhotoFaceService ──────────────────────────────────────────────────────
 

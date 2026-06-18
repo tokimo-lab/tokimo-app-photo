@@ -99,8 +99,7 @@ async fn run_server() -> anyhow::Result<()> {
     let sources = Arc::new(SourceRegistry::new(db.clone()));
 
     // Initialize storage provider (local filesystem via OpenDAL)
-    let storage_slot: Arc<OnceLock<Arc<dyn crate::services::storage::StorageProvider>>> =
-        Arc::new(OnceLock::new());
+    let storage_slot: Arc<OnceLock<Arc<dyn crate::services::storage::StorageProvider>>> = Arc::new(OnceLock::new());
     let storage = crate::services::storage::create_storage_from_env(&data_local_path());
     storage_slot
         .set(storage)

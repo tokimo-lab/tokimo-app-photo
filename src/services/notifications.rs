@@ -85,12 +85,7 @@ impl NotificationCenter {
         let bytes = serde_json::to_vec(&payload)?;
 
         client
-            .invoke(
-                "notification_center",
-                "notify",
-                bytes,
-                client.auto_caller(APP_ID),
-            )
+            .invoke("notification_center", "notify", bytes, client.auto_caller(APP_ID))
             .await
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
         Ok(())

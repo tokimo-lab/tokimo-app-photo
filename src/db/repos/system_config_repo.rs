@@ -36,12 +36,9 @@ impl SystemConfigRepo {
         };
         system_config::Entity::insert(model)
             .on_conflict(
-                sea_orm::sea_query::OnConflict::columns([
-                    system_config::Column::Scope,
-                    system_config::Column::ScopeId,
-                ])
-                .update_columns([system_config::Column::Value, system_config::Column::UpdatedAt])
-                .to_owned(),
+                sea_orm::sea_query::OnConflict::columns([system_config::Column::Scope, system_config::Column::ScopeId])
+                    .update_columns([system_config::Column::Value, system_config::Column::UpdatedAt])
+                    .to_owned(),
             )
             .exec(db)
             .await?;

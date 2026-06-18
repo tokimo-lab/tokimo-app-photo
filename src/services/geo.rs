@@ -1,8 +1,8 @@
 use reqwest::Client;
-use tokimo_package_client_api::geocoding::{GeoLocation, GeocodingClient};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
+use tokimo_package_client_api::geocoding::{GeoLocation, GeocodingClient};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 

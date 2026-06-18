@@ -7,10 +7,7 @@ use crate::error::AppError;
 pub struct BookRepo;
 
 impl BookRepo {
-    pub async fn get_container_by_id(
-        db: &impl ConnectionTrait,
-        id: Uuid,
-    ) -> Result<Option<books::Model>, AppError> {
+    pub async fn get_container_by_id(db: &impl ConnectionTrait, id: Uuid) -> Result<Option<books::Model>, AppError> {
         Ok(books::Entity::find_by_id(id).one(db).await?)
     }
 

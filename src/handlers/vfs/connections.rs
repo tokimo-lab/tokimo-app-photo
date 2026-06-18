@@ -3,10 +3,7 @@
 //! TODO: Port full implementation from monorepo when VfsDto/VfsConnectionStatus
 //! models and full VfsRepo CRUD methods are available.
 
-use axum::{
-    extract::State,
-    response::Json,
-};
+use axum::{extract::State, response::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

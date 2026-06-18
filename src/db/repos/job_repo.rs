@@ -322,7 +322,10 @@ impl JobRepo {
             .await?;
 
         let total_children = children.len() as i64;
-        let done = children.iter().filter(|j| j.status != "pending" && j.status != "running").count() as i64;
+        let done = children
+            .iter()
+            .filter(|j| j.status != "pending" && j.status != "running")
+            .count() as i64;
         let successes = children.iter().filter(|j| j.status == "completed").count() as i32 + pending_success;
         let failures = children.iter().filter(|j| j.status == "failed").count() as i32 + pending_failure;
         let completed = done >= total_children;
@@ -356,10 +359,7 @@ impl JobRepo {
     }
 
     /// Cancel all jobs for an app_id.
-    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(
-        db: &C,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(db: &C, app_id: Uuid) -> Result<u64, AppError> {
         let now = Utc::now().fixed_offset();
         let result = jobs::Entity::update_many()
             .col_expr(jobs::Column::Status, Expr::value("cancelled"))
@@ -372,10 +372,7 @@ impl JobRepo {
     }
 
     /// Delete finished jobs for an app_id.
-    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(
-        db: &C,
-        app_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(db: &C, app_id: Uuid) -> Result<u64, AppError> {
         let result = jobs::Entity::delete_many()
             .filter(jobs::Column::Status.is_in(vec!["completed", "failed", "cancelled"]))
             .exec(db)
