@@ -1,141 +1,50 @@
+//! Photo library sync — VFS walk + photo import orchestration.
+//!
+//! Ported from the monolith's `AppSyncService::do_photo_sync` / `sync_fs_source`.
+//! The flow:
+//!   1. Parse sources from `photo_libraries.sources` JSON
+//!   2. For each source, walk VFS with `PHOTO_EXTENSIONS`
+//!   3. Check existing photos in DB (by path + checksum)
+//!   4. Create `photo_scrape` jobs for new/changed photos via bus
+//!   5. Clean up photos that no longer exist on disk
+
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
-use regex::Regex;
 use sea_orm::*;
 use serde_json::json;
-use tokimo_bus_client::BusClient;
-use tokimo_vfs::Vfs;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest};
-use crate::repos::PhotoLibraryRepo;
+use tokimo_bus_client::BusClient;
+
+use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
 use crate::db::entities::{
-    book_files, books, music_album_artists, music_albums, music_artists, music_files, music_tracks, musics,
-    photo_albums, photo_libraries, photo_persons, photos, vfs,
+    photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
-use crate::db::repos::book_repo::BookRepo;
-use crate::db::repos::job_repo::JobRepo;
-use crate::db::repos::media::MusicRepo;
-use crate::error::AppError;
-use crate::error::OptionExt;
-use crate::handlers::vfs::ops::{AUDIO_EXTENSIONS, BOOK_EXTENSIONS, PHOTO_EXTENSIONS, walk_files_streaming};
-use crate::queue::{AppEvent, AppEventSender};
-use crate::services::source::SourceRegistry;
+use crate::db::repos::library_repo::PhotoLibraryRepo;
+use crate::error::{AppError, OptionExt};
+use crate::handlers::vfs::ops::{FileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
+use crate::services::source::{SourceRegistry, to_vfs_path};
 
-fn is_music_type(lib_type: &str) -> bool {
-    lib_type == "music"
-}
-
-fn is_book_type(lib_type: &str) -> bool {
-    lib_type == "book"
-}
-
-fn is_photo_type(lib_type: &str) -> bool {
-    lib_type == "photo"
-}
-
-fn domain_library_param_key(lib_type: &str) -> &'static str {
-    if is_photo_type(lib_type) {
-        "photoId"
-    } else if is_book_type(lib_type) {
-        "bookId"
-    } else {
-        "videoId"
+/// Create a job filter scoped to a photo library.
+fn photo_library_filter(library_id: Uuid, status: Option<&str>) -> JobFilter {
+    let mut params_match = HashMap::new();
+    params_match.insert("photoLibraryId".to_string(), library_id.to_string());
+    JobFilter {
+        status: status.map(String::from),
+        job_type: None,
+        params_match: Some(params_match),
+        parents_only: None,
     }
-}
-
-/// Remote file system source types (network protocols + cloud drives).
-fn is_remote_fs_type(source_type: &str) -> bool {
-    matches!(
-        source_type,
-        "smb" | "nfs" | "webdav" | "ftp" | "sftp" | "s3" | "115cloud" | "aliyundrive" | "baidu_netdisk" | "quark"
-    )
-}
-
-/// Convert an absolute `root_path` from `app_vfs` to a VFS-relative path.
-///
-/// For local sources the DB may store the full filesystem path
-/// (e.g. `/home/william/media/movie`) while the local driver's root is already
-/// `/home/william/media`. The VFS expects a path relative to the driver root
-/// (e.g. `/movie`), so we strip the driver root prefix.
-fn to_vfs_path(root_path: &str, source: &vfs::Model) -> String {
-    let Some(driver_root) = crate::handlers::media::utils::local_driver_root(source) else {
-        return root_path.to_string();
-    };
-    if root_path.starts_with(&driver_root) && root_path.len() > driver_root.len() {
-        let rel = &root_path[driver_root.len()..];
-        if rel.starts_with('/') {
-            return rel.to_string();
-        }
-    }
-    if root_path == driver_root {
-        return "/".to_string();
-    }
-    root_path.to_string()
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncStatusOutput {
-    pub app_id: String,
-    pub status: String,
-    pub last_sync_at: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {
     pub total_jobs: u64,
-}
-
-// ── music sync types ────────────────────────────────────────────────────
-
-/// Audio tag info extracted from a file via lofty.
-struct AudioTagInfo {
-    title: Option<String>,
-    artist: Option<String>,
-    album_artist: Option<String>,
-    album: Option<String>,
-    track_number: Option<i32>,
-    disc_number: Option<i32>,
-    year: Option<i32>,
-    genre: Option<String>,
-    duration: Option<i32>,
-    bitrate: Option<i32>,
-    sample_rate: Option<i32>,
-    codec: Option<String>,
-    mb_track_id: Option<String>,
-    mb_album_id: Option<String>,
-}
-
-/// Collected audio file info for music sync.
-struct CollectedAudioFile {
-    file_path: String,
-    dir_path: String,
-    file_size: u64,
-    mtime: i64,
-    source_id: Uuid,
-    tags: Option<AudioTagInfo>,
-}
-
-/// Grouped album info.
-struct AlbumGroup {
-    artist_name: String,
-    album_title: String,
-    year: Option<i32>,
-    dir_path: String,
-    files: Vec<CollectedAudioFile>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TrackWriteOutcome {
-    Created,
-    Updated,
-    Unchanged,
 }
 
 pub struct AppSyncService;
@@ -146,7 +55,6 @@ impl AppSyncService {
     /// Reads from `photo_libraries` table, parses sources, walks VFS,
     /// and creates `photo_scrape` jobs for new/changed files.
     pub async fn execute_photo_sync(
-        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,
@@ -196,7 +104,6 @@ impl AppSyncService {
 
     /// Core photo sync logic.
     async fn do_photo_sync(
-        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,
@@ -330,7 +237,6 @@ impl AppSyncService {
 
     /// Walk a single VFS source, check DB for existing photos, create scrape jobs.
     async fn sync_fs_source(
-        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
         db: &DatabaseConnection,
         sources: &SourceRegistry,
         bus_client: &Arc<OnceLock<Arc<BusClient>>>,

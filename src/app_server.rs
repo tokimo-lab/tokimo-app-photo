@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::middleware;
 use axum::routing::get;
 use tokimo_bus_protocol::{BusListener, DataPlaneSocket};
 use tracing::{error, info};
@@ -24,6 +25,9 @@ pub async fn spawn(service: &str, ctx: Arc<AppState>) -> anyhow::Result<DataPlan
 
     let router = crate::router::build_photo_app_routes()
         .route("/assets/{*path}", get(assets::serve))
+        .layer(middleware::from_fn(
+            tokimo_bus_protocol::task_local::auth_middleware,
+        ))
         .with_state(ctx);
 
     tokio::spawn(async move {

@@ -6,10 +6,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
+use crate::bus_clients::jobs;
 use crate::repos::PhotoLibraryRepo;
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
-use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
 
 use super::parse_uuid;
@@ -17,26 +17,24 @@ use super::parse_uuid;
 /// POST /api/apps/photo/{id}/photos/face-detect
 pub async fn face_detect(
     State(state): State<Arc<AppState>>,
-    AuthUser(auth): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let user_id: uuid::Uuid = auth
-        .user_id
-        .parse()
-        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
     PhotoLibraryRepo::get_by_id(&state.db, app_id)
         .await?
         .not_found(format!("photo library {id} not found"))?;
 
     crate::services::preempt::preempt_scan_for(&state, app_id, "photo_face_scan").await?;
 
-    crate::db::repos::job_repo::JobRepo::create_job(
-        &state.db,
-        "photo_face_scan",
-        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
-        None,
-        Some(user_id),
+    let client = state.bus_client.get()
+        .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
+    jobs::create(
+        client,
+        client.auto_caller("photo"),
+        jobs::CreateJobRequest::new(
+            "photo_face_scan",
+            serde_json::json!({ "photoLibraryId": app_id.to_string() }),
+        ),
     )
     .await?;
     Ok(ok(serde_json::json!({"status": "started"})))

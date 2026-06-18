@@ -84,18 +84,12 @@ impl NotificationCenter {
         });
         let bytes = serde_json::to_vec(&payload)?;
 
-        use tokimo_bus_protocol::CallerCtx;
         client
             .invoke(
                 "notification_center",
                 "notify",
                 bytes,
-                CallerCtx {
-                    user_id: Some(user_id.to_string()),
-                    request_id: uuid::Uuid::new_v4().to_string(),
-                    workspace: None,
-                    caller_app_id: Some(APP_ID.to_string()),
-                },
+                client.auto_caller(APP_ID),
             )
             .await
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;

@@ -109,18 +109,12 @@ impl AppState {
         };
         let client = Arc::clone(client);
         tokio::spawn(async move {
-            use tokimo_bus_protocol::CallerCtx;
             if let Err(e) = client
                 .invoke(
                     "task_queue",
                     "upsert_job",
                     payload,
-                    CallerCtx {
-                        user_id: None,
-                        request_id: String::new(),
-                        workspace: None,
-                        caller_app_id: Some("photo".to_string()),
-                    },
+                    client.auto_caller("photo"),
                 )
                 .await
             {
