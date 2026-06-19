@@ -16,6 +16,7 @@
     "@tokimo/viewers": "github:tokimo-lab/tokimo-viewers#e24d846955a2dbe3595a68bca75449836db2e54e",
     "dayjs": "^1.11.0",
     "i18next": "^23.0.0",
+    "libheif-js": "^1.19.8",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
