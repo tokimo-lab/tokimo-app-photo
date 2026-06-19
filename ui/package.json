@@ -30,5 +30,10 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vite-plugin-wasm": "^3.4.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@tokimo/ui": "github:tokimo-lab/tokimo-ui#b3a7fa8af87ad6e5d71954c4adf9683b131c72f7"
+    }
   }
 }
