@@ -20,8 +20,7 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-i18next": "^15.0.0",
-    "supercluster": "^8.0.0",
-    "@tokimo/tokimo-wasm": "file:../../../packages/tokimo-wasm"
+    "supercluster": "^8.0.0"
   },
   "devDependencies": {
     "@tokimo/app-builder": "github:tokimo-lab/tokimo-app-builder#2085574f7c070c20a32bce6a254348e16dfee01d",
