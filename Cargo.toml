@@ -38,7 +38,7 @@ ts-rs = { version = "12", features = ["serde-json-impl"] }
 
 # ── Workspace-local packages ──
 tokimo-perception         = { git = "https://github.com/tokimo-lab/tokimo-perception.git", rev = "ae6d35c" }
-tokimo-package-image      = { git = "https://github.com/tokimo-lab/tokimo-package-image.git", rev = "e1050c52" }
+tokimo-package-image      = { git = "https://github.com/tokimo-lab/tokimo-package-image.git", rev = "bbd12ac" }
 tokimo-package-ffmpeg     = { git = "https://github.com/tokimo-lab/tokimo-package-ffmpeg.git", rev = "b3bb5c8c" }
 tokimo-package-utils      = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "b1edb7b9" }
 tokimo-package-client-api = { git = "https://github.com/tokimo-lab/tokimo-package-client-api.git", rev = "07283bb0" }
