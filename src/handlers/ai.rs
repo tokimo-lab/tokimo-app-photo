@@ -31,8 +31,34 @@ macro_rules! ai_stub {
     };
 }
 
-ai_stub!(clear_thumbnails, path);
 ai_stub!(refresh_thumbnail, path);
+
+/// DELETE /{id}/clear-thumbnails — delete all thumbnail files for a library.
+pub async fn clear_thumbnails(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    let app_id = parse_uuid(&id)?;
+    let photo_ids = PhotoRepo::get_ids_for_app(&state.db, app_id).await?;
+
+    if photo_ids.is_empty() {
+        return Ok(ok(serde_json::json!({ "deletedCount": 0 })));
+    }
+
+    let widths = [64, 128, 160, 240, 320, 480, 640, 960, 1280, 1920];
+    let mut deleted = 0u64;
+    let storage = state.storage.get().expect("storage not initialized");
+    for pid in &photo_ids {
+        for w in &widths {
+            let key = format!("thumbs/photo/{pid}.{w}x0.webp");
+            if storage.delete(&key).await.is_ok() {
+                deleted += 1;
+            }
+        }
+    }
+
+    Ok(ok(serde_json::json!({ "deletedCount": deleted })))
+}
 
 // ── EXIF refresh ─────────────────────────────────────────────────────────────
 
