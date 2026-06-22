@@ -41,6 +41,17 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
     let ctx_file = ctx.clone();
     let ctx_delete_source = ctx.clone();
     let ctx_register_faces = ctx.clone();
+    let ctx_clip_scan = ctx.clone();
+    let ctx_clip = ctx.clone();
+    let ctx_clip_single = ctx.clone();
+    let ctx_face_scan = ctx.clone();
+    let ctx_face = ctx.clone();
+    let ctx_face_single = ctx.clone();
+    let ctx_ocr_scan = ctx.clone();
+    let ctx_ocr = ctx.clone();
+    let ctx_ocr_single = ctx.clone();
+    let ctx_geocode_scan = ctx.clone();
+    let ctx_geocode = ctx.clone();
 
     builder
         .method(decl(
@@ -95,6 +106,154 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                 .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
+        // ── CLIP handlers ────────────────────────────────────────────────────
+        .method(decl("dispatch_photo_clip_scan", "Run a photo_clip_scan job"))
+        .on_invoke("dispatch_photo_clip_scan", move |req| {
+            let ctx = ctx_clip_scan.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_clip_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_clip", "Run a photo_clip job"))
+        .on_invoke("dispatch_photo_clip", move |req| {
+            let ctx = ctx_clip.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_clip::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_clip_single", "Run a photo_clip_single job"))
+        .on_invoke("dispatch_photo_clip_single", move |req| {
+            let ctx = ctx_clip_single.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_clip_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        // ── Face handlers ────────────────────────────────────────────────────
+        .method(decl("dispatch_photo_face_scan", "Run a photo_face_scan job"))
+        .on_invoke("dispatch_photo_face_scan", move |req| {
+            let ctx = ctx_face_scan.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_face_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_face", "Run a photo_face job"))
+        .on_invoke("dispatch_photo_face", move |req| {
+            let ctx = ctx_face.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_face::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_face_single", "Run a photo_face_single job"))
+        .on_invoke("dispatch_photo_face_single", move |req| {
+            let ctx = ctx_face_single.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_face_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        // ── OCR handlers ─────────────────────────────────────────────────────
+        .method(decl("dispatch_photo_ocr_scan", "Run a photo_ocr_scan job"))
+        .on_invoke("dispatch_photo_ocr_scan", move |req| {
+            let ctx = ctx_ocr_scan.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_ocr_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_ocr", "Run a photo_ocr job"))
+        .on_invoke("dispatch_photo_ocr", move |req| {
+            let ctx = ctx_ocr.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_ocr::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_ocr_single", "Run a photo_ocr_single job"))
+        .on_invoke("dispatch_photo_ocr_single", move |req| {
+            let ctx = ctx_ocr_single.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_ocr_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        // ── Geocode handlers ─────────────────────────────────────────────────
+        .method(decl("dispatch_photo_geocode_scan", "Run a photo_geocode_scan job"))
+        .on_invoke("dispatch_photo_geocode_scan", move |req| {
+            let ctx = ctx_geocode_scan.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_geocode_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("dispatch_photo_geocode", "Run a photo_geocode job"))
+        .on_invoke("dispatch_photo_geocode", move |req| {
+            let ctx = ctx_geocode.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_geocode::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        // ── Capabilities ─────────────────────────────────────────────────────
         .method(decl("capabilities", "Return photo bus service capabilities"))
         .on_invoke("capabilities", |_req| async move {
             serde_json::to_vec(&serde_json::json!({
@@ -103,6 +262,17 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     "dispatch_file_scrape",
                     "dispatch_person_sync_delete_source",
                     "dispatch_person_sync_register_faces",
+                    "dispatch_photo_clip_scan",
+                    "dispatch_photo_clip",
+                    "dispatch_photo_clip_single",
+                    "dispatch_photo_face_scan",
+                    "dispatch_photo_face",
+                    "dispatch_photo_face_single",
+                    "dispatch_photo_ocr_scan",
+                    "dispatch_photo_ocr",
+                    "dispatch_photo_ocr_single",
+                    "dispatch_photo_geocode_scan",
+                    "dispatch_photo_geocode",
                     "capabilities",
                 ],
             }))

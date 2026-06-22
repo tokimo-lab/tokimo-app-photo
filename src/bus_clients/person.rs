@@ -9,7 +9,6 @@ use crate::bus_clients::jobs::{self, CreateJobRequest};
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RegisterFacesRequest {
     pub image_hash: String,
     pub source_app: String,
@@ -18,7 +17,6 @@ pub struct RegisterFacesRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FaceCacheEntry {
     pub id: Uuid,
     pub image_hash: String,
@@ -27,14 +25,12 @@ pub struct FaceCacheEntry {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct MatchFaceRequest {
     pub image_hash: String,
     pub face_index: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct MatchFaceResponse {
     pub face_cache_id: Uuid,
     pub person_id: Option<Uuid>,
@@ -42,7 +38,6 @@ pub struct MatchFaceResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DeleteSourceRequest {
     pub source_app: String,
     pub source_id: String,
@@ -75,7 +70,7 @@ pub async fn register_faces_via_job(
     let job = jobs::create(
         client,
         caller,
-        CreateJobRequest::new("person_register_faces", serde_json::to_value(&request)?),
+        CreateJobRequest::new("person_sync_register_faces", serde_json::to_value(&request)?),
     )
     .await?;
     Ok(job.id)

@@ -24,6 +24,7 @@
     "supercluster": "^8.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
     "@tokimo/app-builder": "github:tokimo-lab/tokimo-app-builder#2085574f7c070c20a32bce6a254348e16dfee01d",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

@@ -24,10 +24,27 @@ use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter}
 use crate::db::entities::{
     photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
-use crate::db::repos::library_repo::PhotoLibraryRepo;
+use crate::repos::PhotoLibraryRepo;
 use crate::error::{AppError, OptionExt};
-use crate::handlers::vfs::ops::{FileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
-use crate::services::source::{SourceRegistry, to_vfs_path};
+use crate::handlers::vfs::ops::{VideoFileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
+use crate::services::source::SourceRegistry;
+
+/// Convert an absolute host path to a VFS-relative path.
+fn to_vfs_path(root_path: &str, source: &vfs::Model) -> String {
+    let Some(driver_root) = crate::handlers::media::utils::local_driver_root(source) else {
+        return root_path.to_string();
+    };
+    if root_path.starts_with(&driver_root) && root_path.len() > driver_root.len() {
+        let rel = &root_path[driver_root.len()..];
+        if rel.starts_with('/') {
+            return rel.to_string();
+        }
+    }
+    if root_path == driver_root {
+        return "/".to_string();
+    }
+    root_path.to_string()
+}
 
 /// Create a job filter scoped to a photo library.
 fn photo_library_filter(library_id: Uuid, status: Option<&str>) -> JobFilter {
@@ -135,7 +152,7 @@ impl AppSyncService {
     }
 
     /// Clear all photo data for a library, including derived tables.
-    async fn clear_library_data(db: &DatabaseConnection, library_id: Uuid) -> Result<(), AppError> {
+    pub async fn clear_library_data(db: &DatabaseConnection, library_id: Uuid) -> Result<(), AppError> {
         info!("Clearing data for photo library {library_id}");
 
         let txn = db.begin().await?;
@@ -245,7 +262,7 @@ impl AppSyncService {
         let vfs_root = to_vfs_path(root_path, source);
 
         // Spawn concurrent walk as a background task
-        let (tx, mut rx) = mpsc::channel::<FileInfo>(256);
+        let (tx, mut rx) = mpsc::channel::<VideoFileInfo>(256);
         let walk_root = vfs_root.clone();
         let walk_source_id = source_id_str.clone();
         let walk_handle =
@@ -314,7 +331,7 @@ impl AppSyncService {
 
         info!(
             "[{}({})] Walk done: {} dirs, {} files found, {} unchanged (skipped), {} jobs queued under \"{}\"",
-            source.name, source_type, walk_stats.visited_dirs, walk_stats.found_files, skipped, total_jobs, vfs_root
+            source.name, source_type, walk_stats.visited_dirs, walk_stats.found_videos, skipped, total_jobs, vfs_root
         );
 
         // Cleanup missing photos

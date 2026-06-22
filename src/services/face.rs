@@ -107,6 +107,26 @@ impl PhotoFaceService {
         Ok(person_id)
     }
 
+    /// Ensure a person exists in the local photo_persons table. Creates if not found.
+    async fn ensure_person_exists(db: &DatabaseConnection, person_id: Uuid, app_id: Uuid) -> Result<(), AppError> {
+        let existing = photo_persons::Entity::find_by_id(person_id).one(db).await?;
+        if existing.is_none() {
+            let now = Utc::now().fixed_offset();
+            let model = photo_persons::ActiveModel {
+                id: Set(person_id),
+                app_id: Set(app_id),
+                name: Set(None),
+                avatar_face_id: Set(None),
+                face_count: Set(0),
+                is_hidden: Set(false),
+                created_at: Set(now),
+                updated_at: Set(now),
+            };
+            photo_persons::Entity::insert(model).exec(db).await?;
+        }
+        Ok(())
+    }
+
     /// Increment the `face_count` on a person and set avatar if not yet set.
     async fn increment_person_face_count(
         db: &DatabaseConnection,
@@ -230,7 +250,12 @@ impl PhotoFaceService {
             let person_id = if let (Some(bc), Some(uid)) = (bus_client, user_id) {
                 let caller = person_bus::photo_caller(Some(uid));
                 match person_bus::match_face(bc, caller, &image_hash, face_index as i32).await {
-                    Ok(resp) if resp.person_id.is_some() => resp.person_id.unwrap(),
+                    Ok(resp) if resp.person_id.is_some() => {
+                        let pid = resp.person_id.unwrap();
+                        // Ensure person exists in local photo_persons table
+                        Self::ensure_person_exists(db, pid, photo.app_id).await?;
+                        pid
+                    }
                     Ok(_) => {
                         // Person app has no match — create a new local person
                         Self::create_person(db, photo.app_id).await?

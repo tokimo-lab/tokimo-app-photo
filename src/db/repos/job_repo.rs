@@ -33,7 +33,7 @@ impl JobRepo {
             r#type: Set(job_type.to_string()),
             status: Set("pending".to_string()),
             user_id: Set(user_id),
-            app_id: Set(None),
+            app_id: Set(Some("photo".to_string())),
             parent_job_id: Set(None),
             task_type: Set(None),
             params: Set(Some(params)),
@@ -49,6 +49,7 @@ impl JobRepo {
             dedupe_key: Set(None),
             alias_job_id: Set(None),
             priority: Set(100),
+            wake_at: Set(None),
         };
         Ok(jobs::Entity::insert(model).exec_with_returning(db).await?)
     }
@@ -107,7 +108,7 @@ impl JobRepo {
             r#type: Set(job_type.to_string()),
             status: Set("pending".to_string()),
             user_id: Set(user_id),
-            app_id: Set(None),
+            app_id: Set(Some("photo".to_string())),
             parent_job_id: Set(parent_job_id),
             task_type: Set(task_type),
             params: Set(Some(params)),
@@ -123,6 +124,7 @@ impl JobRepo {
             dedupe_key: Set(dedupe_key),
             alias_job_id: Set(None),
             priority: Set(priority),
+            wake_at: Set(None),
         };
         let job = jobs::Entity::insert(model).exec_with_returning(db).await?;
         Ok((job, None))
@@ -141,7 +143,7 @@ impl JobRepo {
                 r#type: Set(job_type.to_string()),
                 status: Set("pending".to_string()),
                 user_id: Set(user_id),
-                app_id: Set(None),
+                app_id: Set(Some("photo".to_string())),
                 parent_job_id: Set(None),
                 task_type: Set(None),
                 params: Set(Some(params)),
@@ -157,6 +159,7 @@ impl JobRepo {
                 dedupe_key: Set(None),
                 alias_job_id: Set(None),
                 priority: Set(100),
+                wake_at: Set(None),
             };
             jobs::Entity::insert(model).exec(db).await?;
             count += 1;
@@ -178,7 +181,7 @@ impl JobRepo {
                 r#type: Set(job_type.to_string()),
                 status: Set("pending".to_string()),
                 user_id: Set(user_id),
-                app_id: Set(None),
+                app_id: Set(Some("photo".to_string())),
                 parent_job_id: Set(Some(parent_job_id)),
                 task_type: Set(Some(task_type)),
                 params: Set(Some(params)),
@@ -194,6 +197,7 @@ impl JobRepo {
                 dedupe_key: Set(None),
                 alias_job_id: Set(None),
                 priority: Set(_priority.unwrap_or(100)),
+                wake_at: Set(None),
             };
             jobs::Entity::insert(model).exec(db).await?;
             count += 1;
@@ -378,5 +382,24 @@ impl JobRepo {
             .exec(db)
             .await?;
         Ok(result.rows_affected)
+    }
+
+    /// Set a job to `scheduled` status with a `wake_at` time for retry.
+    pub async fn schedule_job<C: ConnectionTrait>(
+        db: &C,
+        job_id: Uuid,
+        wake_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> Result<Option<jobs::Model>, AppError> {
+        let job = jobs::Entity::find_by_id(job_id).one(db).await?;
+        let Some(job) = job else { return Ok(None) };
+        if matches!(job.status.as_str(), "completed" | "failed" | "cancelled") {
+            return Ok(None);
+        }
+        let mut active: jobs::ActiveModel = job.into();
+        active.status = Set("scheduled".to_string());
+        active.wake_at = Set(Some(wake_at));
+        active.updated_at = Set(Utc::now().fixed_offset());
+        let updated = active.update(db).await?;
+        Ok(Some(updated))
     }
 }

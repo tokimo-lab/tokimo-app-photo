@@ -47,7 +47,7 @@ pub async fn sync_photo(
     }
 
     if clear_data {
-        AppSyncService::clear_library_data(&state.db, uid, "photo").await?;
+        AppSyncService::clear_library_data(&state.db, uid).await?;
     }
 
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
@@ -76,7 +76,7 @@ pub async fn sync_photo(
     let library_name = library.name.clone();
 
     tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&state.bus_client, &db, &sources, &storage, uid, false, Some(user_id))
+        match AppSyncService::execute_photo_sync(&db, &sources, &state.bus_client, uid, false, user_id)
             .await
         {
             Ok(result) => {

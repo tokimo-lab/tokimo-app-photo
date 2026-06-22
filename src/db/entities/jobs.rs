@@ -35,6 +35,7 @@ pub struct Model {
     pub dedupe_key: Option<String>,
     pub alias_job_id: Option<Uuid>,
     pub priority: i32,
+    pub wake_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

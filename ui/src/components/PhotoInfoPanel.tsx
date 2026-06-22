@@ -15,7 +15,7 @@ import type { PhotoDetailOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { getOcrModelName } from "../lib/ocr-models";
 import { thumbUrl } from "../lib/thumb";
-import { useWindowId } from "@tokimo/sdk";
+import { useRuntimeCtx } from "@tokimo/sdk";
 import { useDateFormat } from "@tokimo/ui";
 import type { TaskMetadata } from "@tokimo/sdk";
 import type { ExifWindowMetadata } from "./ExifWindow";
@@ -76,10 +76,9 @@ export function PhotoInfoPanel({
   } | null;
   onAddOcr?: () => void;
 }) {
-  const openWindow = () => {};
-  const openModalWindow = () => "";
-  let parentWindowId: string | null = null;
-  try { parentWindowId = useWindowId(); } catch { parentWindowId = null; }
+  const ctx = useRuntimeCtx();
+  const openWindow = ctx.shell.windowManager.openWindow;
+  const openModalWindow = ctx.shell.openModalWindow;
   const { formatLong, longFormat } = useDateFormat();
 
   const handleViewNearby = useCallback(
@@ -190,10 +189,9 @@ export function PhotoInfoPanel({
             <button
               type="button"
               onClick={() => {
-                if (!detail.exifData || !parentWindowId) return;
+                if (!detail.exifData) return;
                 openModalWindow({
                   component: () => import("./ExifWindow"),
-                  parentWindowId,
                   title: "EXIF 原始数据",
                   width: 640,
                   height: 640,
@@ -472,13 +470,11 @@ export function PhotoInfoPanel({
                     onClick={() => {
                       if (
                         !detail.ocrDebugInfo ||
-                        !ocrResults ||
-                        !parentWindowId
+                        !ocrResults
                       )
                         return;
                       openModalWindow({
                         component: () => import("./OcrDebugWindow"),
-                        parentWindowId,
                         title: "OCR 调试",
                         width: 720,
                         height: 700,

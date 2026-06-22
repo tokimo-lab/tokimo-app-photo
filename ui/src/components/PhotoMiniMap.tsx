@@ -371,7 +371,7 @@ export function PhotoMiniMap({
 
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-white/10">
-      <div ref={containerRef} className="h-48 w-full" />
+      <div ref={containerRef} style={{ height: "12rem", width: "100%" }} />
     </div>
   );
 }
