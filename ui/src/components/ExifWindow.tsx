@@ -1,10 +1,27 @@
 import type { WindowState } from "@tokimo/sdk";
 
+/**
+ * Unified EXIF value cleaner — mirrors backend `clean_exif_value()`.
+ * Handles all formats from `kamadak-exif`:
+ *   - Simple quoted: `"R98"` → `R98`
+ *   - Quoted + spaces: `"Meizu     "` → `Meizu`
+ *   - Quoted array: `"Flyme4.0", "", "", ...` → `Flyme4.0`
+ *   - All-empty array: `"", "", ...` → `""` (caller filters)
+ */
 export function stripExifQuotes(value: string): string {
-  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1);
-  }
-  return value;
+  if (!value.includes('"')) return value.trim();
+
+  const parts = value
+    .split('", "')
+    .map((s) =>
+      s
+        .trim()
+        .replace(/^"|"$/g, "")
+        .trim(),
+    )
+    .filter((s) => s.length > 0);
+
+  return parts.join(", ");
 }
 
 export interface ExifWindowMetadata {
