@@ -117,6 +117,9 @@ function InfoPanelExtras({ photo }: { photo: PhotoInfo }) {
     hoveredOcrId: null,
     onHoverOcr: setHoveredOcrId,
     ocrSelectionRanges: null,
+    onRefreshComplete: () => {
+      detailQuery.refetch();
+    },
   });
 }
 
