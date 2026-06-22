@@ -84,7 +84,7 @@ export function PhotoInfoPanel({
   const handleViewNearby = useCallback(
     (selection: import("./PhotoMapView").MapClusterSelection) => {
       openWindow({
-        type: "page",
+        type: "photo",
         appId: detail.appId,
         title: selection.label,
         metadata: {
