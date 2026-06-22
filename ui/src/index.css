@@ -1,6 +1,8 @@
-/* All cascade / layer / variant / theme-token wiring (and scanning of
- * @tokimo/ui's own components) is handled by the bundle entry. */
-@import "@tokimo/ui/bundle.css";
+@layer theme, base, components, utilities;
 
-/* Scan our own app source. */
+@reference "@tokimo/ui/tailwind.css";
+
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss/theme.css" layer(theme);
+
 @source "./**/*.{ts,tsx}";
