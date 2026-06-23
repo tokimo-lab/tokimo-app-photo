@@ -7,14 +7,27 @@
 
 import type { AppRuntimeCtx, PhotoExtension, PhotoInfo, PhotoDisplayContext } from "@tokimo/sdk";
 import { RuntimeProvider } from "@tokimo/sdk";
-import { createElement, useEffect, useMemo, useState } from "react";
+import { Component, createElement, useEffect, useState } from "react";
 import { api } from "./generated/rust-api";
 import {
   setHoveredFaceId,
   setHoveredOcrId,
   setEditingOcrId,
+  setOcrSelectionRanges,
   useViewerState,
 } from "./viewer-state";
+import {
+  FaceHighlightOverlay,
+  OcrHighlightOverlay,
+} from "./components/photo-overlays";
+import { OcrBlockSelectLayer } from "./components/OcrBlockSelectLayer";
+import { OcrBboxEditOverlay } from "./components/OcrBboxEditOverlay";
+
+class SafeOverlay extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() { return this.state.hasError ? null : this.props.children; }
+}
 
 export function createPhotoExtension(ctx: AppRuntimeCtx): PhotoExtension {
   return {
@@ -68,8 +81,33 @@ function ImageOverlays({
   if (!photoWidth || !photoHeight) return null;
 
   return createElement("div", { className: "pointer-events-none absolute inset-0" },
+    ocrResults.length > 0 && viewerState.editingOcrId == null
+      ? createElement(SafeOverlay, null,
+          createElement(OcrBlockSelectLayer, {
+            ocrResults,
+            photoWidth,
+            photoHeight,
+            imgRef,
+            isZoomed: ctx.zoom > 1,
+            onSelectionRanges: setOcrSelectionRanges,
+            orientation: detail?.orientation,
+          }),
+        )
+      : null,
+    viewerState.editingOcrId && ocrResults.length > 0
+      ? createElement(SafeOverlay, null,
+          createElement(OcrBboxEditOverlay, {
+            ocrResults,
+            editingOcrId: viewerState.editingOcrId,
+            photoWidth,
+            photoHeight,
+            imgRef,
+            orientation: detail?.orientation,
+          }),
+        )
+      : null,
     viewerState.hoveredFaceId && faces.length > 0
-      ? createElement(FaceHighlightOverlayLazy, {
+      ? createElement(FaceHighlightOverlay, {
           faces,
           hoveredFaceId: viewerState.hoveredFaceId,
           photoWidth,
@@ -79,7 +117,7 @@ function ImageOverlays({
         })
       : null,
     viewerState.hoveredOcrId && ocrResults.length > 0
-      ? createElement(OcrHighlightOverlayLazy, {
+      ? createElement(OcrHighlightOverlay, {
           ocrResults,
           hoveredOcrId: viewerState.hoveredOcrId,
           photoWidth,
@@ -121,24 +159,4 @@ function InfoPanelExtras({ photo }: { photo: PhotoInfo }) {
       detailQuery.refetch();
     },
   });
-}
-
-// ── Lazy wrappers ────────────────────────────────────────────────────────────
-
-function FaceHighlightOverlayLazy(props: any) {
-  const [mod, setMod] = useState<any>(null);
-  useEffect(() => {
-    import("./components/photo-overlays").then((m) => setMod(m));
-  }, []);
-  if (!mod) return null;
-  return createElement(mod.FaceHighlightOverlay, props);
-}
-
-function OcrHighlightOverlayLazy(props: any) {
-  const [mod, setMod] = useState<any>(null);
-  useEffect(() => {
-    import("./components/photo-overlays").then((m) => setMod(m));
-  }, []);
-  if (!mod) return null;
-  return createElement(mod.OcrHighlightOverlay, props);
 }
