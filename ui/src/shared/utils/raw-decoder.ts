@@ -22,12 +22,34 @@ export function isRawFile(filename?: string | null): boolean {
   return false;
 }
 
-let _wasmPromise: Promise<typeof import("@tokimo/tokimo-wasm")> | null = null;
+type WasmModule = typeof import("../../../public/wasm/tokimo_app_photo_wasm");
 
-function loadWasm() {
+const WASM_BASE = "http://localhost:5173/wasm";
+
+let _wasmPromise: Promise<WasmModule> | null = null;
+
+function loadWasm(): Promise<WasmModule> {
   if (!_wasmPromise) {
-    _wasmPromise = import("@tokimo/tokimo-wasm");
+    const wb = (globalThis as unknown as { wasm_bindgen?: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
+    if (wb && typeof wb.extractRawPreview === 'function') {
+      _wasmPromise = Promise.resolve(wb);
+    } else {
+      _wasmPromise = new Promise<WasmModule>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "./wasm/tokimo_app_photo_wasm.js";
+        script.onload = () => {
+          const wb2 = (globalThis as unknown as { wasm_bindgen: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
+          (wb2 as unknown as (wasmUrl: string) => Promise<unknown>)("./wasm/tokimo_app_photo_wasm_bg.wasm")
+            .then(() => resolve(wb2))
+            .catch(reject);
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
   }
+  return _wasmPromise;
+}
   return _wasmPromise;
 }
 

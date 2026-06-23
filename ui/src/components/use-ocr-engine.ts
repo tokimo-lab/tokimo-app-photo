@@ -1,4 +1,3 @@
-import type { OcrEngine } from "@tokimo/tokimo-wasm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOcrResultItem } from "../generated/rust-api";
 import type { ImgRect } from "./photo-overlays";
@@ -7,11 +6,28 @@ import {
   transformBboxForOrientation,
 } from "./photo-utils";
 
-// Lazy-loaded WASM module
-let _wasmPromise: Promise<typeof import("@tokimo/tokimo-wasm")> | null = null;
-function loadWasm() {
+type WasmModule = typeof import("../../public/wasm/tokimo_app_photo_wasm");
+
+let _wasmPromise: Promise<WasmModule> | null = null;
+function loadWasm(): Promise<WasmModule> {
   if (!_wasmPromise) {
-    _wasmPromise = import("@tokimo/tokimo-wasm");
+    const wb = (globalThis as unknown as { wasm_bindgen?: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
+    if (wb && typeof wb.OcrEngine === 'function') {
+      _wasmPromise = Promise.resolve(wb);
+    } else {
+      _wasmPromise = new Promise<WasmModule>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "./wasm/tokimo_app_photo_wasm.js";
+        script.onload = () => {
+          const wb2 = (globalThis as unknown as { wasm_bindgen: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
+          (wb2 as unknown as (wasmUrl: string) => Promise<unknown>)("./wasm/tokimo_app_photo_wasm_bg.wasm")
+            .then(() => resolve(wb2))
+            .catch(reject);
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
   }
   return _wasmPromise;
 }
@@ -49,7 +65,7 @@ export interface OcrBlockRect {
 }
 
 export function normalizeOcrAnchors(
-  engine: OcrEngine,
+  engine: WasmModule["OcrEngine"],
   a: OcrTextAnchor,
   b: OcrTextAnchor,
 ): {
@@ -93,16 +109,24 @@ export function useOcrEngine(
   photoHeight: number,
   orientation?: number | null,
 ) {
-  const engineRef = useRef<OcrEngine | null>(null);
-  const [ready, setReady] = useState(false);
+  const engineRef = useRef<WasmModule["OcrEngine"] | null>(null);
+  const [ready, setReady] = useState(() => {
+    const wb = (globalThis as unknown as { wasm_bindgen?: WasmModule }).wasm_bindgen;
+    if (wb && typeof wb.OcrEngine === 'function') {
+      engineRef.current = new wb.OcrEngine();
+      return true;
+    }
+    return false;
+  });
 
-  // Lazy-load WASM module
+  // Lazy-load WASM module (only if not already loaded synchronously)
   useEffect(() => {
+    if (ready) return;
     loadWasm().then(({ OcrEngine: Ctor }) => {
       engineRef.current = new Ctor();
       setReady(true);
     });
-  }, []);
+  }, [ready]);
 
   const swapped = isOrientationSwapped(orientation);
   const dispW = swapped ? photoHeight : photoWidth;

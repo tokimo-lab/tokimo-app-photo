@@ -1,5 +1,4 @@
 import { useContextMenu } from "@tokimo/ui";
-import { Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOcrResultItem } from "../generated/rust-api";
 import { useImgRect } from "./photo-overlays";
@@ -345,7 +344,7 @@ export function OcrBlockSelectLayer({
         e.preventDefault();
         e.stopPropagation();
         openCtxMenu(e, [
-          { label: "复制文字", icon: <Copy size={14} />, onClick: handleCopy },
+          { label: "复制文字", icon: "📋", onClick: handleCopy },
         ]);
         return;
       }
@@ -360,7 +359,7 @@ export function OcrBlockSelectLayer({
       e.preventDefault();
       e.stopPropagation();
       openCtxMenu(e, [
-        { label: "复制文字", icon: <Copy size={14} />, onClick: handleCopy },
+        { label: "复制文字", icon: "📋", onClick: handleCopy },
       ]);
     }
   };

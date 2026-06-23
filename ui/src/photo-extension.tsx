@@ -80,10 +80,10 @@ function ImageOverlays({
 
   if (!photoWidth || !photoHeight) return null;
 
-  return createElement("div", { className: "pointer-events-none absolute inset-0" },
-    ocrResults.length > 0 && viewerState.editingOcrId == null
-      ? createElement(SafeOverlay, null,
-          createElement(OcrBlockSelectLayer, {
+  try {
+    return createElement("div", { className: "pointer-events-none absolute inset-0" },
+      ocrResults.length > 0 && viewerState.editingOcrId == null
+        ? createElement(OcrBlockSelectLayer, {
             ocrResults,
             photoWidth,
             photoHeight,
@@ -91,42 +91,45 @@ function ImageOverlays({
             isZoomed: ctx.zoom > 1,
             onSelectionRanges: setOcrSelectionRanges,
             orientation: detail?.orientation,
-          }),
-        )
-      : null,
-    viewerState.editingOcrId && ocrResults.length > 0
-      ? createElement(SafeOverlay, null,
-          createElement(OcrBboxEditOverlay, {
-            ocrResults,
-            editingOcrId: viewerState.editingOcrId,
+          })
+        : null,
+      viewerState.editingOcrId && ocrResults.length > 0
+        ? createElement(SafeOverlay, null,
+            createElement(OcrBboxEditOverlay, {
+              ocrResults,
+              editingOcrId: viewerState.editingOcrId,
+              photoWidth,
+              photoHeight,
+              imgRef,
+              orientation: detail?.orientation,
+            }),
+          )
+        : null,
+      viewerState.hoveredFaceId && faces.length > 0
+        ? createElement(FaceHighlightOverlay, {
+            faces,
+            hoveredFaceId: viewerState.hoveredFaceId,
             photoWidth,
             photoHeight,
             imgRef,
             orientation: detail?.orientation,
-          }),
-        )
-      : null,
-    viewerState.hoveredFaceId && faces.length > 0
-      ? createElement(FaceHighlightOverlay, {
-          faces,
-          hoveredFaceId: viewerState.hoveredFaceId,
-          photoWidth,
-          photoHeight,
-          imgRef,
-          orientation: detail?.orientation,
-        })
-      : null,
-    viewerState.hoveredOcrId && ocrResults.length > 0
-      ? createElement(OcrHighlightOverlay, {
-          ocrResults,
-          hoveredOcrId: viewerState.hoveredOcrId,
-          photoWidth,
-          photoHeight,
-          imgRef,
-          orientation: detail?.orientation,
-        })
-      : null,
-  );
+          })
+        : null,
+      viewerState.hoveredOcrId && ocrResults.length > 0
+        ? createElement(OcrHighlightOverlay, {
+            ocrResults,
+            hoveredOcrId: viewerState.hoveredOcrId,
+            photoWidth,
+            photoHeight,
+            imgRef,
+            orientation: detail?.orientation,
+          })
+        : null,
+    );
+  } catch (e) {
+    console.error("[ImageOverlays] render error:", e);
+    return null;
+  }
 }
 
 // ── Info Panel Extras ────────────────────────────────────────────────────────

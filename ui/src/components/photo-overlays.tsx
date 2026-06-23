@@ -3,7 +3,7 @@
  * PhotoLightbox and PhotoWindowViewer).
  *
  * Core OCR algorithms (hit testing, selection, char positioning)
- * run in WebAssembly via @tokiomo/tokimo-wasm for performance.
+ * run in WebAssembly via tokimo-app-photo-wasm for performance.
  * Canvas.measureText (browser API) stays in JS.
  */
 
