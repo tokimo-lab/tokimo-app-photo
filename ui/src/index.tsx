@@ -22,6 +22,7 @@ import { StrictMode, lazy, Suspense } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import "./index.css";
 import { createPhotoExtension } from "./photo-extension";
+import type { PhotoExtension } from "./photo-extension-types";
 import { ensureWasmLoaded } from "./wasm-init";
 
 const PhotoApp = lazy(() => import("./components/PhotoApp"));
@@ -52,8 +53,18 @@ export default defineApp({
     void ensureWasmLoaded().catch((err) => {
       console.error("[photo-app] failed to preload WASM:", err);
     });
-    // Register photo extension for AI enhancement in shell viewer
-    ctx.shell.photo?.registerExtension("photo", createPhotoExtension(ctx));
+    const photoShell = ctx.shell as typeof ctx.shell & {
+      photo?: {
+        registerExtension: (
+          appId: string,
+          extension: PhotoExtension,
+        ) => () => void;
+      };
+    };
+    const unregisterPhotoExtension = photoShell.photo?.registerExtension(
+      "photo",
+      createPhotoExtension(ctx),
+    );
     const root: Root = createRoot(container);
     const locale = ctx.locale.startsWith("zh") ? uiZhCN : uiEnUS;
     root.render(
@@ -71,6 +82,9 @@ export default defineApp({
         </QueryClientProvider>
       </StrictMode>,
     );
-    return () => root.unmount();
+    return () => {
+      unregisterPhotoExtension?.();
+      root.unmount();
+    };
   },
 });

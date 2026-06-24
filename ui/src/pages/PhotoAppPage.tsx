@@ -78,7 +78,7 @@ export default function PhotoAppPage({
 
   // ── Navigate to person (from lightbox face click) ──────────────────
   const [navigateToPersonId, setNavigateToPersonId] = useState<string | null>(
-    null,
+    (metadata.personId as string | undefined) ?? null,
   );
   const [similarSourceId, setSimilarSourceId] = useState<string | null>(
     (metadata.similarSourceId as string) || null,
