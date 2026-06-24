@@ -38,10 +38,5 @@
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.10"
-  },
-  "pnpm": {
-    "overrides": {
-      "@tokimo/ui": "github:tokimo-lab/tokimo-ui#7d358dcee47ef0cdcbff9bc74474a5b71a1455c4"
-    }
   }
 }
