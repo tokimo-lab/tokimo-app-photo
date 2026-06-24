@@ -41,7 +41,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@tokimo/ui": "github:tokimo-lab/tokimo-ui#b3a7fa8af87ad6e5d71954c4adf9683b131c72f7"
+      "@tokimo/ui": "github:tokimo-lab/tokimo-ui#7d358dcee47ef0cdcbff9bc74474a5b71a1455c4"
     }
   }
 }
