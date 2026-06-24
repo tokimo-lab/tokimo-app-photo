@@ -375,7 +375,7 @@ export function PhotoMapView({
                 请先
                 <button
                   type="button"
-                  className="text-[var(--accent-text)] hover:underline"
+                  className="text-accent-text hover:underline"
                   onClick={() =>
                     openWindow({
                       type: "system",
@@ -405,7 +405,7 @@ export function PhotoMapView({
         <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
           <button
             type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-fg-secondary shadow-md backdrop-blur-sm transition-colors hover:bg-surface-elevated/90"
+            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-fg-secondary shadow-md backdrop-blur-sm transition-colors hover:bg-surface-raised/90"
             onClick={() => setThemeOpen(!themeOpen)}
           >
             <Layers className="h-4 w-4" />
@@ -413,7 +413,7 @@ export function PhotoMapView({
           </button>
 
           {themeOpen && (
-            <div className="mt-1 overflow-hidden rounded-lg bg-surface-glass shadow-lg backdrop-blur-sm">
+            <div className="mt-1 overflow-hidden rounded-lg bg-surface-overlay shadow-lg backdrop-blur-sm">
               {themes.map((t) => (
                 <button
                   key={t.key}

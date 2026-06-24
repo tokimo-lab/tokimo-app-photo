@@ -26,8 +26,8 @@ function Section({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <h3 className="font-medium text-[var(--text-primary)]">{title}</h3>
-        <span className="rounded bg-black/[0.06] px-1.5 py-0.5 text-xs text-[var(--text-muted)] dark:bg-white/[0.08]">
+        <h3 className="font-medium text-fg-primary">{title}</h3>
+        <span className="rounded bg-black/[0.06] px-1.5 py-0.5 text-xs text-fg-muted dark:bg-white/[0.08]">
           {modelName}
         </span>
       </div>
@@ -39,9 +39,9 @@ function Section({
 function TextBlock({ text, index }: { text: string; index?: number }) {
   return (
     <div className="rounded bg-black/[0.04] px-3 py-2 dark:bg-white/[0.04]">
-      <p className="whitespace-pre-wrap break-all font-mono text-sm leading-relaxed text-[var(--text-secondary)]">
+      <p className="whitespace-pre-wrap break-all font-mono text-sm leading-relaxed text-fg-secondary">
         {index != null && (
-          <span className="mr-2 select-none text-xs text-[var(--text-muted)]">
+          <span className="mr-2 select-none text-xs text-fg-muted">
             [{index + 1}]
           </span>
         )}
@@ -58,7 +58,7 @@ export default function OcrDebugWindow({ win }: { win: WindowState }) {
 
   if (!debugInfo) {
     return (
-      <div className="flex h-full items-center justify-center text-[var(--text-muted)]">
+      <div className="flex h-full items-center justify-center text-fg-muted">
         无调试信息
       </div>
     );
@@ -76,7 +76,7 @@ export default function OcrDebugWindow({ win }: { win: WindowState }) {
                 <TextBlock key={`det-${i}`} text={t} index={i} />
               ))
             ) : (
-              <p className="text-sm text-[var(--text-muted)]">无检测结果</p>
+              <p className="text-sm text-fg-muted">无检测结果</p>
             )}
           </div>
         </Section>
@@ -86,14 +86,14 @@ export default function OcrDebugWindow({ win }: { win: WindowState }) {
           {debugInfo.vlmText ? (
             <TextBlock text={debugInfo.vlmText} />
           ) : (
-            <p className="text-sm text-[var(--text-muted)]">无 VLM 结果</p>
+            <p className="text-sm text-fg-muted">无 VLM 结果</p>
           )}
         </Section>
 
         {/* Merged result */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-[var(--text-primary)]">合并结果</h3>
+            <h3 className="font-medium text-fg-primary">合并结果</h3>
             <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-600 dark:text-emerald-400">
               最终输出
             </span>
@@ -105,7 +105,7 @@ export default function OcrDebugWindow({ win }: { win: WindowState }) {
                 <TextBlock key={`merged-${i}`} text={t} index={i} />
               ))
             ) : (
-              <p className="text-sm text-[var(--text-muted)]">无合并结果</p>
+              <p className="text-sm text-fg-muted">无合并结果</p>
             )}
           </div>
         </div>

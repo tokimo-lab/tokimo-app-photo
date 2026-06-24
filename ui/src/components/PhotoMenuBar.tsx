@@ -192,7 +192,7 @@ export default function PhotoMenuBar({ children }: { children: ReactNode }) {
         >
           清空数据重新同步
         </Checkbox>
-        <p className="mt-2 text-xs text-[var(--text-muted)]">
+        <p className="mt-2 text-xs text-fg-muted">
           勾选后将删除所有照片数据并重新完整同步，适合修复数据异常或新增字段后重建。
         </p>
       </Modal>

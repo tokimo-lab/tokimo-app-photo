@@ -43,8 +43,8 @@ export default function ExifWindow({ win }: { win: WindowState }) {
               i % 2 === 0 ? "bg-black/[0.04] dark:bg-white/[0.04]" : ""
             }`}
           >
-            <span className="shrink-0 text-[var(--text-muted)]">{key}</span>
-            <span className="break-all text-right text-[var(--text-secondary)]">
+            <span className="shrink-0 text-fg-muted">{key}</span>
+            <span className="break-all text-right text-fg-secondary">
               {stripExifQuotes(exifData[key])}
             </span>
           </div>
