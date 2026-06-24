@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api } from "../generated/rust-api";
 import type { PhotoDisplayContext, PhotoInfo } from "../photo-extension-types";
 import { OcrBboxEditOverlay } from "./OcrBboxEditOverlay";
@@ -92,6 +92,27 @@ export function PhotoAiOverlay({
   const photoHeight = detail?.height ?? photo.height ?? displayCtx.naturalHeight;
   const orientation = detail?.orientation ?? photo.orientation;
   const imgRefVersion = useImageRefVersion(displayCtx.imgRef, photo.id);
+  const handleSelectionRanges = useCallback(
+    (ranges: Map<string, { start: number; end: number }>) => {
+      setOcrSelectionRanges(photo.id, ranges);
+    },
+    [photo.id],
+  );
+  const handlePendingBbox = useCallback(
+    (
+      bbox: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        angle?: number;
+        corners?: [number, number][];
+      } | null,
+    ) => {
+      setPendingBbox(photo.id, bbox);
+    },
+    [photo.id],
+  );
 
   if (!photoWidth || !photoHeight) return null;
   if (imgRefVersion == null) return null;
@@ -107,9 +128,7 @@ export function PhotoAiOverlay({
           photoHeight={photoHeight}
           imgRef={displayCtx.imgRef}
           isZoomed={displayCtx.zoom > 1}
-          onSelectionRanges={(ranges) =>
-            setOcrSelectionRanges(photo.id, ranges)
-          }
+          onSelectionRanges={handleSelectionRanges}
           orientation={orientation}
         />
       )}
@@ -143,7 +162,7 @@ export function PhotoAiOverlay({
           photoWidth={photoWidth}
           photoHeight={photoHeight}
           imgRef={displayCtx.imgRef}
-          onBboxChange={(bbox) => setPendingBbox(photo.id, bbox)}
+          onBboxChange={handlePendingBbox}
           orientation={orientation}
         />
       )}

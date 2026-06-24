@@ -37,6 +37,11 @@ function getStore(photoId: string): PhotoAiState {
   return state;
 }
 
+function setStore(photoId: string, state: PhotoAiState): void {
+  stores.set(photoId, state);
+  emit(photoId);
+}
+
 function getListeners(photoId: string): Set<() => void> {
   let set = listeners.get(photoId);
   if (!set) {
@@ -72,23 +77,19 @@ export function setHoveredFaceId(
 ): void {
   const state = getStore(photoId);
   if (state.hoveredFaceId === faceId) return;
-  state.hoveredFaceId = faceId;
-  emit(photoId);
+  setStore(photoId, { ...state, hoveredFaceId: faceId });
 }
 
 export function setHoveredOcrId(photoId: string, ocrId: string | null): void {
   const state = getStore(photoId);
   if (state.hoveredOcrId === ocrId) return;
-  state.hoveredOcrId = ocrId;
-  emit(photoId);
+  setStore(photoId, { ...state, hoveredOcrId: ocrId });
 }
 
 export function setEditingOcrId(photoId: string, ocrId: string | null): void {
   const state = getStore(photoId);
   if (state.editingOcrId === ocrId) return;
-  state.editingOcrId = ocrId;
-  state.pendingBbox = null;
-  emit(photoId);
+  setStore(photoId, { ...state, editingOcrId: ocrId, pendingBbox: null });
 }
 
 export function setPendingBbox(
@@ -96,8 +97,8 @@ export function setPendingBbox(
   bbox: PhotoAiState["pendingBbox"],
 ): void {
   const state = getStore(photoId);
-  state.pendingBbox = bbox;
-  emit(photoId);
+  if (Object.is(state.pendingBbox, bbox)) return;
+  setStore(photoId, { ...state, pendingBbox: bbox });
 }
 
 export function setOcrSelectionRanges(
@@ -105,8 +106,21 @@ export function setOcrSelectionRanges(
   ranges: Map<string, { start: number; end: number }>,
 ): void {
   const state = getStore(photoId);
-  state.ocrSelectionRanges = ranges;
-  emit(photoId);
+  if (sameSelectionRanges(state.ocrSelectionRanges, ranges)) return;
+  setStore(photoId, { ...state, ocrSelectionRanges: ranges });
+}
+
+function sameSelectionRanges(
+  a: Map<string, { start: number; end: number }>,
+  b: Map<string, { start: number; end: number }>,
+): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const [key, av] of a) {
+    const bv = b.get(key);
+    if (!bv || av.start !== bv.start || av.end !== bv.end) return false;
+  }
+  return true;
 }
 
 const subscribeCache = new Map<string, (cb: () => void) => () => void>();
