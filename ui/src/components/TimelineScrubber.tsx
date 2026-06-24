@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useWindowContainer } from "@tokimo/sdk";
 import { api } from "../generated/rust-api";
 import { useTimelineLayout } from "./timeline-layout";
 
@@ -29,7 +30,10 @@ export function TimelineScrubber({
   scrollToDate: (datePrefix: string, smooth: boolean) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
-  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const shellPortalTarget = useWindowContainer();
+  const [domPortalTarget, setDomPortalTarget] = useState<HTMLElement | null>(
+    null,
+  );
   const [thumbPos, setThumbPos] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [focusYear, setFocusYear] = useState<number | null>(null);
@@ -42,7 +46,7 @@ export function TimelineScrubber({
   const anchorCallbackRef = useCallback((el: HTMLSpanElement | null) => {
     if (el) {
       const target = el.closest("[data-window-content]") as HTMLElement | null;
-      setPortalTarget(target);
+      setDomPortalTarget(target);
     }
   }, []);
 
@@ -248,11 +252,12 @@ export function TimelineScrubber({
       )}
     </div>
   );
+  const portalTarget = shellPortalTarget ?? domPortalTarget;
 
   return (
     <>
       <span ref={anchorCallbackRef} className="hidden" />
-      {portalTarget ? createPortal(scrubber, portalTarget) : null}
+      {portalTarget ? createPortal(scrubber, portalTarget) : scrubber}
     </>
   );
 }

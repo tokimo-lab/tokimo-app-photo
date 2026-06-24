@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { useCallback } from "react";
-import type { PhotoOutput } from "../generated/rust-api";
 import { useWindowActions } from "@tokimo/sdk";
+import type { PhotoOutput } from "../generated/rust-api";
 import type { DateGroup } from "./photo-utils";
 
 export function DateHeader({

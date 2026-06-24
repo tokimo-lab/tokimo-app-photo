@@ -135,7 +135,9 @@ export function PhotoTimeline({
         }
       }
 
-      viewer.openViewer({
+      const viewerOptions: Parameters<typeof viewer.openViewer>[0] & {
+        metadata: Record<string, unknown>;
+      } = {
         type: "image",
         title: photo.filename,
         route: `/photos/${photo.id}`,
@@ -153,7 +155,8 @@ export function PhotoTimeline({
           })),
           index: photos.findIndex((p) => p.id === photo.id),
         },
-      });
+      };
+      viewer.openViewer(viewerOptions);
     },
     [viewer, appId, photos],
   );
