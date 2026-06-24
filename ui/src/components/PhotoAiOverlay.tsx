@@ -1,3 +1,4 @@
+import { Fragment, useEffect, useState } from "react";
 import { api } from "../generated/rust-api";
 import type { PhotoDisplayContext, PhotoInfo } from "../photo-extension-types";
 import { OcrBboxEditOverlay } from "./OcrBboxEditOverlay";
@@ -11,6 +12,55 @@ import {
   FaceHighlightOverlay,
   OcrHighlightOverlay,
 } from "./photo-overlays";
+
+function useImageRefVersion(
+  imgRef: PhotoDisplayContext["imgRef"],
+  resetKey: string,
+) {
+  const [version, setVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    let frameId: number | undefined;
+    let timeoutId: number | undefined;
+    let currentImg: HTMLImageElement | null = null;
+    let nextVersion = 0;
+    let stopped = false;
+
+    setVersion(null);
+
+    const schedule = (ready: boolean) => {
+      if (stopped) return;
+      if (ready) {
+        timeoutId = window.setTimeout(check, 100);
+      } else {
+        frameId = window.requestAnimationFrame(check);
+      }
+    };
+
+    const check = () => {
+      const img = imgRef.current;
+      const ready = !!img && img.offsetWidth > 0 && img.offsetHeight > 0;
+
+      if (ready && img !== currentImg) {
+        currentImg = img;
+        nextVersion += 1;
+        setVersion(nextVersion);
+      }
+
+      schedule(ready);
+    };
+
+    frameId = window.requestAnimationFrame(check);
+
+    return () => {
+      stopped = true;
+      if (frameId !== undefined) window.cancelAnimationFrame(frameId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [imgRef, resetKey]);
+
+  return version;
+}
 
 export function PhotoAiOverlay({
   photo,
@@ -41,11 +91,15 @@ export function PhotoAiOverlay({
   const photoWidth = detail?.width ?? photo.width ?? displayCtx.naturalWidth;
   const photoHeight = detail?.height ?? photo.height ?? displayCtx.naturalHeight;
   const orientation = detail?.orientation ?? photo.orientation;
+  const imgRefVersion = useImageRefVersion(displayCtx.imgRef, photo.id);
 
   if (!photoWidth || !photoHeight) return null;
+  if (imgRefVersion == null) return null;
+
+  const overlayKey = `${photo.id}:${imgRefVersion}`;
 
   return (
-    <>
+    <Fragment key={overlayKey}>
       {ocrResults && ocrResults.length > 0 && editingOcrId == null && (
         <OcrBlockSelectLayer
           ocrResults={ocrResults}
@@ -93,6 +147,6 @@ export function PhotoAiOverlay({
           orientation={orientation}
         />
       )}
-    </>
+    </Fragment>
   );
 }
