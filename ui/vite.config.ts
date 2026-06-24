@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import wasm from "vite-plugin-wasm";
 import { defineTokimoApp } from "@tokimo/app-builder/vite";
 
 export default defineTokimoApp({
@@ -9,6 +8,5 @@ export default defineTokimoApp({
         "@": resolve(__dirname, "src"),
       },
     },
-    plugins: [wasm()],
   },
 });

@@ -5,32 +5,13 @@ import {
   isOrientationSwapped,
   transformBboxForOrientation,
 } from "./photo-utils";
+import {
+  ensureWasmLoaded,
+  type OcrEngineInstance,
+  wasmModule,
+} from "../wasm-init";
 
-type WasmModule = typeof import("../../public/wasm/tokimo_app_photo_wasm");
-
-let _wasmPromise: Promise<WasmModule> | null = null;
-function loadWasm(): Promise<WasmModule> {
-  if (!_wasmPromise) {
-    const wb = (globalThis as unknown as { wasm_bindgen?: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
-    if (wb && typeof wb.OcrEngine === 'function') {
-      _wasmPromise = Promise.resolve(wb);
-    } else {
-      _wasmPromise = new Promise<WasmModule>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "./wasm/tokimo_app_photo_wasm.js";
-        script.onload = () => {
-          const wb2 = (globalThis as unknown as { wasm_bindgen: WasmModule & ((wasmUrl: string) => Promise<unknown>) }).wasm_bindgen;
-          (wb2 as unknown as (wasmUrl: string) => Promise<unknown>)("./wasm/tokimo_app_photo_wasm_bg.wasm")
-            .then(() => resolve(wb2))
-            .catch(reject);
-        };
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-  }
-  return _wasmPromise;
-}
+type OcrEngine = OcrEngineInstance;
 
 // Shared Canvas context for measuring character reference widths
 let _measureCtx:
@@ -65,7 +46,7 @@ export interface OcrBlockRect {
 }
 
 export function normalizeOcrAnchors(
-  engine: WasmModule["OcrEngine"],
+  engine: OcrEngine,
   a: OcrTextAnchor,
   b: OcrTextAnchor,
 ): {
@@ -109,23 +90,28 @@ export function useOcrEngine(
   photoHeight: number,
   orientation?: number | null,
 ) {
-  const engineRef = useRef<WasmModule["OcrEngine"] | null>(null);
+  const engineRef = useRef<OcrEngine | null>(null);
   const [ready, setReady] = useState(() => {
-    const wb = (globalThis as unknown as { wasm_bindgen?: WasmModule }).wasm_bindgen;
-    if (wb && typeof wb.OcrEngine === 'function') {
-      engineRef.current = new wb.OcrEngine();
+    if (wasmModule) {
+      engineRef.current = new wasmModule.OcrEngine();
       return true;
     }
     return false;
   });
 
-  // Lazy-load WASM module (only if not already loaded synchronously)
   useEffect(() => {
     if (ready) return;
-    loadWasm().then(({ OcrEngine: Ctor }) => {
-      engineRef.current = new Ctor();
+    let cancelled = false;
+    ensureWasmLoaded().then((mod) => {
+      if (cancelled) return;
+      engineRef.current = new mod.OcrEngine();
       setReady(true);
+    }).catch((err) => {
+      console.error("[photo-app] failed to load WASM OCR engine:", err);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [ready]);
 
   const swapped = isOrientationSwapped(orientation);

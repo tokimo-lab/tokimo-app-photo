@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch"
+    "build": "bun scripts/prepare-wasm.ts && vite build",
+    "dev": "bun scripts/prepare-wasm.ts --dev && vite build --watch"
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
@@ -37,8 +37,7 @@
     "@types/react-dom": "^19.2.3",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10",
-    "vite-plugin-wasm": "^3.4.1"
+    "vite": "^8.0.10"
   },
   "pnpm": {
     "overrides": {
