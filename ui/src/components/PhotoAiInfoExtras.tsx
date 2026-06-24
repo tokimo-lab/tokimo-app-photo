@@ -68,38 +68,45 @@ export function PhotoAiInfoExtras({
     void detailQuery.refetch();
   }, [detailQuery, photoId, queryClient]);
 
-  const handleViewNearby = useCallback(
-    (selection: import("./PhotoMapView").MapClusterSelection) => {
+  const openPhotoLibraryWindow = useCallback(
+    (
+      libraryId: string,
+      title: string,
+      metadata: Record<string, unknown>,
+    ) => {
       shell.windowManager.openWindow({
-        type: "page",
-        appId,
-        title: selection.label,
+        type: "photo",
+        appId: libraryId,
+        title,
+        route: `/library/${libraryId}`,
         metadata: {
-          appId,
-          tab: "locations",
-          locationBbox: selection,
+          appId: libraryId,
+          ...metadata,
         },
         forceNew: true,
       });
     },
-    [shell.windowManager, appId],
+    [shell.windowManager],
+  );
+
+  const handleViewNearby = useCallback(
+    (selection: import("./PhotoMapView").MapClusterSelection) => {
+      openPhotoLibraryWindow(appId, selection.label, {
+        tab: "locations",
+        locationBbox: selection,
+      });
+    },
+    [appId, openPhotoLibraryWindow],
   );
 
   const handleNavigateToPerson = useCallback(
     (personId: string) => {
-      shell.windowManager.openWindow({
-        type: "page",
-        appId,
-        title: "人物",
-        metadata: {
-          appId,
-          tab: "people",
-          personId,
-        },
-        forceNew: true,
+      openPhotoLibraryWindow(appId, "人物", {
+        tab: "people",
+        personId,
       });
     },
-    [shell.windowManager, appId],
+    [appId, openPhotoLibraryWindow],
   );
 
   const handleAddOcr = useCallback(() => {
@@ -145,16 +152,9 @@ export function PhotoAiInfoExtras({
             <button
               type="button"
               onClick={() => {
-                shell.windowManager.openWindow({
-                  type: "page",
-                  appId: detail.appId,
-                  title: "相似照片",
-                  metadata: {
-                    appId: detail.appId,
-                    tab: "timeline",
-                    similarSourceId: detail.id,
-                  },
-                  forceNew: true,
+                openPhotoLibraryWindow(detail.appId, "相似照片", {
+                  tab: "timeline",
+                  similarSourceId: detail.id,
                 });
               }}
               className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-white/40 hover:bg-white/10 hover:text-white/70"
@@ -208,12 +208,10 @@ export function PhotoAiInfoExtras({
                 className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
                 title={`${tag.category} · ${tag.subcategory} (${Math.round(tag.score * 100)}%)`}
                 onClick={() => {
-                  shell.windowManager.openWindow({
-                    type: "page",
-                    appId: detail.appId,
-                    title: `${tag.icon} ${tag.subcategory}`,
-                    metadata: {
-                      appId: detail.appId,
+                  openPhotoLibraryWindow(
+                    detail.appId,
+                    `${tag.icon} ${tag.subcategory}`,
+                    {
                       tab: "timeline",
                       tagFilter: {
                         category: tag.category,
@@ -221,8 +219,7 @@ export function PhotoAiInfoExtras({
                         icon: tag.icon,
                       },
                     },
-                    forceNew: true,
-                  });
+                  );
                 }}
               >
                 <span>{tag.icon}</span>

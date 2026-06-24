@@ -187,39 +187,22 @@ function FaceChip({
   const bgStyle = canCrop
     ? computeFaceBgStyle(face, photoWidth, photoHeight, chipSize, thumbnailSrc)
     : undefined;
+  const invalidatePeople = useCallback(() => {
+    api.photo.getPhotoFaces.invalidate(queryClient, { photoId });
+    api.photo.listPersons.invalidate(queryClient, { id: appId });
+  }, [appId, photoId, queryClient]);
 
   // ── Mutations ──
   const assignMutation = api.photo.assignFaceToPerson.useMutation({
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/{id}/persons"],
-      });
-    },
+    onSuccess: invalidatePeople,
   });
 
   const createPersonMutation = api.photo.createPersonFromFace.useMutation({
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/{id}/persons"],
-      });
-    },
+    onSuccess: invalidatePeople,
   });
 
   const renameMutation = api.photo.renamePerson.useMutation({
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/photo/{id}/faces"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/apps/{id}/persons"],
-      });
-    },
+    onSuccess: invalidatePeople,
   });
 
   // ── Local state ──

@@ -499,34 +499,40 @@ impl PhotoFaceService {
     /// If the face was previously assigned to another person, that person's `face_count` is
     /// decremented. The target person's `face_count` is incremented.
     pub async fn assign_face_to_person(db: &DatabaseConnection, face_id: i32, person_id: Uuid) -> Result<(), AppError> {
+        let txn = db.begin().await?;
         let face = photo_faces::Entity::find_by_id(face_id)
-            .one(db)
+            .one(&txn)
             .await?
             .not_found("Face not found")?;
 
         // Verify target person exists
         let _target = photo_persons::Entity::find_by_id(person_id)
-            .one(db)
+            .one(&txn)
             .await?
             .not_found("Person not found")?;
 
         let old_person_id = face.person_id;
 
+        if old_person_id == Some(person_id) {
+            Self::recount_person(&txn, person_id).await?;
+            txn.commit().await?;
+            return Ok(());
+        }
+
         // Update the face's person_id
         let mut active: photo_faces::ActiveModel = face.into();
         active.person_id = Set(Some(person_id));
-        active.update(db).await?;
+        active.update(&txn).await?;
 
         // Decrement old person's face_count if applicable
-        if let Some(old_pid) = old_person_id
-            && old_pid != person_id
-        {
-            Self::recount_person(db, old_pid).await?;
+        if let Some(old_pid) = old_person_id {
+            Self::recount_person(&txn, old_pid).await?;
         }
 
         // Recount target person
-        Self::recount_person(db, person_id).await?;
+        Self::recount_person(&txn, person_id).await?;
 
+        txn.commit().await?;
         Ok(())
     }
 
@@ -539,14 +545,15 @@ impl PhotoFaceService {
         face_id: i32,
         name: Option<String>,
     ) -> Result<PersonOutput, AppError> {
+        let txn = db.begin().await?;
         let face = photo_faces::Entity::find_by_id(face_id)
-            .one(db)
+            .one(&txn)
             .await?
             .not_found("Face not found")?;
 
         // Get the photo to determine app_id
         let photo = photos::Entity::find_by_id(face.photo_id)
-            .one(db)
+            .one(&txn)
             .await?
             .not_found("Photo not found")?;
 
@@ -565,18 +572,20 @@ impl PhotoFaceService {
             created_at: Set(now),
             updated_at: Set(now),
         };
-        photo_persons::Entity::insert(person_model).exec(db).await?;
+        Self::clear_avatar_face(&txn, face_id).await?;
+        photo_persons::Entity::insert(person_model).exec(&txn).await?;
 
         // Assign the face to the new person
         let mut active: photo_faces::ActiveModel = face.into();
         active.person_id = Set(Some(person_id));
-        active.update(db).await?;
+        active.update(&txn).await?;
 
         // Decrement old person's face_count if applicable
         if let Some(old_pid) = old_person_id {
-            Self::recount_person(db, old_pid).await?;
+            Self::recount_person(&txn, old_pid).await?;
         }
 
+        txn.commit().await?;
         Ok(PersonOutput {
             id: person_id.to_string(),
             name,
@@ -586,8 +595,18 @@ impl PhotoFaceService {
         })
     }
 
-    /// Recount `face_count` for a person and update avatar if needed.
-    async fn recount_person(db: &DatabaseConnection, person_id: Uuid) -> Result<(), AppError> {
+    async fn clear_avatar_face<C: ConnectionTrait>(db: &C, face_id: i32) -> Result<(), AppError> {
+        photo_persons::Entity::update_many()
+            .col_expr(photo_persons::Column::AvatarFaceId, Expr::value(Option::<i32>::None))
+            .col_expr(photo_persons::Column::UpdatedAt, Expr::value(Utc::now().fixed_offset()))
+            .filter(photo_persons::Column::AvatarFaceId.eq(face_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    /// Recount `face_count` for a person and keep its avatar on an owned face.
+    async fn recount_person<C: ConnectionTrait>(db: &C, person_id: Uuid) -> Result<(), AppError> {
         let count_stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT COUNT(*) as cnt FROM photo_faces WHERE person_id = $1",
@@ -599,9 +618,20 @@ impl PhotoFaceService {
             .and_then(|r| r.try_get::<i64>("", "cnt").ok())
             .unwrap_or(0) as i32;
 
+        let avatar_stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM photo_faces WHERE person_id = $1 ORDER BY confidence DESC NULLS LAST, id ASC LIMIT 1",
+            [person_id.into()],
+        );
+        let avatar_face_id = db
+            .query_one_raw(avatar_stmt)
+            .await?
+            .and_then(|r| r.try_get::<i32>("", "id").ok());
+
         if let Some(person) = photo_persons::Entity::find_by_id(person_id).one(db).await? {
             let mut active: photo_persons::ActiveModel = person.into();
             active.face_count = Set(new_count);
+            active.avatar_face_id = Set(avatar_face_id);
             active.updated_at = Set(Utc::now().fixed_offset());
             active.update(db).await?;
         }

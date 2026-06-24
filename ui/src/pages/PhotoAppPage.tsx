@@ -22,7 +22,12 @@ import { PhotoSelectionBar } from "../components/PhotoSelectionBar";
 import { PHOTO_SIZE_LEVELS } from "../components/PhotoSizeSlider";
 import { PhotoTimeline } from "../components/PhotoTimeline";
 import type { PhotoOutput } from "../generated/rust-api";
-import { useToast, useWindowNav } from "@tokimo/sdk";
+import {
+  useToast,
+  useWindowActions,
+  useWindowNav,
+  useWindows,
+} from "@tokimo/sdk";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
 import { type TabKey, usePhotoData } from "./use-photo-data";
 import { usePhotoMutations } from "./use-photo-mutations";
@@ -42,6 +47,10 @@ const tabs: { key: TabKey; label: string; icon: typeof Calendar }[] = [
   { key: "trash", label: "回收站", icon: Trash2 },
 ];
 
+function isTabKey(value: unknown): value is TabKey {
+  return typeof value === "string" && tabs.some((tab) => tab.key === value);
+}
+
 export default function PhotoAppPage({
   photoLibraryId,
   syncing,
@@ -50,7 +59,12 @@ export default function PhotoAppPage({
   syncing?: boolean;
 }) {
   const nav = useWindowNav();
-  const metadata = (nav as unknown as { metadata?: Record<string, unknown> }).metadata ?? {};
+  const { currentWindowId } = useWindowActions();
+  const windows = useWindows();
+  const metadata =
+    (windows.find((w) => w.id === currentWindowId)?.metadata as
+      | Record<string, unknown>
+      | undefined) ?? {};
   const id = photoLibraryId ?? (metadata.appId as string | undefined);
   const initialDate = metadata.initialDate as string | undefined;
   const message = useToast();
@@ -86,6 +100,31 @@ export default function PhotoAppPage({
   const [tagFilter, setTagFilter] = useState<TagFilter | null>(
     (metadata.tagFilter as TagFilter) ?? null,
   );
+  const initialMetadataAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (initialMetadataAppliedRef.current) return;
+    const hasInitialMetadata =
+      metadata.tab !== undefined ||
+      metadata.personId !== undefined ||
+      metadata.similarSourceId !== undefined ||
+      metadata.tagFilter !== undefined;
+    if (!hasInitialMetadata) return;
+
+    if (isTabKey(metadata.tab)) {
+      setTabRaw(metadata.tab);
+    }
+    if (typeof metadata.personId === "string") {
+      setNavigateToPersonId(metadata.personId);
+    }
+    if (typeof metadata.similarSourceId === "string") {
+      setSimilarSourceId(metadata.similarSourceId);
+    }
+    if (metadata.tagFilter && typeof metadata.tagFilter === "object") {
+      setTagFilter(metadata.tagFilter as TagFilter);
+    }
+    initialMetadataAppliedRef.current = true;
+  }, [metadata]);
 
   const handleNavigateToPerson = useCallback(
     (personId: string) => {
