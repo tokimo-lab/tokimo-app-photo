@@ -182,7 +182,7 @@ export function TimelineScrubber({
       aria-valuemax={100}
       aria-orientation="vertical"
       tabIndex={0}
-      className="absolute right-0 z-30 hidden w-12 cursor-pointer select-none lg:block"
+      className="absolute right-0 z-30 block w-12 cursor-pointer select-none"
       style={{ top: "48px", bottom: "8px" }}
       onMouseDown={onDown}
       onMouseMove={onHover}
