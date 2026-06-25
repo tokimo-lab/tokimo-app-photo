@@ -99,6 +99,7 @@ export interface InitOutput {
     readonly wasmBuildTime: () => [number, number];
     readonly wasmGitCommit: () => [number, number];
     readonly wasmVersion: () => [number, number];
+    readonly extractRawPreview: (a: number, b: number) => [number, number];
     readonly __wbg_ocrengine_free: (a: number, b: number) => void;
     readonly ocrengine_blockCount: (a: number) => number;
     readonly ocrengine_computeCharPositions: (a: number, b: number, c: number) => [number, number];
@@ -110,7 +111,6 @@ export interface InitOutput {
     readonly ocrengine_recomputeVisualOrder: (a: number, b: number) => void;
     readonly ocrengine_setBlocks: (a: number, b: number, c: number, d: any, e: number) => void;
     readonly ocrengine_visualRank: (a: number, b: number) => number;
-    readonly extractRawPreview: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;
