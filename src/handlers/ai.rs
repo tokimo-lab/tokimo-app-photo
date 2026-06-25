@@ -485,9 +485,11 @@ pub async fn clip_search(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(q): Query<ClipSearchQuery>,
+    auth: AuthUser,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let results = PhotoClipService::search(&state.db, &state, app_id, &q.q).await?;
+    let user_id = parse_uuid(&auth.user_id)?;
+    let results = PhotoClipService::search(&state.db, &state, app_id, &q.q, user_id).await?;
     Ok(ok(serde_json::to_value(results).unwrap()))
 }
 

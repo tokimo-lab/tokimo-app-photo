@@ -4,6 +4,7 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::bus_clients::media_intelligence as media_bus;
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{photo_ocr_results, photos};
 use crate::error::AppError;
@@ -113,73 +114,46 @@ impl PhotoOcrService {
     /// OCR a single photo using the integrated AI service.
     /// Returns (results, `optional_debug_info`).
     async fn ocr_image(
-        ai: &tokimo_perception::worker::client::AiWorkerClient,
-        image_bytes: Vec<u8>,
+        bus: &tokimo_bus_client::BusClient,
+        user_id: Uuid,
+        image: media_bus::ImageInput,
         model_name: Option<&str>,
         aux_model_name: Option<&str>,
         request_id: Option<String>,
     ) -> Result<(Vec<OcrResult>, Option<serde_json::Value>), AppError> {
-        use tokimo_perception::worker::protocol::types as wire;
-        let model = model_name.unwrap_or("rapid-ocr-rust");
-        let needs_hybrid = !wire::ocr_model_supports_blocks(model);
-
-        let (items, debug) = if needs_hybrid {
-            let det_model = aux_model_name.unwrap_or("rapid-ocr-rust");
-            let items = ai
-                .ocr_hybrid(
-                    image_bytes,
-                    Some(det_model.to_string()),
-                    Some(model.to_string()),
-                    request_id,
-                )
-                .await
-                .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
-            (items, None)
-        } else {
-            let items = ai
-                .ocr(image_bytes, Some(model.to_string()), request_id)
-                .await
-                .map_err(|e| AppError::Internal(format!("OCR error: {e}")))?;
-            (items, None)
-        };
+        let result = media_bus::ocr_image(
+            bus,
+            media_bus::photo_caller(user_id),
+            media_bus::OcrImageRequest {
+                image,
+                model_name: model_name.map(str::to_string),
+                aux_model_name: aux_model_name.map(str::to_string),
+                request_id,
+            },
+        )
+        .await?;
 
         let mut results = Vec::new();
-        for item in items {
+        for item in result.items {
             if item.text.trim().is_empty() {
                 continue;
             }
-            // -1.0 sentinel from sidecar means "no coordinates available"
-            let coord = |v: f32| -> Option<f64> { if v < 0.0 { None } else { Some(f64::from(v)) } };
-            let positioning_type = if item.char_positions.is_some() {
-                "ctc".to_string()
-            } else {
-                "canvas".to_string()
-            };
             results.push(OcrResult {
                 text: item.text,
-                x: coord(item.x),
-                y: coord(item.y),
-                w: coord(item.w),
-                h: coord(item.h),
-                angle: f64::from(item.angle),
-                score: Some(f64::from(item.score)),
-                paragraph_id: item.paragraph_id as i32,
-                char_positions: item.char_positions.map(|positions| {
-                    serde_json::json!(
-                        positions
-                            .iter()
-                            .map(|(x, w)| serde_json::json!({"x": f64::from(*x), "w": f64::from(*w)}))
-                            .collect::<Vec<_>>()
-                    )
-                }),
-                positioning_type,
-                corners: item
-                    .corners
-                    .map(|c| c.iter().map(|(x, y)| [f64::from(*x), f64::from(*y)]).collect()),
+                x: item.x,
+                y: item.y,
+                w: item.w,
+                h: item.h,
+                angle: item.angle,
+                score: item.score,
+                paragraph_id: item.paragraph_id,
+                char_positions: item.char_positions,
+                positioning_type: item.positioning_type,
+                corners: item.corners,
             });
         }
 
-        Ok((results, debug))
+        Ok((results, None))
     }
 
     /// OCR a single photo: fetch image bytes, call OCR, store results.
@@ -187,6 +161,7 @@ impl PhotoOcrService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         photo_id: Uuid,
+        user_id: Uuid,
     ) -> Result<usize, AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
@@ -198,29 +173,22 @@ impl PhotoOcrService {
         let model_name = settings.ocr_model_name.clone();
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
-        // Get thumbnail bytes (prefer thumbnail, fallback to original)
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
-
-        let image_bytes = load_photo_bytes(db, &state.sources, &photo, image_path).await?;
-
-        // Bridge the owning job's cancel token to the AI worker's /v1/cancel
-        // so that `cancel_one(job_id, ...)` actually terminates the in-flight
-        // ONNX session instead of letting it chew CPU until the batch ends.
-        let ai = state.ai_client();
-        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
-        let request_id = cancel_scope
-            .as_ref()
-            .map(crate::services::ai::AiCancelScope::request_id_owned);
+        let bus = state
+            .bus_client
+            .get()
+            .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
+        let request_id = Some(photo_id.to_string());
 
         let (results, debug_info) = Self::ocr_image(
-            ai,
-            image_bytes,
+            bus,
+            user_id,
+            media_bus::image_input_for_photo(&photo, image_path)?,
             Some(&model_name),
             aux_model_name.as_deref(),
             request_id,
         )
         .await?;
-        drop(cancel_scope);
         let count = results.len();
 
         if !results.is_empty() {
@@ -270,6 +238,7 @@ impl PhotoOcrService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
+        user_id: Uuid,
     ) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, state, app_id).await?;
         if pending.is_empty() {
@@ -277,7 +246,7 @@ impl PhotoOcrService {
         }
         let total = pending.len();
         info!("[photo_ocr] Processing {total} photos for app {app_id}");
-        let (success, _failures, _errors) = Self::process_photo_ids(db, state, pending).await;
+        let (success, _failures, _errors) = Self::process_photo_ids(db, state, pending, user_id).await;
         info!("[photo_ocr] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -317,12 +286,13 @@ impl PhotoOcrService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         ids: Vec<Uuid>,
+        user_id: Uuid,
     ) -> (u32, u32, Vec<String>) {
         let mut success = 0u32;
         let mut failures = 0u32;
         let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
-            match Self::ocr_photo(db, state, photo_id).await {
+            match Self::ocr_photo(db, state, photo_id, user_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;

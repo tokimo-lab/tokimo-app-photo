@@ -110,16 +110,6 @@ async fn run_server() -> anyhow::Result<()> {
         .await
         .unwrap_or_else(|_| PhotoAiSettings::default_value());
 
-    // Initialize AI worker client
-    let ai_worker_slot: Arc<OnceLock<Arc<tokimo_perception::worker::client::AiWorkerClient>>> =
-        Arc::new(OnceLock::new());
-    let perception_settings = tokimo_perception::worker::client::AiWorkerSettings::default();
-    let ai_client =
-        tokimo_perception::worker::client::AiWorkerClient::from_settings(&perception_settings, &data_local_path());
-    ai_worker_slot
-        .set(ai_client)
-        .map_err(|_| anyhow::anyhow!("ai_worker_slot already set"))?;
-
     let (event_tx, _) = tokio::sync::broadcast::channel(256);
     let client_slot: Arc<OnceLock<Arc<BusClient>>> = Arc::new(OnceLock::new());
 
@@ -133,7 +123,6 @@ async fn run_server() -> anyhow::Result<()> {
         job_notify: Arc::new(tokio::sync::Notify::new()),
         bus_client: Arc::clone(&client_slot),
         ai: Arc::new(std::sync::RwLock::new(Some(ai_settings))),
-        ai_worker: ai_worker_slot,
     });
 
     // 起 axum router 监听 UDS（业务 + assets + data 都在这个 sock 上）

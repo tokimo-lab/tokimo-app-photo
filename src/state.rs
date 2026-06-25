@@ -51,7 +51,6 @@ pub struct AppState {
     pub job_notify: Arc<Notify>,
     pub bus_client: Arc<OnceLock<Arc<tokimo_bus_client::BusClient>>>,
     pub ai: Arc<RwLock<Option<crate::config::PhotoAiSettings>>>,
-    pub ai_worker: Arc<OnceLock<Arc<tokimo_perception::worker::client::AiWorkerClient>>>,
 }
 
 impl AppState {
@@ -72,22 +71,17 @@ impl AppState {
 
     /// Check if AI models are ready (always true when using remote AI worker).
     pub fn models_ready(&self) -> bool {
-        self.ai_worker.get().is_some()
+        self.bus_client.get().is_some()
     }
 
     /// Check if OCR models are ready.
     pub fn ocr_models_ready(&self) -> bool {
-        self.ai_worker.get().is_some()
+        self.models_ready()
     }
 
     /// Check if CLIP models are ready.
     pub fn clip_models_ready(&self) -> bool {
-        self.ai_worker.get().is_some()
-    }
-
-    /// Get a reference to the AI worker client.
-    pub fn ai_client(&self) -> &Arc<tokimo_perception::worker::client::AiWorkerClient> {
-        self.ai_worker.get().expect("AI worker client not initialized")
+        self.models_ready()
     }
 
     pub fn bus_notify_job(&self, job: &JobOutput) {

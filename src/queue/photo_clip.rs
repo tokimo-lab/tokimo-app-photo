@@ -21,8 +21,9 @@ pub async fn handle(
     check_cancel(cancel)?;
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
+    let uid = user_id.ok_or("photo_clip requires user id")?;
     let (success, failures, errors) =
-        PhotoClipService::process_photo_ids(db, state, ctx.app_id, vec![ctx.photo_id]).await;
+        PhotoClipService::process_photo_ids(db, state, ctx.app_id, vec![ctx.photo_id], uid).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors

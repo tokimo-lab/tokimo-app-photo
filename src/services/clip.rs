@@ -3,6 +3,7 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::bus_clients::media_intelligence as media_bus;
 use crate::config::PhotoAiSettings;
 use crate::db::entities::photos;
 use crate::error::AppError;
@@ -36,14 +37,19 @@ pub struct PhotoClipService;
 impl PhotoClipService {
     /// Embed image bytes → 512-dim CLIP vector via integrated AI service.
     async fn embed_image(
-        ai: &tokimo_perception::worker::client::AiWorkerClient,
-        image_bytes: Vec<u8>,
+        bus: &tokimo_bus_client::BusClient,
+        user_id: Uuid,
+        image: media_bus::ImageInput,
         request_id: Option<String>,
     ) -> Result<Vec<f32>, AppError> {
-        let vec = ai
-            .clip_image(image_bytes, request_id)
-            .await
-            .map_err(|e| AppError::Internal(format!("CLIP img error: {e}")))?;
+        let result = media_bus::embed_image(
+            bus,
+            media_bus::photo_caller(user_id),
+            media_bus::EmbedImageRequest { image, request_id },
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("CLIP img error: {e}")))?;
+        let vec = result.embedding;
 
         if vec.len() != 512 {
             return Err(AppError::Internal(format!(
@@ -57,14 +63,22 @@ impl PhotoClipService {
 
     /// Embed text → 512-dim CLIP vector via integrated AI service.
     async fn embed_text(
-        ai: &tokimo_perception::worker::client::AiWorkerClient,
+        bus: &tokimo_bus_client::BusClient,
+        user_id: Uuid,
         text: &str,
         request_id: Option<String>,
     ) -> Result<Vec<f32>, AppError> {
-        let vec = ai
-            .clip_text(text.to_string(), request_id)
-            .await
-            .map_err(|e| AppError::Internal(format!("CLIP txt error: {e}")))?;
+        let result = media_bus::embed_text(
+            bus,
+            media_bus::photo_caller(user_id),
+            media_bus::EmbedTextRequest {
+                text: text.to_string(),
+                request_id,
+            },
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("CLIP txt error: {e}")))?;
+        let vec = result.embedding;
 
         if vec.len() != 512 {
             return Err(AppError::Internal(format!(
@@ -101,13 +115,14 @@ impl PhotoClipService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         photo_id: Uuid,
+        user_id: Uuid,
     ) -> Result<(), AppError> {
         let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
             .await?
             .not_found("Photo not found")?;
 
-        Self::embed_photo_model(db, state, &photo).await
+        Self::embed_photo_model(db, state, &photo, user_id).await
     }
 
     /// Embed a photo from an already-loaded model (avoids redundant DB fetch).
@@ -118,18 +133,20 @@ impl PhotoClipService {
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
+        user_id: Uuid,
     ) -> Result<(), AppError> {
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
-
-        let image_bytes = Self::load_photo_bytes_for_clip(db, state, photo, image_path).await?;
-
-        let ai = state.ai_client();
-        let cancel_scope = crate::services::ai::AiCancelScope::start(ai, photo.id);
-        let request_id = cancel_scope
-            .as_ref()
-            .map(crate::services::ai::AiCancelScope::request_id_owned);
-        let vec = Self::embed_image(ai, image_bytes, request_id).await?;
-        drop(cancel_scope);
+        let bus = state
+            .bus_client
+            .get()
+            .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
+        let vec = Self::embed_image(
+            bus,
+            user_id,
+            media_bus::image_input_for_photo(photo, image_path)?,
+            Some(photo.id.to_string()),
+        )
+        .await?;
         Self::store_vector(db, photo.id, &vec).await?;
 
         Ok(())
@@ -289,22 +306,12 @@ impl PhotoClipService {
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         ids: Vec<Uuid>,
+        user_id: Uuid,
     ) -> (u32, u32, Vec<String>) {
         if ids.is_empty() {
             return (0, 0, Vec::new());
         }
         let mut errors: Vec<String> = Vec::new();
-        // Pre-cache base paths so per-photo loading skips DB lookups.
-        let source_paths = match Self::preload_source_base_paths(db, app_id).await {
-            Ok(p) => std::sync::Arc::new(p),
-            Err(e) => {
-                let msg = format!("preload_source_base_paths failed: {e}");
-                error!("[photo_clip] {msg}");
-                errors.push(msg);
-                return (0, ids.len() as u32, errors);
-            }
-        };
-
         let mut success = 0u32;
         let mut failures = 0u32;
         const CONCURRENCY: usize = 8;
@@ -330,25 +337,10 @@ impl PhotoClipService {
         for photo in photos_rows {
             let db_c = db.clone();
             let state_c = state.clone();
-            let sp = source_paths.clone();
             futures.push(async move {
                 let filename = photo.filename.clone();
                 let photo_id = photo.id;
-                let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
-                let result = match bytes_result {
-                    Ok(image_bytes) => {
-                        let ai = state_c.ai_client();
-                        let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
-                        let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
-                        let embed_result = Self::embed_image(ai, image_bytes, rid).await;
-                        drop(scope);
-                        match embed_result {
-                            Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
-                            Err(e) => Err(e),
-                        }
-                    }
-                    Err(e) => Err(e),
-                };
+                let result = Self::embed_photo_model(&db_c, &state_c, &photo, user_id).await;
                 (photo_id, filename, result)
             });
 
@@ -398,6 +390,7 @@ impl PhotoClipService {
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         job_id: Option<Uuid>,
+        user_id: Uuid,
     ) -> Result<u32, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.clip_enabled {
@@ -434,14 +427,7 @@ impl PhotoClipService {
         let mut processed = 0u32;
 
         const PAGE_SIZE: u64 = 500;
-        // Concurrency for I/O (HEIC decode, file read) — these are CPU-bound
-        // spawn_blocking tasks, so high concurrency keeps cores busy.
-        // GPU inference is serialized by the ONNX session lock internally.
         const CONCURRENCY: usize = 8;
-
-        // Pre-cache source base paths to avoid DB lookups per photo
-        let source_paths = Self::preload_source_base_paths(db, app_id).await?;
-        let source_paths = std::sync::Arc::new(source_paths);
 
         loop {
             // Fetch next page of photos without vectors (always page 0 since
@@ -466,34 +452,16 @@ impl PhotoClipService {
             }
 
             // Process photos with bounded concurrency.
-            // Each task: load bytes (no DB) → CLIP inference (GPU) → store vector (DB).
             use futures_util::StreamExt;
             let mut futures = futures_util::stream::FuturesUnordered::new();
 
             for photo in page {
                 let db_c = db.clone();
                 let state_c = state.clone();
-                let sp = source_paths.clone();
                 futures.push(async move {
                     let filename = photo.filename.clone();
                     let photo_id = photo.id;
-
-                    // Load bytes without DB call (uses pre-cached source paths)
-                    let bytes_result = Self::load_bytes_fast(&state_c, &photo, &sp).await;
-                    let result = match bytes_result {
-                        Ok(image_bytes) => {
-                            let ai = state_c.ai_client();
-                            let scope = crate::services::ai::AiCancelScope::start(ai, photo_id);
-                            let rid = scope.as_ref().map(crate::services::ai::AiCancelScope::request_id_owned);
-                            let embed_result = Self::embed_image(ai, image_bytes, rid).await;
-                            drop(scope);
-                            match embed_result {
-                                Ok(vec) => Self::store_vector(&db_c, photo_id, &vec).await,
-                                Err(e) => Err(e),
-                            }
-                        }
-                        Err(e) => Err(e),
-                    };
+                    let result = Self::embed_photo_model(&db_c, &state_c, &photo, user_id).await;
                     (photo_id, filename, result)
                 });
 
@@ -568,13 +536,18 @@ impl PhotoClipService {
         state: &std::sync::Arc<crate::AppState>,
         app_id: Uuid,
         query: &str,
+        user_id: Uuid,
     ) -> Result<Vec<ClipSearchResult>, AppError> {
         let settings = PhotoAiSettings::for_app(db, app_id).await?;
         if !settings.clip_enabled {
             return Err(AppError::Internal("CLIP not enabled".into()));
         }
 
-        let text_vec = Self::embed_text(state.ai_client(), query, None).await?;
+        let bus = state
+            .bus_client
+            .get()
+            .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
+        let text_vec = Self::embed_text(bus, user_id, query, None).await?;
         let vec_str = Self::format_vector(&text_vec);
 
         let rows = db

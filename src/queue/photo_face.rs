@@ -21,10 +21,8 @@ pub async fn handle(
     check_cancel(cancel)?;
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
-    let ai = state.ai_worker.get().expect("AI worker not initialized");
     let bus = state.bus_client.get();
-    let (success, failures, errors) =
-        PhotoFaceService::process_photo_ids(db, ai, &state.sources, vec![ctx.photo_id], bus, user_id).await;
+    let (success, failures, errors) = PhotoFaceService::process_photo_ids(db, vec![ctx.photo_id], bus, user_id).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors

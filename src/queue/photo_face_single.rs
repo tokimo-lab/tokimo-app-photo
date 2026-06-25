@@ -24,8 +24,7 @@ pub async fn handle(
         .ok_or("Missing photoId in params")?;
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
-    let ai = state.ai_worker.get().expect("AI worker not initialized");
     let bus = state.bus_client.get();
-    let count = PhotoFaceService::detect_faces(db, ai, &state.sources, photo_uuid, bus, user_id).await?;
+    let count = PhotoFaceService::detect_faces(db, photo_uuid, bus, user_id).await?;
     Ok(Some(json!({ "faceCount": count })))
 }

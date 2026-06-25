@@ -19,7 +19,6 @@ pub async fn handle(
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
-    let ai = state.ai_worker.get().cloned().expect("AI worker not initialized");
     parent_child::run_scan(
         db,
         state,
@@ -28,7 +27,7 @@ pub async fn handle(
         user_id,
         "photo_face_detect",
         "photo_face",
-        async move |app_uuid| PhotoFaceService::list_pending_photo_ids(db, &ai, app_uuid).await,
+        async move |app_uuid| PhotoFaceService::list_pending_photo_ids(db, state, app_uuid).await,
     )
     .await
 }

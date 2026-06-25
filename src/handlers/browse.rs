@@ -7,9 +7,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::bus_clients::media_intelligence as media_bus;
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
 use crate::error::OptionExt;
+use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
 use crate::repos::{ListPhotosInput, PhotoRepo};
 
@@ -285,8 +287,10 @@ pub async fn clip_tag_options(Path(_id): Path<String>) -> Result<Json<ApiRespons
 pub async fn photo_tags(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    auth: AuthUser,
 ) -> Result<Json<ApiResponse<PhotoTagsResponse>>, AppError> {
     let photo_id = parse_uuid(&id)?;
+    let user_id = parse_uuid(&auth.user_id)?;
 
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
@@ -321,11 +325,17 @@ pub async fn photo_tags(
         })
         .collect::<Result<_, _>>()?;
 
-    let tag_results = state
-        .ai_client()
-        .clip_classify(image_vec)
-        .await
-        .map_err(|e| AppError::Internal(format!("CLIP classify: {e}")))?;
+    let bus = state
+        .bus_client
+        .get()
+        .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
+    let tag_results = media_bus::classify_vector(
+        bus,
+        media_bus::photo_caller(user_id),
+        media_bus::ClassifyVectorRequest { vector: image_vec },
+    )
+    .await?
+    .tags;
 
     let tags = tag_results
         .into_iter()

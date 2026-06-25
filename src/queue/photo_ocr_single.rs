@@ -19,7 +19,7 @@ pub async fn handle(
     state: &Arc<AppState>,
     _job_id: Uuid,
     params: &JsonValue,
-    _user_id: Option<Uuid>,
+    user_id: Option<Uuid>,
     cancel: &JobCancel,
 ) -> Result<Option<JsonValue>, Box<dyn std::error::Error + Send + Sync>> {
     check_cancel(cancel)?;
@@ -29,6 +29,7 @@ pub async fn handle(
         .ok_or("Missing photoId in params")?;
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
-    let count = PhotoOcrService::ocr_photo(db, state, photo_uuid).await?;
+    let uid = user_id.ok_or("photo_ocr_single requires user id")?;
+    let count = PhotoOcrService::ocr_photo(db, state, photo_uuid, uid).await?;
     Ok(Some(json!({ "ocrCount": count })))
 }

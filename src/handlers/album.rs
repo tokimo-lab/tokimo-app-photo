@@ -9,11 +9,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::bus_clients::share;
 use crate::db::pagination::PageInput;
 use crate::error::AppError;
-use crate::handlers::{ApiResponse, ok};
 use crate::handlers::user::AuthUser;
-use crate::bus_clients::share;
+use crate::handlers::{ApiResponse, ok};
 use crate::models::{PhotoAlbumOutput, PhotoAlbumSourceInput, PhotoOutput};
 use crate::repos::PhotoRepo;
 use crate::services::clip::{ClipSearchResult, PhotoClipService};
@@ -56,7 +56,15 @@ pub async fn create_album(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
-    let album = PhotoRepo::create_album(&state.db, uid, user_id, &body.name, body.description.as_deref(), body.source).await?;
+    let album = PhotoRepo::create_album(
+        &state.db,
+        uid,
+        user_id,
+        &body.name,
+        body.description.as_deref(),
+        body.source,
+    )
+    .await?;
     Ok(ok(serde_json::to_value(album).unwrap()))
 }
 
@@ -144,7 +152,10 @@ pub async fn list_album_photos(
             .source_ref
             .as_deref()
             .ok_or_else(|| AppError::BadRequest("clip album missing source_ref".into()))?;
-        clip_results_to_page(PhotoClipService::search(&state.db, &state, album.app_id, query).await?, &page_input)
+        clip_results_to_page(
+            PhotoClipService::search(&state.db, &state, album.app_id, query, user_id).await?,
+            &page_input,
+        )
     } else {
         PhotoRepo::list_album_photos_for_album(&state.db, &album, &page_input).await?
     };
@@ -315,7 +326,10 @@ pub async fn public_album_by_token(
         let Some(query) = album.source_ref.as_deref() else {
             return AppError::BadRequest("clip album missing source_ref".into()).into_response();
         };
-        match PhotoClipService::search(&state.db, &state, album.app_id, query).await {
+        let Some(owner_user_id) = album.owner_user_id else {
+            return AppError::Forbidden("clip album share has no owner".into()).into_response();
+        };
+        match PhotoClipService::search(&state.db, &state, album.app_id, query, owner_user_id).await {
             Ok(results) => clip_results_to_page(results, &page_input),
             Err(e) => return e.into_response(),
         }
@@ -369,10 +383,15 @@ pub async fn public_album_photo_image(
     };
     let allowed = if album.album_type == "clip" {
         match album.source_ref.as_deref() {
-            Some(query) => match PhotoClipService::search(&state.db, &state, album.app_id, query).await {
-                Ok(results) => results.iter().any(|item| item.photo_id == photo_id),
-                Err(e) => return e.into_response(),
-            },
+            Some(query) => {
+                let Some(owner_user_id) = album.owner_user_id else {
+                    return AppError::Forbidden("clip album share has no owner".into()).into_response();
+                };
+                match PhotoClipService::search(&state.db, &state, album.app_id, query, owner_user_id).await {
+                    Ok(results) => results.iter().any(|item| item.photo_id == photo_id),
+                    Err(e) => return e.into_response(),
+                }
+            }
             None => false,
         }
     } else {
@@ -406,7 +425,9 @@ fn clip_results_to_page(results: Vec<ClipSearchResult>, page: &PageInput) -> cra
                 height: item.height,
                 file_size: item.file_size,
                 mime_type: item.mime_type,
-                taken_at: item.taken_at.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok()),
+                taken_at: item
+                    .taken_at
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok()),
                 thumbnail_path: item.thumbnail_path,
                 is_favorite: item.is_favorite,
                 camera_make: None,
