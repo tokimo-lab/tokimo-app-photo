@@ -36,6 +36,9 @@ export const queryClient = new QueryClient({
   },
 });
 
+let photoExtensionMountCount = 0;
+let unregisterPhotoExtension: (() => void) | undefined;
+
 export default defineApp({
   id: "photo",
   manifest: {
@@ -61,10 +64,13 @@ export default defineApp({
         ) => () => void;
       };
     };
-    const unregisterPhotoExtension = photoShell.photo?.registerExtension(
-      "photo",
-      createPhotoExtension(ctx),
-    );
+    photoExtensionMountCount += 1;
+    if (!unregisterPhotoExtension) {
+      unregisterPhotoExtension = photoShell.photo?.registerExtension(
+        "photo",
+        createPhotoExtension(ctx),
+      );
+    }
     const root: Root = createRoot(container);
     const locale = ctx.locale.startsWith("zh") ? uiZhCN : uiEnUS;
     root.render(
@@ -83,7 +89,11 @@ export default defineApp({
       </StrictMode>,
     );
     return () => {
-      unregisterPhotoExtension?.();
+      photoExtensionMountCount = Math.max(0, photoExtensionMountCount - 1);
+      if (photoExtensionMountCount === 0) {
+        unregisterPhotoExtension?.();
+        unregisterPhotoExtension = undefined;
+      }
       root.unmount();
     };
   },

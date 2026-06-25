@@ -24,6 +24,7 @@ import {
 } from "./PhotoAiStore";
 import { PhotoFacesPanel } from "./PhotoFacesPanel";
 import { PhotoMiniMap } from "./PhotoMiniMap";
+import { PhotoToolsPanel } from "./PhotoToolsPanel";
 import { InfoRow, InfoSection } from "./info-panel-helpers";
 
 export function PhotoAiInfoExtras({
@@ -349,6 +350,7 @@ export function PhotoAiInfoExtras({
         </InfoSection>
       )}
 
+      <PhotoToolsPanel photoId={detail.id} onRefreshComplete={invalidateAll} />
     </div>
   );
 }
