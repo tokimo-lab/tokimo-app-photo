@@ -1,5 +1,6 @@
 use chrono::Utc;
 use sea_orm::prelude::Expr;
+use sea_orm::sea_query::OnConflict;
 use sea_orm::*;
 use std::collections::HashMap;
 use tracing::{error, info, warn};
@@ -57,6 +58,25 @@ impl PhotoFaceService {
         Ok((face, index as i32))
     }
 
+    async fn ensure_local_person<C: ConnectionTrait>(db: &C, app_id: Uuid, person_id: Uuid) -> Result<(), AppError> {
+        let now = Utc::now().fixed_offset();
+        let active = photo_persons::ActiveModel {
+            id: Set(person_id),
+            app_id: Set(app_id),
+            name: Set(None),
+            face_count: Set(0),
+            is_hidden: Set(false),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        };
+        photo_persons::Entity::insert(active)
+            .on_conflict(OnConflict::column(photo_persons::Column::Id).do_nothing().to_owned())
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
     /// Detect faces in a single photo and store embeddings.
     ///
     /// When `bus_client` and `user_id` are provided, face results are also
@@ -96,7 +116,7 @@ impl PhotoFaceService {
         bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
         user_id: Option<Uuid>,
     ) -> Result<usize, AppError> {
-        photos::Entity::find_by_id(photo_id)
+        let photo = photos::Entity::find_by_id(photo_id)
             .one(db)
             .await?
             .not_found("Photo not found")?;
@@ -209,6 +229,7 @@ impl PhotoFaceService {
             };
 
             if let Some(person_id) = person_id {
+                Self::ensure_local_person(db, photo.app_id, person_id).await?;
                 let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
                 let stmt = Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,

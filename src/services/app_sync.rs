@@ -21,6 +21,7 @@ use uuid::Uuid;
 use tokimo_bus_client::BusClient;
 
 use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
+use crate::bus_clients::person as person_bus;
 use crate::db::entities::{
     photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
@@ -123,7 +124,7 @@ impl AppSyncService {
             .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
 
         if clear_data {
-            Self::clear_library_data(db, library_id).await?;
+            Self::clear_library_data_with_person_sync(db, client, library_id, user_id).await?;
         }
 
         // Clean up old finished jobs
@@ -213,6 +214,68 @@ impl AppSyncService {
         info!("  Deleted {deleted} photos");
 
         txn.commit().await?;
+        Ok(())
+    }
+
+    /// Clear local photo data and remove corresponding source registrations
+    /// from the shared person app cache.
+    pub async fn clear_library_data_with_person_sync(
+        db: &DatabaseConnection,
+        bus_client: &BusClient,
+        library_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        let photo_ids = Self::library_photo_ids(db, library_id).await?;
+
+        Self::clear_library_data(db, library_id).await?;
+        Self::delete_person_sources_for_photos(bus_client, user_id, &photo_ids).await?;
+
+        Ok(())
+    }
+
+    async fn library_photo_ids(db: &DatabaseConnection, library_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        Ok(photos::Entity::find()
+            .filter(photos::Column::AppId.eq(library_id))
+            .select_only()
+            .column(photos::Column::Id)
+            .into_tuple::<Uuid>()
+            .all(db)
+            .await?)
+    }
+
+    async fn delete_person_sources_for_photos(
+        bus_client: &BusClient,
+        user_id: Uuid,
+        photo_ids: &[Uuid],
+    ) -> Result<(), AppError> {
+        if photo_ids.is_empty() {
+            return Ok(());
+        }
+
+        info!(
+            "Deleting {} person source registrations for cleared photo library",
+            photo_ids.len()
+        );
+
+        for photo_id in photo_ids {
+            let source_id = photo_id.to_string();
+            let caller = person_bus::photo_caller(Some(user_id));
+
+            match person_bus::delete_source(bus_client, caller, "photo", &source_id).await {
+                Ok(()) => {}
+                Err(err) => {
+                    warn!("person.delete_source failed for photo {photo_id}; creating retry job: {err}");
+                    person_bus::delete_source_via_job(
+                        bus_client,
+                        person_bus::photo_caller(Some(user_id)),
+                        "photo",
+                        &source_id,
+                    )
+                    .await?;
+                }
+            }
+        }
+
         Ok(())
     }
 

@@ -236,7 +236,7 @@ pub async fn delete_source_via_job(
     let job = jobs::create(
         client,
         caller,
-        CreateJobRequest::new("person_delete_source", serde_json::to_value(&request)?),
+        CreateJobRequest::new("person_sync_delete_source", serde_json::to_value(&request)?),
     )
     .await?;
     Ok(job.id)

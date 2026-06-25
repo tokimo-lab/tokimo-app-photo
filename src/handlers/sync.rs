@@ -46,8 +46,17 @@ pub async fn sync_photo(
         return Err(AppError::Conflict("Photo library is already syncing".into()));
     }
 
+    let user_id: Uuid = auth
+        .user_id
+        .parse()
+        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
+
     if clear_data {
-        AppSyncService::clear_library_data(&state.db, uid).await?;
+        let bus_client = state
+            .bus_client
+            .get()
+            .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
+        AppSyncService::clear_library_data_with_person_sync(&state.db, bus_client, uid, user_id).await?;
     }
 
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
@@ -63,11 +72,6 @@ pub async fn sync_photo(
     ] {
         crate::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
     }
-
-    let user_id: Uuid = auth
-        .user_id
-        .parse()
-        .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
     let db = state.db.clone();
     let sources = state.sources.clone();
