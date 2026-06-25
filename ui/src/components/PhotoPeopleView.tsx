@@ -1,5 +1,5 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
-import { ChevronRight, Pencil, User, Users } from "lucide-react";
+import { Check, ChevronRight, Pencil, User, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
@@ -239,7 +239,7 @@ export function PhotoPeopleView({
               <div className="flex w-full min-w-0 items-center justify-center gap-1">
                 {editingId === person.id ? (
                   <fieldset
-                    className="flex items-center gap-1 border-0 p-0"
+                    className="flex w-full min-w-0 flex-nowrap items-center justify-center gap-1 border-0 p-0"
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.nativeEvent.isComposing)
@@ -251,17 +251,20 @@ export function PhotoPeopleView({
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-24 rounded border border-border-base bg-surface-raised px-1.5 py-0.5 text-center text-sm text-fg-primary"
+                      className="min-w-0 flex-1 rounded border border-border-base bg-surface-raised px-1.5 py-0.5 text-center text-sm text-fg-primary"
                     />
                     <Button
                       size="small"
+                      className="h-7 w-7 shrink-0 p-0"
+                      title="确认"
+                      aria-label="确认"
                       onClick={(e) => {
                         e.stopPropagation();
                         submitRename(person.id);
                       }}
                       loading={renameMutation.isPending}
                     >
-                      确定
+                      <Check className="h-3.5 w-3.5" />
                     </Button>
                   </fieldset>
                 ) : (
