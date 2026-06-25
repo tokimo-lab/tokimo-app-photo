@@ -4,6 +4,13 @@ import { useWindowContainer } from "@tokimo/sdk";
 import { api } from "../generated/rust-api";
 import { useTimelineLayout } from "./timeline-layout";
 
+const SCRUBBER_TRACK_BACKGROUND =
+  "color-mix(in oklab, var(--color-fg-muted) 26%, transparent)";
+const SCRUBBER_TICK_BACKGROUND =
+  "color-mix(in oklab, var(--color-fg-muted) 24%, transparent)";
+const SCRUBBER_THUMB_BACKGROUND =
+  "color-mix(in oklab, var(--color-accent) 72%, transparent)";
+
 /**
  * Non-linear timeline scrubber for photo timeline.
  *
@@ -189,15 +196,19 @@ export function TimelineScrubber({
       onMouseLeave={onLeave}
     >
       {/* Vertical track line */}
-      <div className="absolute left-5 top-0 bottom-0 w-px bg-neutral-400/20 dark:bg-neutral-500/20" />
+      <div
+        className="absolute left-5 top-0 bottom-0 w-px"
+        style={{ backgroundColor: SCRUBBER_TRACK_BACKGROUND }}
+      />
 
       {/* Thumb indicator — thin rounded bar aligned with tick marks */}
       <div
-        className="absolute left-4 right-0.5 h-[3px] rounded-full bg-orange-500/50 dark:bg-orange-400/60"
+        className="absolute left-4 right-0.5 h-[3px] rounded-full"
         style={{
           top: `${thumbPos * 100}%`,
           transform: "translateY(-50%)",
           transition: dragging ? "none" : "top 150ms ease-out",
+          backgroundColor: SCRUBBER_THUMB_BACKGROUND,
         }}
       />
 
@@ -230,8 +241,11 @@ export function TimelineScrubber({
           // Day tick (no label, short mark)
           <div
             key={`d-${m.position.toFixed(6)}`}
-            className="absolute left-[18px] h-px w-1 bg-neutral-400/20 dark:bg-neutral-500/20"
-            style={{ top: `${m.position * 100}%` }}
+            className="absolute left-[18px] h-px w-1"
+            style={{
+              top: `${m.position * 100}%`,
+              backgroundColor: SCRUBBER_TICK_BACKGROUND,
+            }}
           />
         ),
       )}
@@ -239,7 +253,7 @@ export function TimelineScrubber({
       {/* Tooltip (during hover/drag) — positioned relative to track */}
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-40 rounded-md bg-neutral-800/90 px-2 py-1 text-xs whitespace-nowrap text-white shadow-lg dark:bg-neutral-700/95"
+          className="pointer-events-none absolute z-40 rounded-md border border-border-base bg-surface-overlay px-2 py-1 text-xs whitespace-nowrap text-fg-primary shadow-lg"
           style={{
             top: tooltip.y,
             right: "100%",
