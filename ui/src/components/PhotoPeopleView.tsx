@@ -1,6 +1,6 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Pencil, User, Users } from "lucide-react";
+import { Check, Pencil, User, UserRound, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
@@ -153,21 +153,6 @@ export function PhotoPeopleView({
     setEditingId(null);
   }, []);
 
-  // Breadcrumb
-  const breadcrumb = useMemo(() => {
-    const items: { label: string; onClick?: () => void }[] = [
-      {
-        label: "全部人物",
-        onClick:
-          view.level !== "grid" ? () => setView({ level: "grid" }) : undefined,
-      },
-    ];
-    if (view.level === "detail" && view.person) {
-      items.push({ label: view.person.name ?? "未命名" });
-    }
-    return items;
-  }, [view]);
-
   if (personsQuery.isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -187,26 +172,31 @@ export function PhotoPeopleView({
   return (
     <div className="flex flex-col gap-4">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 px-4 text-sm">
-        {breadcrumb.map((item, i) => (
-          <span key={item.label} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
-            {item.onClick ? (
-              <button
-                type="button"
-                className="cursor-pointer text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400"
-                onClick={item.onClick}
-              >
-                {item.label}
-              </button>
-            ) : (
-              <span className="font-medium text-fg-secondary">
-                {item.label}
-              </span>
-            )}
+      <div className="flex items-center gap-2 pl-1 pr-14 text-sm">
+        {view.level === "detail" ? (
+          <button
+            type="button"
+            className="cursor-pointer text-blue-500 transition-colors hover:text-blue-600 hover:underline dark:text-blue-400"
+            onClick={handleBack}
+          >
+            全部人物
+          </button>
+        ) : (
+          <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
+            <Users className="h-3.5 w-3.5" />
+            全部人物
           </span>
-        ))}
-        <span className="ml-2 text-fg-muted">
+        )}
+        {view.level === "detail" && view.person && (
+          <>
+            <span className="text-fg-muted">/</span>
+            <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
+              <UserRound className="h-3.5 w-3.5" />
+              {view.person.name ?? "未命名"}
+            </span>
+          </>
+        )}
+        <span className="text-fg-muted">
           {view.level === "detail"
             ? `${photosTotal} 张照片`
             : `${persons.length} 位人物`}
@@ -295,16 +285,6 @@ export function PhotoPeopleView({
       {/* Person detail */}
       {view.level === "detail" && (
         <>
-          <div className="px-4">
-            <Button
-              variant="text"
-              onClick={handleBack}
-              className="mb-2 text-sm"
-            >
-              <Users className="mr-1 h-3.5 w-3.5" />
-              返回全部人物
-            </Button>
-          </div>
           {allPhotos.length > 0 ? (
             <PhotoTimeline
               photos={allPhotos}
