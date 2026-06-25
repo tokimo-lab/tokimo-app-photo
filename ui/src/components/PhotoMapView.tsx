@@ -405,7 +405,7 @@ export function PhotoMapView({
         <div ref={themeMenuRef} className="absolute top-3 left-3 z-10">
           <button
             type="button"
-            className="flex items-center gap-1.5 rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-fg-secondary shadow-md backdrop-blur-sm transition-colors hover:bg-surface-raised/90"
+            className="flex items-center gap-1.5 rounded-lg border border-base bg-surface-overlay px-3 py-2 text-sm font-medium text-fg-primary shadow-md backdrop-blur-sm transition-colors hover:bg-surface-overlay-hover"
             onClick={() => setThemeOpen(!themeOpen)}
           >
             <Layers className="h-4 w-4" />
@@ -420,13 +420,13 @@ export function PhotoMapView({
                   type="button"
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-fill-tertiary ${
                     mapTheme === t.key
-                      ? "font-medium text-blue-600 dark:text-blue-400"
+                      ? "font-medium text-accent-text"
                       : "text-fg-secondary"
                   }`}
                   onClick={() => handleSetTheme(t.key)}
                 >
                   {mapTheme === t.key && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   )}
                   <span className={mapTheme === t.key ? "" : "pl-3.5"}>
                     {t.label}
