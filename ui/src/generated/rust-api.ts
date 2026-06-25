@@ -613,6 +613,7 @@ export const photoApi = {
     method: "PATCH",
     pathFn: (input) =>
       `/api/apps/photo/${enc(input.id)}/persons/${enc(input.personId)}`,
+    bodyFn: (input) => ({ name: input.name }),
   }),
 
   // ── Single-photo AI features ──
