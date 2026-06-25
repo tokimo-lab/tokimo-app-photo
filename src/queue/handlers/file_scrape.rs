@@ -27,7 +27,10 @@ pub async fn handle(
         .get("filePath")
         .and_then(|v| v.as_str())
         .ok_or("Missing filePath")?;
-    let file_size = params.get("fileSize").and_then(JsonValue::as_i64).unwrap_or(0);
+    let file_size = params
+        .get("fileSize")
+        .and_then(JsonValue::as_i64)
+        .unwrap_or(0);
     let source_id = params
         .get("sourceId")
         .and_then(|v| v.as_str())

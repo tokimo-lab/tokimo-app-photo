@@ -73,9 +73,13 @@ pub async fn archive_list(
     State(_state): State<Arc<AppState>>,
     Path(_source_id): Path<String>,
     Json(_body): Json<ArchivePathRequest>,
-) -> Result<JsonResponse<ApiResponse<ArchiveListResponse>>, (StatusCode, JsonResponse<ApiResponse<ArchiveListResponse>>)>
-{
-    Err(err400("archive operations not yet available in this app".into()))
+) -> Result<
+    JsonResponse<ApiResponse<ArchiveListResponse>>,
+    (StatusCode, JsonResponse<ApiResponse<ArchiveListResponse>>),
+> {
+    Err(err400(
+        "archive operations not yet available in this app".into(),
+    ))
 }
 
 pub async fn archive_extract_all(
@@ -83,7 +87,9 @@ pub async fn archive_extract_all(
     Path(_source_id): Path<String>,
     Json(_body): Json<ArchiveExtractRequest>,
 ) -> Result<JsonResponse<ApiResponse<()>>, (StatusCode, JsonResponse<ApiResponse<()>>)> {
-    Err(err400("archive operations not yet available in this app".into()))
+    Err(err400(
+        "archive operations not yet available in this app".into(),
+    ))
 }
 
 pub async fn archive_extract_file(
@@ -91,7 +97,9 @@ pub async fn archive_extract_file(
     Path(_source_id): Path<String>,
     Json(_body): Json<ArchiveExtractFileRequest>,
 ) -> Result<JsonResponse<ApiResponse<()>>, (StatusCode, JsonResponse<ApiResponse<()>>)> {
-    Err(err400("archive operations not yet available in this app".into()))
+    Err(err400(
+        "archive operations not yet available in this app".into(),
+    ))
 }
 
 pub async fn archive_create(
@@ -99,5 +107,7 @@ pub async fn archive_create(
     Path(_source_id): Path<String>,
     Json(_body): Json<ArchiveCreateRequest>,
 ) -> Result<JsonResponse<ApiResponse<()>>, (StatusCode, JsonResponse<ApiResponse<()>>)> {
-    Err(err400("archive operations not yet available in this app".into()))
+    Err(err400(
+        "archive operations not yet available in this app".into(),
+    ))
 }

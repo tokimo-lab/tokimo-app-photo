@@ -8,7 +8,14 @@ use crate::error::AppError;
 
 pub struct JobRepo;
 
-type ChildJobInput<'a> = (&'a str, JsonValue, Option<JsonValue>, Option<Uuid>, Uuid, String);
+type ChildJobInput<'a> = (
+    &'a str,
+    JsonValue,
+    Option<JsonValue>,
+    Option<Uuid>,
+    Uuid,
+    String,
+);
 
 /// Result of `aggregate_parent_progress`.
 #[derive(Debug)]
@@ -317,7 +324,9 @@ impl JobRepo {
         pending_failure: i32,
     ) -> Result<Option<AggregatedProgress>, AppError> {
         let parent = jobs::Entity::find_by_id(parent_id).one(db).await?;
-        let Some(_parent) = parent else { return Ok(None) };
+        let Some(_parent) = parent else {
+            return Ok(None);
+        };
 
         let children = jobs::Entity::find()
             .filter(jobs::Column::ParentJobId.eq(parent_id))
@@ -329,8 +338,10 @@ impl JobRepo {
             .iter()
             .filter(|j| j.status != "pending" && j.status != "running")
             .count() as i64;
-        let successes = children.iter().filter(|j| j.status == "completed").count() as i32 + pending_success;
-        let failures = children.iter().filter(|j| j.status == "failed").count() as i32 + pending_failure;
+        let successes =
+            children.iter().filter(|j| j.status == "completed").count() as i32 + pending_success;
+        let failures =
+            children.iter().filter(|j| j.status == "failed").count() as i32 + pending_failure;
         let completed = done >= total_children;
 
         // Update parent progress
@@ -362,7 +373,10 @@ impl JobRepo {
     }
 
     /// Cancel all jobs for an app_id.
-    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(db: &C, _app_id: Uuid) -> Result<u64, AppError> {
+    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(
+        db: &C,
+        _app_id: Uuid,
+    ) -> Result<u64, AppError> {
         let now = Utc::now().fixed_offset();
         let result = jobs::Entity::update_many()
             .col_expr(jobs::Column::Status, Expr::value("cancelled"))
@@ -375,7 +389,10 @@ impl JobRepo {
     }
 
     /// Delete finished jobs for an app_id.
-    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(db: &C, _app_id: Uuid) -> Result<u64, AppError> {
+    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(
+        db: &C,
+        _app_id: Uuid,
+    ) -> Result<u64, AppError> {
         let result = jobs::Entity::delete_many()
             .filter(jobs::Column::Status.is_in(vec!["completed", "failed", "cancelled"]))
             .exec(db)

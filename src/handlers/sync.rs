@@ -43,7 +43,9 @@ pub async fn sync_photo(
     let clear_data = body.and_then(|b| b.clear_data).unwrap_or(false);
 
     if library.sync_status == "syncing" && !clear_data {
-        return Err(AppError::Conflict("Photo library is already syncing".into()));
+        return Err(AppError::Conflict(
+            "Photo library is already syncing".into(),
+        ));
     }
 
     let user_id: Uuid = auth
@@ -56,7 +58,8 @@ pub async fn sync_photo(
             .bus_client
             .get()
             .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
-        AppSyncService::clear_library_data_with_person_sync(&state.db, bus_client, uid, user_id).await?;
+        AppSyncService::clear_library_data_with_person_sync(&state.db, bus_client, uid, user_id)
+            .await?;
     }
 
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
@@ -79,15 +82,40 @@ pub async fn sync_photo(
     let library_name = library.name.clone();
 
     tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&db, &sources, &state.bus_client, uid, false, user_id).await {
+        match AppSyncService::execute_photo_sync(
+            &db,
+            &sources,
+            &state.bus_client,
+            uid,
+            false,
+            user_id,
+        )
+        .await
+        {
             Ok(result) => {
-                info!("photo sync completed, {} jobs dispatched", result.total_jobs);
-                photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)
-                    .await;
+                info!(
+                    "photo sync completed, {} jobs dispatched",
+                    result.total_jobs
+                );
+                photo_notify::notify_sync_completed(
+                    &state_for_task,
+                    user_id,
+                    uid,
+                    &library_name,
+                    result.total_jobs,
+                )
+                .await;
             }
             Err(e) => {
                 error!("photo sync failed: {e}");
-                photo_notify::notify_sync_failed(&state_for_task, user_id, uid, &library_name, &e.to_string()).await;
+                photo_notify::notify_sync_failed(
+                    &state_for_task,
+                    user_id,
+                    uid,
+                    &library_name,
+                    &e.to_string(),
+                )
+                .await;
             }
         }
     });

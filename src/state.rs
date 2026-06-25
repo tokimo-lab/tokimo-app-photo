@@ -56,17 +56,29 @@ pub struct AppState {
 impl AppState {
     /// Check if OCR is enabled in the current AI settings.
     pub fn is_ocr_enabled(&self) -> bool {
-        self.ai.read().unwrap().as_ref().is_some_and(|s| s.ocr_enabled)
+        self.ai
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| s.ocr_enabled)
     }
 
     /// Check if CLIP is enabled in the current AI settings.
     pub fn is_clip_enabled(&self) -> bool {
-        self.ai.read().unwrap().as_ref().is_some_and(|s| s.clip_enabled)
+        self.ai
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| s.clip_enabled)
     }
 
     /// Check if face recognition is enabled in the current AI settings.
     pub fn is_face_enabled(&self) -> bool {
-        self.ai.read().unwrap().as_ref().is_some_and(|s| s.face_enabled)
+        self.ai
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| s.face_enabled)
     }
 
     /// Check if AI models are ready (always true when using remote AI worker).
@@ -85,7 +97,9 @@ impl AppState {
     }
 
     pub fn bus_notify_job(&self, job: &JobOutput) {
-        let Some(client) = self.bus_client.get() else { return };
+        let Some(client) = self.bus_client.get() else {
+            return;
+        };
         let Ok(payload) = serde_json::to_vec(&serde_json::json!({
             "jobId":    job.id,
             "appId":    "photo",
@@ -104,7 +118,12 @@ impl AppState {
         let client = Arc::clone(client);
         tokio::spawn(async move {
             if let Err(e) = client
-                .invoke("task_queue", "upsert_job", payload, client.auto_caller("photo"))
+                .invoke(
+                    "task_queue",
+                    "upsert_job",
+                    payload,
+                    client.auto_caller("photo"),
+                )
                 .await
             {
                 tracing::warn!(err = %e, "bus_notify_job: failed to upsert job on bus");

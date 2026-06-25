@@ -11,8 +11,12 @@ pub fn normalize_source_path(path: &str) -> Result<String, String> {
             std::path::Component::Normal(part) => {
                 parts.push(part.to_string_lossy().to_string());
             }
-            std::path::Component::ParentDir => return Err("path must not contain parent traversal ('..')".into()),
-            std::path::Component::Prefix(_) => return Err("path contains an unsupported path prefix".into()),
+            std::path::Component::ParentDir => {
+                return Err("path must not contain parent traversal ('..')".into());
+            }
+            std::path::Component::Prefix(_) => {
+                return Err("path contains an unsupported path prefix".into());
+            }
         }
     }
     if parts.is_empty() {

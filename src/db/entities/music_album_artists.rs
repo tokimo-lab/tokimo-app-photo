@@ -12,7 +12,10 @@ pub struct Model {
     pub album_id: Uuid,
     #[sea_orm(unique_key = "music_album_artists_album_id_artist_id_role_key")]
     pub artist_id: Uuid,
-    #[sea_orm(column_type = "Text", unique_key = "music_album_artists_album_id_artist_id_role_key")]
+    #[sea_orm(
+        column_type = "Text",
+        unique_key = "music_album_artists_album_id_artist_id_role_key"
+    )]
     pub role: String,
     pub sort_order: i32,
 }

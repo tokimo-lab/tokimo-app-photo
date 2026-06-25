@@ -26,7 +26,11 @@ use crate::error::AppError;
 use crate::queue::{AppEvent, CancelReason, PREEMPT_REASON};
 use sea_orm::EntityTrait;
 
-pub async fn preempt_scan_for(state: &Arc<AppState>, app_id: Uuid, task_type: &str) -> Result<usize, AppError> {
+pub async fn preempt_scan_for(
+    state: &Arc<AppState>,
+    app_id: Uuid,
+    task_type: &str,
+) -> Result<usize, AppError> {
     let parents = JobRepo::preempt_scans(&state.db, app_id, task_type, PREEMPT_REASON).await?;
     if parents.is_empty() {
         return Ok(0);
@@ -60,7 +64,8 @@ pub async fn preempt_scan_child_for_photo(
     task_type: &str,
     photo_id: Uuid,
 ) -> Result<usize, AppError> {
-    let cancelled = JobRepo::preempt_scan_child_for(&state.db, task_type, photo_id, PREEMPT_REASON).await?;
+    let cancelled =
+        JobRepo::preempt_scan_child_for(&state.db, task_type, photo_id, PREEMPT_REASON).await?;
     if cancelled.is_empty() {
         return Ok(0);
     }

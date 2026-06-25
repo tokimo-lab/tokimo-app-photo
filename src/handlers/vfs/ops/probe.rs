@@ -169,7 +169,11 @@ fn convert_stream(s: tokimo_package_ffmpeg::StreamInfo) -> FileProbeStream {
             v.field_order.clone(),
             {
                 let rate = &s.avg_frame_rate;
-                if rate == "0/0" { None } else { Some(rate.clone()) }
+                if rate == "0/0" {
+                    None
+                } else {
+                    Some(rate.clone())
+                }
             },
         ),
         None => (None, None, None, None, None, None, None, None, None, None),

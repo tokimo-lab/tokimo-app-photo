@@ -120,7 +120,10 @@ pub async fn photos_by_bbox(
         page: q.page.unwrap_or(1),
         page_size: q.page_size.unwrap_or(80),
     };
-    let photos = PhotoRepo::list_by_bbox(&state.db, app_id, q.min_lat, q.max_lat, q.min_lng, q.max_lng, &page).await?;
+    let photos = PhotoRepo::list_by_bbox(
+        &state.db, app_id, q.min_lat, q.max_lat, q.min_lng, q.max_lng, &page,
+    )
+    .await?;
     Ok(ok(serde_json::to_value(photos).unwrap()))
 }
 
@@ -177,7 +180,11 @@ pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> im
                     .into_iter()
                     .flatten()
                     .collect();
-                    if parts.is_empty() { None } else { Some(parts.join("")) }
+                    if parts.is_empty() {
+                        None
+                    } else {
+                        Some(parts.join(""))
+                    }
                 })
                 .unwrap_or_else(|| "OK".to_string());
             serde_json::json!({ "name": "serverApi", "success": true, "detail": addr })
@@ -190,13 +197,21 @@ pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> im
 
     match settings.provider.as_str() {
         "amap" => {
-            if let Some(js_key) = settings.amap_js_api_key.as_deref().filter(|k| !k.is_empty()) {
+            if let Some(js_key) = settings
+                .amap_js_api_key
+                .as_deref()
+                .filter(|k| !k.is_empty())
+            {
                 let map_result = test_amap_js_key(http, js_key).await;
                 results.push(map_result);
             }
         }
         "tianditu" => {
-            if let Some(bk) = settings.tianditu_browser_key.as_deref().filter(|k| !k.is_empty()) {
+            if let Some(bk) = settings
+                .tianditu_browser_key
+                .as_deref()
+                .filter(|k| !k.is_empty())
+            {
                 let map_result = test_tianditu_browser_key(http, bk).await;
                 results.push(map_result);
             }
@@ -208,7 +223,9 @@ pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> im
 }
 
 async fn test_amap_js_key(http: &reqwest::Client, js_key: &str) -> serde_json::Value {
-    let url = format!("https://vdata.amap.com/nebula/v2?key={js_key}&flds=road,building,region&t=10,855,340,0&p=16");
+    let url = format!(
+        "https://vdata.amap.com/nebula/v2?key={js_key}&flds=road,building,region&t=10,855,340,0&p=16"
+    );
     match http.get(&url).send().await {
         Ok(resp) => {
             if resp.status().is_success() {

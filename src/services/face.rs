@@ -22,7 +22,10 @@ pub struct PhotoFaceService;
 impl PhotoFaceService {
     /// Format a 512-d embedding as a pgvector literal: `[0.1,0.2,…]`
     fn vec_literal(embedding: &[f64]) -> String {
-        let inner: Vec<String> = embedding.iter().map(std::string::ToString::to_string).collect();
+        let inner: Vec<String> = embedding
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         format!("[{}]", inner.join(","))
     }
 
@@ -34,10 +37,16 @@ impl PhotoFaceService {
         if person_ids.is_empty() {
             return Ok(HashMap::new());
         }
-        let client = bus_client.ok_or_else(|| AppError::Internal("Person service unavailable".into()))?;
+        let client =
+            bus_client.ok_or_else(|| AppError::Internal("Person service unavailable".into()))?;
         let uid = user_id.ok_or_else(|| AppError::Unauthorized("missing user id".into()))?;
-        let persons = person_bus::persons_by_ids(client, person_bus::photo_caller(Some(uid)), person_ids).await?;
-        Ok(persons.into_iter().map(|person| (person.id, person)).collect())
+        let persons =
+            person_bus::persons_by_ids(client, person_bus::photo_caller(Some(uid)), person_ids)
+                .await?;
+        Ok(persons
+            .into_iter()
+            .map(|person| (person.id, person))
+            .collect())
     }
 
     async fn face_ref(
@@ -58,7 +67,11 @@ impl PhotoFaceService {
         Ok((face, index as i32))
     }
 
-    async fn ensure_local_person<C: ConnectionTrait>(db: &C, app_id: Uuid, person_id: Uuid) -> Result<(), AppError> {
+    async fn ensure_local_person<C: ConnectionTrait>(
+        db: &C,
+        app_id: Uuid,
+        person_id: Uuid,
+    ) -> Result<(), AppError> {
         let now = Utc::now().fixed_offset();
         let active = photo_persons::ActiveModel {
             id: Set(person_id),
@@ -71,7 +84,11 @@ impl PhotoFaceService {
             ..Default::default()
         };
         photo_persons::Entity::insert(active)
-            .on_conflict(OnConflict::column(photo_persons::Column::Id).do_nothing().to_owned())
+            .on_conflict(
+                OnConflict::column(photo_persons::Column::Id)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .exec(db)
             .await?;
         Ok(())
@@ -95,7 +112,10 @@ impl PhotoFaceService {
 
         let _ = bus_client.ok_or_else(|| AppError::Internal("jobs service unavailable".into()))?;
         let uid = user_id.ok_or_else(|| AppError::Unauthorized("missing user id".into()))?;
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let image_path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
         let data = crate::services::media_jobs::create_media_job_and_wait(
             state,
             uid,
@@ -171,7 +191,9 @@ impl PhotoFaceService {
             )
             .await
             {
-                warn!("[photo_face] person.register_faces failed for photo {photo_id}, creating retry job: {e}");
+                warn!(
+                    "[photo_face] person.register_faces failed for photo {photo_id}, creating retry job: {e}"
+                );
                 // 创建 job 异步重试，保证最终一致
                 if let Err(e2) = person_bus::register_faces_via_job(
                     bc,
@@ -211,7 +233,10 @@ impl PhotoFaceService {
                 ],
             );
             let row = db.query_one_raw(stmt).await?;
-            let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
+            let face_id: i32 = row
+                .as_ref()
+                .and_then(|r| r.try_get::<i32>("", "id").ok())
+                .unwrap_or(0);
 
             let person_id = if let (Some(bc), Some(uid)) = (bus_client, user_id) {
                 let caller = person_bus::photo_caller(Some(uid));
@@ -258,7 +283,8 @@ impl PhotoFaceService {
         }
         let total = pending.len();
         info!("[photo_face] Processing {total} photos for app {app_id}");
-        let (success, _, _) = Self::process_photo_ids(db, state, pending, bus_client, user_id).await;
+        let (success, _, _) =
+            Self::process_photo_ids(db, state, pending, bus_client, user_id).await;
         info!("[photo_face] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -275,14 +301,17 @@ impl PhotoFaceService {
             return Err(AppError::Internal("Face recognition not enabled".into()));
         }
         if !state.is_face_enabled() || !state.models_ready() {
-            warn!("[photo_face] Media intelligence service is not ready, skipping batch for app {app_id}");
+            warn!(
+                "[photo_face] Media intelligence service is not ready, skipping batch for app {app_id}"
+            );
             return Ok(Vec::new());
         }
         let ids = photos::Entity::find()
             .filter(photos::Column::AppId.eq(app_id))
             .filter(photos::Column::DeletedAt.is_null())
             .filter(Expr::cust(
-                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)".to_string(),
+                "NOT EXISTS (SELECT 1 FROM photo_faces pf WHERE pf.photo_id = photos.id)"
+                    .to_string(),
             ))
             .select_only()
             .column(photos::Column::Id)
@@ -360,7 +389,9 @@ impl PhotoFaceService {
             local_rows.push((
                 person_id,
                 row.try_get::<i32>("", "face_count").unwrap_or(0),
-                row.try_get::<Uuid>("", "avatar_photo_id").ok().map(|u| u.to_string()),
+                row.try_get::<Uuid>("", "avatar_photo_id")
+                    .ok()
+                    .map(|u| u.to_string()),
                 row.try_get::<Option<String>>("", "avatar_thumbnail_path")
                     .ok()
                     .flatten(),
@@ -370,16 +401,19 @@ impl PhotoFaceService {
         let summaries = Self::fetch_person_summaries(bus_client, user_id, person_ids).await?;
         let persons = local_rows
             .into_iter()
-            .filter_map(|(person_id, face_count, avatar_photo_id, avatar_thumbnail_path)| {
-                let summary = summaries.get(&person_id)?;
-                Some(PersonOutput {
-                    id: person_id.to_string(),
-                    name: summary.name.clone(),
-                    face_count,
-                    avatar_photo_id,
-                    avatar_thumbnail_path: avatar_thumbnail_path.or_else(|| summary.avatar_url.clone()),
-                })
-            })
+            .filter_map(
+                |(person_id, face_count, avatar_photo_id, avatar_thumbnail_path)| {
+                    let summary = summaries.get(&person_id)?;
+                    Some(PersonOutput {
+                        id: person_id.to_string(),
+                        name: summary.name.clone(),
+                        face_count,
+                        avatar_photo_id,
+                        avatar_thumbnail_path: avatar_thumbnail_path
+                            .or_else(|| summary.avatar_url.clone()),
+                    })
+                },
+            )
             .collect();
 
         Ok(persons)
@@ -451,7 +485,9 @@ impl PhotoFaceService {
             [target_id.into(), source_id.into(), app_id.into()],
         );
         db.execute_raw(stmt).await?;
-        photo_persons::Entity::delete_by_id(source_id).exec(db).await?;
+        photo_persons::Entity::delete_by_id(source_id)
+            .exec(db)
+            .await?;
         Ok(())
     }
 
@@ -545,9 +581,9 @@ impl PhotoFaceService {
             face_index,
         )
         .await?;
-        let person_id = matched
-            .person_id
-            .ok_or_else(|| AppError::Internal("person.create_person_from_face returned no person id".into()))?;
+        let person_id = matched.person_id.ok_or_else(|| {
+            AppError::Internal("person.create_person_from_face returned no person id".into())
+        })?;
 
         let txn = db.begin().await?;
         let face = photo_faces::Entity::find_by_id(face_id)
@@ -584,8 +620,14 @@ impl PhotoFaceService {
 
     async fn clear_avatar_face<C: ConnectionTrait>(db: &C, face_id: i32) -> Result<(), AppError> {
         photo_persons::Entity::update_many()
-            .col_expr(photo_persons::Column::AvatarFaceId, Expr::value(Option::<i32>::None))
-            .col_expr(photo_persons::Column::UpdatedAt, Expr::value(Utc::now().fixed_offset()))
+            .col_expr(
+                photo_persons::Column::AvatarFaceId,
+                Expr::value(Option::<i32>::None),
+            )
+            .col_expr(
+                photo_persons::Column::UpdatedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
             .filter(photo_persons::Column::AvatarFaceId.eq(face_id))
             .exec(db)
             .await?;
@@ -671,10 +713,16 @@ impl PhotoFaceService {
         match Self::fetch_person_summaries(bus_client, user_id, person_ids).await {
             Ok(summaries) => {
                 for face in &mut faces {
-                    let Some(person_id) = face.person_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()) else {
+                    let Some(person_id) = face
+                        .person_id
+                        .as_deref()
+                        .and_then(|id| Uuid::parse_str(id).ok())
+                    else {
                         continue;
                     };
-                    face.person_name = summaries.get(&person_id).and_then(|person| person.name.clone());
+                    face.person_name = summaries
+                        .get(&person_id)
+                        .and_then(|person| person.name.clone());
                 }
             }
             Err(e) => {

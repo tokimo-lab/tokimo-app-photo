@@ -53,6 +53,7 @@ async fn library_name(db: &DatabaseConnection, app_uuid: Uuid) -> String {
 /// the parent into `waiting` state. Idempotent: on retry it detects the
 /// `totalChildren` field already set by a prior partial run and skips
 /// re-enqueueing children.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_scan<F>(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
@@ -75,7 +76,9 @@ where
 
     // Idempotency: if a previous (crashed) run already enqueued children,
     // skip the enqueue phase and just transition to waiting again.
-    if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id).one(db).await
+    if let Ok(Some(self_job)) = crate::db::entities::jobs::Entity::find_by_id(job_id)
+        .one(db)
+        .await
         && self_job.data.get("totalChildren").is_some()
     {
         info!("[{task_type}_scan] resuming parent {job_id}: children already enqueued");
@@ -97,7 +100,10 @@ where
         if let Some(uid) = user_id {
             // Surface "nothing to do" as a completion notification (count=0)
             // so the user gets an immediate ack instead of silence.
-            photo_notify::notify_processing_completed(state, uid, app_uuid, &lib_name, task_type, 0).await;
+            photo_notify::notify_processing_completed(
+                state, uid, app_uuid, &lib_name, task_type, 0,
+            )
+            .await;
         }
         return Ok(Some(json!({
             "processed": 0,
@@ -136,7 +142,10 @@ where
     // Fire an immediate 0/total progress notification so the user sees the
     // task in their notification center right away.
     if let Some(uid) = user_id {
-        photo_notify::notify_processing_progress(state, uid, app_uuid, &lib_name, task_type, 0, total).await;
+        photo_notify::notify_processing_progress(
+            state, uid, app_uuid, &lib_name, task_type, 0, total,
+        )
+        .await;
     }
 
     Ok(Some(parent_data_waiting(total, &lib_name, task_type)))
@@ -206,7 +215,8 @@ pub async fn finalize_child(
     // it directly to keep the parent's progress/status accurate.
     let pending_s = i32::try_from(success).unwrap_or(i32::MAX);
     let pending_f = i32::try_from(failures).unwrap_or(i32::MAX);
-    let agg = JobRepo::aggregate_parent_progress(db, ctx.parent_job_id, pending_s, pending_f).await?;
+    let agg =
+        JobRepo::aggregate_parent_progress(db, ctx.parent_job_id, pending_s, pending_f).await?;
     if let (Some(uid), Some(a)) = (user_id, agg) {
         if a.completed {
             photo_notify::notify_processing_completed(

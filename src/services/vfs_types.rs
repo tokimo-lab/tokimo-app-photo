@@ -2,19 +2,20 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub const VIDEO_EXTENSIONS: [&str; 15] = [
-    ".mkv", ".mp4", ".avi", ".ts", ".rmvb", ".flv", ".wmv", ".mov", ".m4v", ".mpg", ".mpeg", ".vob", ".m2ts", ".webm",
-    ".iso",
+    ".mkv", ".mp4", ".avi", ".ts", ".rmvb", ".flv", ".wmv", ".mov", ".m4v", ".mpg", ".mpeg",
+    ".vob", ".m2ts", ".webm", ".iso",
 ];
 
 pub const PHOTO_EXTENSIONS: [&str; 22] = [
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".avif", ".raw", ".cr2",
-    ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".avif",
+    ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 pub const BOOK_EXTENSIONS: [&str; 6] = [".txt", ".epub", ".mobi", ".azw3", ".pdf", ".cbz"];
 
 pub const AUDIO_EXTENSIONS: [&str; 14] = [
-    ".flac", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac", ".wma", ".ape", ".alac", ".dsf", ".dff", ".aiff", ".aif",
+    ".flac", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac", ".wma", ".ape", ".alac", ".dsf",
+    ".dff", ".aiff", ".aif",
 ];
 
 #[derive(Deserialize)]

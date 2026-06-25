@@ -98,7 +98,11 @@ impl PhotoClipService {
     }
 
     /// Store a CLIP vector for a photo (upsert).
-    async fn store_vector(db: &DatabaseConnection, photo_id: Uuid, vec: &[f32]) -> Result<(), AppError> {
+    async fn store_vector(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        vec: &[f32],
+    ) -> Result<(), AppError> {
         let vec_str = Self::format_vector(vec);
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -136,7 +140,10 @@ impl PhotoClipService {
         photo: &photos::Model,
         user_id: Uuid,
     ) -> Result<(), AppError> {
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let image_path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
         let _ = state
             .bus_client
             .get()
@@ -176,7 +183,10 @@ impl PhotoClipService {
         photo: &photos::Model,
         source_base_paths: &std::collections::HashMap<Uuid, String>,
     ) -> Result<Vec<u8>, AppError> {
-        let path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
 
         // Try direct file read first (thumbnails, local paths)
         if let Ok(bytes) = tokio::fs::read(path).await {
@@ -186,7 +196,11 @@ impl PhotoClipService {
         // Resolve via pre-cached source base path
         if let Some(source_id) = photo.source_id {
             if let Some(base) = source_base_paths.get(&source_id) {
-                let combined = format!("{}/{}", base.trim_end_matches('/'), photo.path.trim_start_matches('/'));
+                let combined = format!(
+                    "{}/{}",
+                    base.trim_end_matches('/'),
+                    photo.path.trim_start_matches('/')
+                );
                 let abs = tokimo_package_utils::path::internal_to_native(&combined);
                 if let Ok(bytes) = tokio::fs::read(&abs).await {
                     return Self::maybe_decode_heic(bytes, &photo.filename).await;
@@ -214,7 +228,10 @@ impl PhotoClipService {
     #[allow(dead_code)]
     async fn maybe_decode_heic(raw_bytes: Vec<u8>, filename: &str) -> Result<Vec<u8>, AppError> {
         let lower = filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
+        if super::ocr::NEEDS_FFMPEG_DECODE
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+        {
             return Self::convert_to_jpeg_small(&raw_bytes, filename).await;
         }
         Ok(raw_bytes)
@@ -231,7 +248,10 @@ impl PhotoClipService {
         let raw_bytes = super::ocr::load_raw_bytes(db, &state.sources, photo, path).await?;
 
         let lower = photo.filename.to_lowercase();
-        if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
+        if super::ocr::NEEDS_FFMPEG_DECODE
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+        {
             return Self::convert_to_jpeg_small(&raw_bytes, &photo.filename).await;
         }
 
@@ -244,7 +264,9 @@ impl PhotoClipService {
         let fname = filename.to_string();
         let bytes = raw_bytes.to_vec();
         tokio::task::spawn_blocking(move || {
-            use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
+            use tokimo_package_ffmpeg::image::{
+                ImageDecodeOptions, ImageFormat, decode_image_from_bytes,
+            };
 
             let opts = ImageDecodeOptions {
                 width: Some(512),
@@ -378,7 +400,9 @@ impl PhotoClipService {
                         errors.push(msg);
                         let zero_vec = vec![0.0f32; 512];
                         if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
-                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                            warn!(
+                                "[photo_clip] failed to store zero vector for photo {photo_id}: {e}"
+                            );
                         }
                     }
                 }
@@ -498,7 +522,9 @@ impl PhotoClipService {
                             error!("[photo_clip] Failed for {filename}: {e}");
                             let zero_vec = vec![0.0f32; 512];
                             if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
-                                warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                                warn!(
+                                    "[photo_clip] failed to store zero vector for photo {photo_id}: {e}"
+                                );
                             }
                         }
                     }
@@ -515,7 +541,9 @@ impl PhotoClipService {
                         error!("[photo_clip] Failed for {filename}: {e}");
                         let zero_vec = vec![0.0f32; 512];
                         if let Err(e) = Self::store_vector(db, photo_id, &zero_vec).await {
-                            warn!("[photo_clip] failed to store zero vector for photo {photo_id}: {e}");
+                            warn!(
+                                "[photo_clip] failed to store zero vector for photo {photo_id}: {e}"
+                            );
                         }
                     }
                 }
@@ -544,7 +572,13 @@ impl PhotoClipService {
                     "total": total,
                     "success": success,
                 });
-                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(db, jid, pct, Some(payload)).await
+                if let Err(e) = crate::db::repos::job_repo::JobRepo::update_progress(
+                    db,
+                    jid,
+                    pct,
+                    Some(payload),
+                )
+                .await
                 {
                     warn!("[photo_clip] job {jid}: failed to update progress: {e}");
                 }
@@ -592,7 +626,10 @@ impl PhotoClipService {
         let mut results = Vec::new();
         for row in rows {
             results.push(ClipSearchResult {
-                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
+                photo_id: row
+                    .try_get::<Uuid>("", "photo_id")
+                    .unwrap_or_default()
+                    .to_string(),
                 filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
                 similarity: row.try_get::<f64>("", "similarity").unwrap_or(0.0),

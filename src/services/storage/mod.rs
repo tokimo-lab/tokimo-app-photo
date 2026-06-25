@@ -22,5 +22,7 @@ pub fn create_storage_from_env(data_local_path: &Path) -> Arc<dyn StorageProvide
         base_path.display()
     );
 
-    Arc::new(OpendalStorageProvider::new(&base_path).expect("Storage provider initialization failed"))
+    Arc::new(
+        OpendalStorageProvider::new(&base_path).expect("Storage provider initialization failed"),
+    )
 }

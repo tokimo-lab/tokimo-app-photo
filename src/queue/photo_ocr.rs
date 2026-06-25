@@ -23,7 +23,8 @@ pub async fn handle(
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
     let uid = user_id.ok_or("photo_ocr requires user id")?;
-    let (success, failures, errors) = PhotoOcrService::process_photo_ids(db, state, vec![ctx.photo_id], uid).await;
+    let (success, failures, errors) =
+        PhotoOcrService::process_photo_ids(db, state, vec![ctx.photo_id], uid).await;
     let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
     if failures > 0 {
         let msg = errors

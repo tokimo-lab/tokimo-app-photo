@@ -36,7 +36,11 @@ const ATTACHMENTS_MANIFEST: &str = ".attachments.json";
 #[async_trait]
 pub trait WriteCallback: Send + Sync + 'static {
     /// Called after a file is written or created via VFS.
-    async fn on_file_written(&self, relative_path: &str, content: &[u8]) -> std::result::Result<(), String>;
+    async fn on_file_written(
+        &self,
+        relative_path: &str,
+        content: &[u8],
+    ) -> std::result::Result<(), String>;
 
     /// Called after a file is deleted via VFS.
     async fn on_file_deleted(&self, relative_path: &str) -> std::result::Result<(), String>;
@@ -137,11 +141,12 @@ impl StorageProviderDriver {
     /// Returns a map of `{ virtual_filename → source_storage_key }`.
     /// The manifest file itself is hidden from directory listings.
     async fn load_attachment_manifest(&self, dir_path: &Path) -> HashMap<String, String> {
-        let manifest_key = if dir_path.to_string_lossy() == "/" || dir_path.to_string_lossy().is_empty() {
-            format!("{}/{ATTACHMENTS_MANIFEST}", self.prefix)
-        } else {
-            self.storage_key(&dir_path.join(ATTACHMENTS_MANIFEST))
-        };
+        let manifest_key =
+            if dir_path.to_string_lossy() == "/" || dir_path.to_string_lossy().is_empty() {
+                format!("{}/{ATTACHMENTS_MANIFEST}", self.prefix)
+            } else {
+                self.storage_key(&dir_path.join(ATTACHMENTS_MANIFEST))
+            };
 
         let Ok(data) = self.storage.download(&manifest_key).await else {
             return HashMap::new();
@@ -230,7 +235,10 @@ impl Reader for StorageProviderDriver {
             let rel = if prefix.is_empty() {
                 obj.key.clone()
             } else {
-                obj.key.strip_prefix(&prefix).unwrap_or(&obj.key).to_string()
+                obj.key
+                    .strip_prefix(&prefix)
+                    .unwrap_or(&obj.key)
+                    .to_string()
             };
 
             if rel.is_empty() {
@@ -245,7 +253,11 @@ impl Reader for StorageProviderDriver {
             if let Some(slash_pos) = rel.find('/') {
                 let dir_name = &rel[..slash_pos];
                 if !dir_name.is_empty() && seen_dirs.insert(dir_name.to_string()) {
-                    let display_path = format!("{}/{}", path.to_string_lossy().trim_end_matches('/'), dir_name);
+                    let display_path = format!(
+                        "{}/{}",
+                        path.to_string_lossy().trim_end_matches('/'),
+                        dir_name
+                    );
                     entries.push(FileInfo {
                         name: dir_name.to_string(),
                         path: if display_path.starts_with('/') {
@@ -260,7 +272,8 @@ impl Reader for StorageProviderDriver {
                 }
             } else {
                 seen_files.insert(rel.clone());
-                let display_path = format!("{}/{}", path.to_string_lossy().trim_end_matches('/'), rel);
+                let display_path =
+                    format!("{}/{}", path.to_string_lossy().trim_end_matches('/'), rel);
                 entries.push(FileInfo {
                     name: rel,
                     path: if display_path.starts_with('/') {
@@ -282,8 +295,18 @@ impl Reader for StorageProviderDriver {
                 continue; // Real file takes precedence
             }
             // Get size from the source storage key
-            let size = self.storage.head(source_key).await.ok().flatten().map_or(0, |o| o.size);
-            let display_path = format!("{}/{}", path.to_string_lossy().trim_end_matches('/'), filename);
+            let size = self
+                .storage
+                .head(source_key)
+                .await
+                .ok()
+                .flatten()
+                .map_or(0, |o| o.size);
+            let display_path = format!(
+                "{}/{}",
+                path.to_string_lossy().trim_end_matches('/'),
+                filename
+            );
             entries.push(FileInfo {
                 name: filename.clone(),
                 path: if display_path.starts_with('/') {
@@ -302,7 +325,11 @@ impl Reader for StorageProviderDriver {
 
     async fn stat(&self, path: &Path) -> Result<FileInfo> {
         let path_str = path.to_string_lossy();
-        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
 
         // Root is always a directory
         if path_str == "/" || path_str.is_empty() {
@@ -368,7 +395,10 @@ impl Reader for StorageProviderDriver {
             });
         }
 
-        Err(TokimoVfsError::NotFound(format!("path not found: {}", path.display())))
+        Err(TokimoVfsError::NotFound(format!(
+            "path not found: {}",
+            path.display()
+        )))
     }
 
     async fn read_bytes(&self, path: &Path, offset: u64, _limit: Option<u64>) -> Result<Vec<u8>> {

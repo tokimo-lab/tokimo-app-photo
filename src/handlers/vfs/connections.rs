@@ -34,7 +34,10 @@ pub async fn vfs_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
 pub async fn vfs_sync(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SyncSourcesRequest>,
-) -> Result<Json<ApiResponse<Vec<VfsStatus>>>, (axum::http::StatusCode, Json<ApiResponse<Vec<VfsStatus>>>)> {
+) -> Result<
+    Json<ApiResponse<Vec<VfsStatus>>>,
+    (axum::http::StatusCode, Json<ApiResponse<Vec<VfsStatus>>>),
+> {
     let statuses = if let Some(source_id) = body.vfs_id {
         state
             .sources

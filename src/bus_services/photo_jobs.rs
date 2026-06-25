@@ -27,10 +27,16 @@ fn decl(name: &str, description: &str) -> MethodDecl {
 }
 
 fn caller_user_id(caller: &tokimo_bus_protocol::CallerCtx) -> Option<Uuid> {
-    caller.user_id.as_deref().and_then(|s| Uuid::parse_str(s).ok())
+    caller
+        .user_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok())
 }
 
-fn require_os_caller(caller: &tokimo_bus_protocol::CallerCtx, method: &str) -> Result<(), BusError> {
+fn require_os_caller(
+    caller: &tokimo_bus_protocol::CallerCtx,
+    method: &str,
+) -> Result<(), BusError> {
     if caller.caller_app_id.as_deref() == Some("os") {
         return Ok(());
     }
@@ -41,7 +47,8 @@ fn require_os_caller(caller: &tokimo_bus_protocol::CallerCtx, method: &str) -> R
 }
 
 fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
-    let v: JsonValue = serde_json::from_slice(raw).map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
+    let v: JsonValue = serde_json::from_slice(raw)
+        .map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
     let job = v
         .get("job")
         .ok_or_else(|| BusError::BadRequest("missing 'job' field".into()))?;
@@ -49,7 +56,9 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| BusError::BadRequest("missing 'job.id'".into()))
-        .and_then(|s| Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}"))))?;
+        .and_then(|s| {
+            Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}")))
+        })?;
     let params = job.get("params").cloned().unwrap_or(JsonValue::Null);
     Ok((job_id, params))
 }
@@ -93,10 +102,12 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::handlers::file_scrape::handle(&ctx.db, &ctx, job_id, &params, &cancel, user_id)
-                    .await
-                    .map(|_| b"{}".to_vec())
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::handlers::file_scrape::handle(
+                    &ctx.db, &ctx, job_id, &params, &cancel, user_id,
+                )
+                .await
+                .map(|_| b"{}".to_vec())
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         .method(decl(
@@ -136,17 +147,22 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
             }
         })
         // ── CLIP handlers ────────────────────────────────────────────────────
-        .method(decl("dispatch_photo_clip_scan", "Run a photo_clip_scan job"))
+        .method(decl(
+            "dispatch_photo_clip_scan",
+            "Run a photo_clip_scan job",
+        ))
         .on_invoke("dispatch_photo_clip_scan", move |req| {
             let ctx = ctx_clip_scan.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_clip_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_clip_scan::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         .method(decl("dispatch_photo_clip", "Run a photo_clip job"))
@@ -162,31 +178,41 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("dispatch_photo_clip_single", "Run a photo_clip_single job"))
+        .method(decl(
+            "dispatch_photo_clip_single",
+            "Run a photo_clip_single job",
+        ))
         .on_invoke("dispatch_photo_clip_single", move |req| {
             let ctx = ctx_clip_single.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_clip_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_clip_single::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         // ── Face handlers ────────────────────────────────────────────────────
-        .method(decl("dispatch_photo_face_scan", "Run a photo_face_scan job"))
+        .method(decl(
+            "dispatch_photo_face_scan",
+            "Run a photo_face_scan job",
+        ))
         .on_invoke("dispatch_photo_face_scan", move |req| {
             let ctx = ctx_face_scan.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_face_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_face_scan::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         .method(decl("dispatch_photo_face", "Run a photo_face job"))
@@ -202,17 +228,22 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("dispatch_photo_face_single", "Run a photo_face_single job"))
+        .method(decl(
+            "dispatch_photo_face_single",
+            "Run a photo_face_single job",
+        ))
         .on_invoke("dispatch_photo_face_single", move |req| {
             let ctx = ctx_face_single.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_face_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_face_single::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         // ── OCR handlers ─────────────────────────────────────────────────────
@@ -223,10 +254,12 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_ocr_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_ocr_scan::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         .method(decl("dispatch_photo_ocr", "Run a photo_ocr job"))
@@ -242,31 +275,41 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("dispatch_photo_ocr_single", "Run a photo_ocr_single job"))
+        .method(decl(
+            "dispatch_photo_ocr_single",
+            "Run a photo_ocr_single job",
+        ))
         .on_invoke("dispatch_photo_ocr_single", move |req| {
             let ctx = ctx_ocr_single.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_ocr_single::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_ocr_single::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         // ── Geocode handlers ─────────────────────────────────────────────────
-        .method(decl("dispatch_photo_geocode_scan", "Run a photo_geocode_scan job"))
+        .method(decl(
+            "dispatch_photo_geocode_scan",
+            "Run a photo_geocode_scan job",
+        ))
         .on_invoke("dispatch_photo_geocode_scan", move |req| {
             let ctx = ctx_geocode_scan.clone();
             async move {
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_geocode_scan::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_geocode_scan::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         .method(decl("dispatch_photo_geocode", "Run a photo_geocode job"))
@@ -276,48 +319,69 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                 let (job_id, params) = decode_request(&req.payload)?;
                 let user_id = caller_user_id(&req.caller);
                 let cancel = CancellationToken::new();
-                crate::queue::photo_geocode::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
-                    .await
-                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
-                    .map_err(|e| BusError::Internal(e.to_string()))
+                crate::queue::photo_geocode::handle(
+                    &ctx.db, &ctx, job_id, &params, user_id, &cancel,
+                )
+                .await
+                .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
         // ── Media intelligence apply callbacks ──────────────────────────────
-        .method(decl("apply_media_ocr_result", "Apply OCR result produced by OS media jobs"))
+        .method(decl(
+            "apply_media_ocr_result",
+            "Apply OCR result produced by OS media jobs",
+        ))
         .on_invoke("apply_media_ocr_result", move |req| {
             let ctx = ctx_apply_ocr.clone();
             async move {
                 require_os_caller(&req.caller, "apply_media_ocr_result")?;
-                let input: ApplyMediaResult<media_bus::OcrResult> = serde_json::from_slice(&req.payload)
-                    .map_err(|e| BusError::BadRequest(format!("apply_media_ocr_result json decode: {e}")))?;
-                let model_name = input.model_name.unwrap_or_else(|| "rapid-ocr-rust".to_string());
-                let count =
-                    PhotoOcrService::apply_ocr_results(&ctx.db, input.photo_id, model_name, input.result, None)
-                        .await
-                        .map_err(|e| BusError::Internal(e.to_string()))?;
+                let input: ApplyMediaResult<media_bus::OcrResult> =
+                    serde_json::from_slice(&req.payload).map_err(|e| {
+                        BusError::BadRequest(format!("apply_media_ocr_result json decode: {e}"))
+                    })?;
+                let model_name = input
+                    .model_name
+                    .unwrap_or_else(|| "rapid-ocr-rust".to_string());
+                let count = PhotoOcrService::apply_ocr_results(
+                    &ctx.db,
+                    input.photo_id,
+                    model_name,
+                    input.result,
+                    None,
+                )
+                .await
+                .map_err(|e| BusError::Internal(e.to_string()))?;
                 serde_json::to_vec(&serde_json::json!({ "ocrCount": count }))
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("apply_media_face_result", "Apply face detections produced by OS media jobs"))
+        .method(decl(
+            "apply_media_face_result",
+            "Apply face detections produced by OS media jobs",
+        ))
         .on_invoke("apply_media_face_result", move |req| {
             let ctx = ctx_apply_face.clone();
             async move {
                 require_os_caller(&req.caller, "apply_media_face_result")?;
-                let input: ApplyMediaResult<media_bus::FaceResult> = serde_json::from_slice(&req.payload)
-                    .map_err(|e| BusError::BadRequest(format!("apply_media_face_result json decode: {e}")))?;
+                let input: ApplyMediaResult<media_bus::FaceResult> =
+                    serde_json::from_slice(&req.payload).map_err(|e| {
+                        BusError::BadRequest(format!("apply_media_face_result json decode: {e}"))
+                    })?;
                 let detections = input
                     .result
                     .faces
                     .into_iter()
-                    .map(|face| tokimo_perception::worker::protocol::types::FaceDetection {
-                        x: face.x,
-                        y: face.y,
-                        w: face.w,
-                        h: face.h,
-                        confidence: face.confidence,
-                        embedding: face.embedding,
-                    })
+                    .map(
+                        |face| tokimo_perception::worker::protocol::types::FaceDetection {
+                            x: face.x,
+                            y: face.y,
+                            w: face.w,
+                            h: face.h,
+                            confidence: face.confidence,
+                            embedding: face.embedding,
+                        },
+                    )
                     .collect();
                 let count = PhotoFaceService::apply_face_detections(
                     &ctx.db,
@@ -332,27 +396,41 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("apply_media_clip_result", "Apply CLIP embedding produced by OS media jobs"))
+        .method(decl(
+            "apply_media_clip_result",
+            "Apply CLIP embedding produced by OS media jobs",
+        ))
         .on_invoke("apply_media_clip_result", move |req| {
             let ctx = ctx_apply_clip.clone();
             async move {
                 require_os_caller(&req.caller, "apply_media_clip_result")?;
-                let input: ApplyMediaResult<media_bus::ClipResult> = serde_json::from_slice(&req.payload)
-                    .map_err(|e| BusError::BadRequest(format!("apply_media_clip_result json decode: {e}")))?;
-                PhotoClipService::apply_clip_embedding(&ctx.db, input.photo_id, input.result.embedding)
-                    .await
-                    .map_err(|e| BusError::Internal(e.to_string()))?;
+                let input: ApplyMediaResult<media_bus::ClipResult> =
+                    serde_json::from_slice(&req.payload).map_err(|e| {
+                        BusError::BadRequest(format!("apply_media_clip_result json decode: {e}"))
+                    })?;
+                PhotoClipService::apply_clip_embedding(
+                    &ctx.db,
+                    input.photo_id,
+                    input.result.embedding,
+                )
+                .await
+                .map_err(|e| BusError::Internal(e.to_string()))?;
                 serde_json::to_vec(&serde_json::json!({ "status": "ok" }))
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
-        .method(decl("apply_media_gps_result", "Apply GPS result produced by OS media jobs"))
+        .method(decl(
+            "apply_media_gps_result",
+            "Apply GPS result produced by OS media jobs",
+        ))
         .on_invoke("apply_media_gps_result", move |req| {
             let ctx = ctx_apply_gps.clone();
             async move {
                 require_os_caller(&req.caller, "apply_media_gps_result")?;
-                let input: ApplyMediaResult<media_bus::GpsResult> = serde_json::from_slice(&req.payload)
-                    .map_err(|e| BusError::BadRequest(format!("apply_media_gps_result json decode: {e}")))?;
+                let input: ApplyMediaResult<media_bus::GpsResult> =
+                    serde_json::from_slice(&req.payload).map_err(|e| {
+                        BusError::BadRequest(format!("apply_media_gps_result json decode: {e}"))
+                    })?;
                 let active = photos::ActiveModel {
                     id: Set(input.photo_id),
                     gps_latitude: Set(Some(input.result.latitude)),
@@ -375,7 +453,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
             }
         })
         // ── Capabilities ─────────────────────────────────────────────────────
-        .method(decl("capabilities", "Return photo bus service capabilities"))
+        .method(decl(
+            "capabilities",
+            "Return photo bus service capabilities",
+        ))
         .on_invoke("capabilities", |_req| async move {
             serde_json::to_vec(&serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),

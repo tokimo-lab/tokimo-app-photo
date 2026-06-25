@@ -112,7 +112,10 @@ pub async fn register_faces_via_job(
     let job = jobs::create(
         client,
         caller,
-        CreateJobRequest::new("person_sync_register_faces", serde_json::to_value(&request)?),
+        CreateJobRequest::new(
+            "person_sync_register_faces",
+            serde_json::to_value(&request)?,
+        ),
     )
     .await?;
     Ok(job.id)
@@ -134,7 +137,8 @@ pub async fn register_faces(
         faces,
     };
     let response = invoke_json(client, "register_faces", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("person.register_faces decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("person.register_faces decode: {e}")))
 }
 
 /// Match face via direct bus call (needs immediate response)
@@ -149,7 +153,8 @@ pub async fn match_face(
         face_index,
     };
     let response = invoke_json(client, "match_face", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("person.match_face decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("person.match_face decode: {e}")))
 }
 
 pub async fn persons_by_ids(
@@ -159,7 +164,8 @@ pub async fn persons_by_ids(
 ) -> Result<Vec<PersonSummary>, AppError> {
     let request = PersonsByIdsRequest { person_ids };
     let response = invoke_json(client, "persons_by_ids", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("person.persons_by_ids decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("person.persons_by_ids decode: {e}")))
 }
 
 pub async fn update_person(
@@ -175,7 +181,8 @@ pub async fn update_person(
         avatar_url,
     };
     let response = invoke_json(client, "update_person", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("person.update_person decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("person.update_person decode: {e}")))
 }
 
 pub async fn merge_persons(
@@ -184,7 +191,10 @@ pub async fn merge_persons(
     target_id: Uuid,
     source_id: Uuid,
 ) -> Result<(), AppError> {
-    let request = MergePersonsRequest { target_id, source_id };
+    let request = MergePersonsRequest {
+        target_id,
+        source_id,
+    };
     let _ = invoke_json(client, "merge_persons", caller, &request).await?;
     Ok(())
 }
@@ -202,7 +212,8 @@ pub async fn assign_face(
         face_index,
     };
     let response = invoke_json(client, "assign_face", caller, &request).await?;
-    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("person.assign_face decode: {e}")))
+    serde_json::from_slice(&response)
+        .map_err(|e| AppError::Internal(format!("person.assign_face decode: {e}")))
 }
 
 pub async fn create_person_from_face(
@@ -263,8 +274,8 @@ async fn invoke_json<T: Serialize>(
     caller: CallerCtx,
     request: &T,
 ) -> Result<Vec<u8>, AppError> {
-    let payload =
-        serde_json::to_vec(request).map_err(|e| AppError::Internal(format!("person.{method} encode: {e}")))?;
+    let payload = serde_json::to_vec(request)
+        .map_err(|e| AppError::Internal(format!("person.{method} encode: {e}")))?;
     client
         .invoke("person", method, payload, caller)
         .await

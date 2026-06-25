@@ -79,7 +79,9 @@ pub struct PhotoDetailOutput {
     pub source_id: Option<String>,
     pub scanned_at: Option<String>,
     pub ocr_scanned_at: Option<String>,
-    #[ts(type = "{ detModel: string; vlmModel: string; detTexts: string[]; vlmText: string } | null")]
+    #[ts(
+        type = "{ detModel: string; vlmModel: string; detTexts: string[]; vlmText: string } | null"
+    )]
     pub ocr_debug_info: Option<serde_json::Value>,
     pub created_at: Option<String>,
     #[ts(type = "Record<string, string> | null")]

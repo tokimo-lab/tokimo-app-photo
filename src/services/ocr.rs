@@ -13,7 +13,8 @@ use crate::error::OptionExt;
 /// Extensions the `image` crate cannot decode — need `FFmpeg` conversion.
 #[allow(dead_code)]
 pub(crate) const NEEDS_FFMPEG_DECODE: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2",
+    ".pef", ".srw", ".raf",
 ];
 
 /// Single OCR detection result.
@@ -175,7 +176,10 @@ impl PhotoOcrService {
         let model_name = settings.ocr_model_name.clone();
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let image_path = photo
+            .thumbnail_path
+            .as_deref()
+            .unwrap_or(photo.path.as_str());
         let data = crate::services::media_jobs::create_media_job_and_wait(
             state,
             user_id,
@@ -278,7 +282,8 @@ impl PhotoOcrService {
         }
         let total = pending.len();
         info!("[photo_ocr] Processing {total} photos for app {app_id}");
-        let (success, _failures, _errors) = Self::process_photo_ids(db, state, pending, user_id).await;
+        let (success, _failures, _errors) =
+            Self::process_photo_ids(db, state, pending, user_id).await;
         info!("[photo_ocr] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -368,10 +373,15 @@ impl PhotoOcrService {
         let mut results = Vec::new();
         for row in rows {
             results.push(OcrSearchResult {
-                photo_id: row.try_get::<Uuid>("", "photo_id").unwrap_or_default().to_string(),
+                photo_id: row
+                    .try_get::<Uuid>("", "photo_id")
+                    .unwrap_or_default()
+                    .to_string(),
                 filename: row.try_get::<String>("", "filename").unwrap_or_default(),
                 thumbnail_path: row.try_get("", "thumbnail_path").ok(),
-                matched_text: row.try_get::<String>("", "matched_text").unwrap_or_default(),
+                matched_text: row
+                    .try_get::<String>("", "matched_text")
+                    .unwrap_or_default(),
             });
         }
         Ok(results)
@@ -428,7 +438,10 @@ pub(crate) async fn load_raw_bytes(
         let fs = vfs::Entity::find_by_id(source_id).one(db).await?;
         if let Some(fs_model) = fs {
             if fs_model.r#type == "local" {
-                let abs_path = crate::handlers::media::utils::resolve_local_path(&photo.path, fs_model.config.as_ref());
+                let abs_path = crate::handlers::media::utils::resolve_local_path(
+                    &photo.path,
+                    fs_model.config.as_ref(),
+                );
                 if let Ok(bytes) = tokio::fs::read(&abs_path).await {
                     return Ok(bytes);
                 }
@@ -458,7 +471,9 @@ async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();
     let result = tokio::task::spawn_blocking(move || {
-        use tokimo_package_ffmpeg::image::{ImageDecodeOptions, ImageFormat, decode_image_from_bytes};
+        use tokimo_package_ffmpeg::image::{
+            ImageDecodeOptions, ImageFormat, decode_image_from_bytes,
+        };
 
         let opts = ImageDecodeOptions {
             width: None,

@@ -18,51 +18,24 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
         )
         .route("/reorder", post(crud::reorder_photo_libraries))
         // ── Library-scoped browse ──
-        .route(
-            "/{id}/photos",
-            get(browse::list_photos),
-        )
-        .route(
-            "/{id}/photos/timeline",
-            get(browse::photo_timeline),
-        )
-        .route(
-            "/{id}/photos/folders",
-            get(browse::list_folders),
-        )
-        .route(
-            "/{id}/photos/timeline-index",
-            get(browse::timeline_index),
-        )
-        .route(
-            "/{id}/photos/clip-tags",
-            get(browse::clip_tag_options),
-        )
+        .route("/{id}/photos", get(browse::list_photos))
+        .route("/{id}/photos/timeline", get(browse::photo_timeline))
+        .route("/{id}/photos/folders", get(browse::list_folders))
+        .route("/{id}/photos/timeline-index", get(browse::timeline_index))
+        .route("/{id}/photos/clip-tags", get(browse::clip_tag_options))
         // ── Albums ──
         .route(
             "/{id}/photo-albums",
             get(album::list_photo_albums).post(album::create_album),
         )
-        .route(
-            "/albums/{id}",
-            delete(album::delete_album),
-        )
-        .route(
-            "/albums/{id}/photos",
-            get(album::list_album_photos),
-        )
-        .route(
-            "/albums/{id}/share",
-            get(album::get_album_share),
-        )
+        .route("/albums/{id}", delete(album::delete_album))
+        .route("/albums/{id}/photos", get(album::list_album_photos))
+        .route("/albums/{id}/share", get(album::get_album_share))
         .route(
             "/albums/{id}/share-link",
             patch(album::patch_album_share_link),
         )
-        .route(
-            "/albums/{id}/shares",
-            post(album::put_album_user_share),
-        )
+        .route("/albums/{id}/shares", post(album::put_album_user_share))
         .route(
             "/albums/{id}/shares/{user_id}",
             delete(album::delete_album_user_share),
@@ -75,10 +48,7 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             "/public/share/{token}/photo/{photo_id}/image",
             get(album::public_album_photo_image),
         )
-        .route(
-            "/albums/{id}/add-photos",
-            post(album::add_photos_to_album),
-        )
+        .route("/albums/{id}/add-photos", post(album::add_photos_to_album))
         .route(
             "/albums/{id}/remove-photos",
             post(album::remove_photos_from_album),
@@ -88,34 +58,13 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             "/item/{id}",
             get(browse::get_photo).patch(batch::update_photo),
         )
-        .route(
-            "/item/{id}/toggle-favorite",
-            post(batch::toggle_favorite),
-        )
-        .route(
-            "/item/{id}/toggle-hidden",
-            post(batch::toggle_hidden),
-        )
-        .route(
-            "/item/{id}/image",
-            get(stream::serve_photo_image),
-        )
-        .route(
-            "/item/{id}/live-video",
-            get(stream::serve_live_video),
-        )
-        .route(
-            "/item/{id}/similar",
-            get(browse::similar_photos),
-        )
-        .route(
-            "/item/{id}/tags",
-            get(browse::photo_tags),
-        )
-        .route(
-            "/item/{id}/faces",
-            get(person::get_photo_faces),
-        )
+        .route("/item/{id}/toggle-favorite", post(batch::toggle_favorite))
+        .route("/item/{id}/toggle-hidden", post(batch::toggle_hidden))
+        .route("/item/{id}/image", get(stream::serve_photo_image))
+        .route("/item/{id}/live-video", get(stream::serve_live_video))
+        .route("/item/{id}/similar", get(browse::similar_photos))
+        .route("/item/{id}/tags", get(browse::photo_tags))
+        .route("/item/{id}/faces", get(person::get_photo_faces))
         .route(
             "/item/{id}/faces/{faceId}/assign",
             patch(person::assign_face_to_person),
@@ -124,22 +73,10 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             "/item/{id}/faces/{faceId}/create-person",
             post(person::create_person_from_face),
         )
-        .route(
-            "/item/{id}/refresh-faces",
-            post(ai::refresh_faces),
-        )
-        .route(
-            "/item/{id}/refresh-ocr",
-            post(ai::refresh_ocr),
-        )
-        .route(
-            "/item/{id}/refresh-clip",
-            post(ai::refresh_clip),
-        )
-        .route(
-            "/item/{id}/refresh-exif",
-            post(batch::refresh_exif),
-        )
+        .route("/item/{id}/refresh-faces", post(ai::refresh_faces))
+        .route("/item/{id}/refresh-ocr", post(ai::refresh_ocr))
+        .route("/item/{id}/refresh-clip", post(ai::refresh_clip))
+        .route("/item/{id}/refresh-exif", post(batch::refresh_exif))
         .route(
             "/item/{id}/refresh-thumbnail",
             post(batch::refresh_thumbnail),
@@ -149,109 +86,43 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             get(ai::get_photo_ocr_results).post(ai::create_ocr_result),
         )
         // ── Batch operations (library-scoped) ──
-        .route(
-            "/{id}/photos/batch-favorite",
-            post(batch::batch_favorite),
-        )
-        .route(
-            "/{id}/photos/batch-delete",
-            post(batch::batch_delete),
-        )
-        .route(
-            "/{id}/photos/batch-hide",
-            post(batch::batch_hide),
-        )
+        .route("/{id}/photos/batch-favorite", post(batch::batch_favorite))
+        .route("/{id}/photos/batch-delete", post(batch::batch_delete))
+        .route("/{id}/photos/batch-hide", post(batch::batch_hide))
         .route(
             "/{id}/photos/trash",
             get(batch::list_trashed).post(batch::trash_photos),
         )
-        .route(
-            "/{id}/photos/restore",
-            post(batch::restore_photos),
-        )
+        .route("/{id}/photos/restore", post(batch::restore_photos))
         .route(
             "/{id}/photos/permanent-delete",
             post(batch::permanent_delete),
         )
-        .route(
-            "/{id}/photos/rescan",
-            post(batch::rescan),
-        )
+        .route("/{id}/photos/rescan", post(batch::rescan))
         // ── Geo ──
-        .route(
-            "/{id}/photos/reverse-geocode",
-            post(geo::reverse_geocode),
-        )
-        .route(
-            "/{id}/photos/map-points",
-            get(geo::map_points),
-        )
-        .route(
-            "/{id}/photos/locations",
-            get(geo::location_stats),
-        )
-        .route(
-            "/{id}/photos/by-location",
-            get(geo::photos_by_location),
-        )
-        .route(
-            "/{id}/photos/by-bbox",
-            get(geo::photos_by_bbox),
-        )
+        .route("/{id}/photos/reverse-geocode", post(geo::reverse_geocode))
+        .route("/{id}/photos/map-points", get(geo::map_points))
+        .route("/{id}/photos/locations", get(geo::location_stats))
+        .route("/{id}/photos/by-location", get(geo::photos_by_location))
+        .route("/{id}/photos/by-bbox", get(geo::photos_by_bbox))
         // ── AI / OCR / CLIP / Face (library-scoped) ──
-        .route(
-            "/{id}/photos/ocr-scan",
-            post(ai::ocr_scan),
-        )
-        .route(
-            "/{id}/photos/ocr-search",
-            get(ai::ocr_search),
-        )
-        .route(
-            "/{id}/photos/ocr-results",
-            delete(ai::clear_ocr_results),
-        )
-        .route(
-            "/{id}/photos/face-results",
-            delete(ai::clear_face_results),
-        )
-        .route(
-            "/{id}/photos/clip-results",
-            delete(ai::clear_clip_results),
-        )
-        .route(
-            "/{id}/photos/thumbnails",
-            delete(ai::clear_thumbnails),
-        )
-        .route(
-            "/{id}/photos/clip-embed",
-            post(ai::clip_embed),
-        )
-        .route(
-            "/{id}/photos/clip-search",
-            get(ai::clip_search),
-        )
-        .route(
-            "/{id}/photos/face-detect",
-            post(person::face_detect),
-        )
+        .route("/{id}/photos/ocr-scan", post(ai::ocr_scan))
+        .route("/{id}/photos/ocr-search", get(ai::ocr_search))
+        .route("/{id}/photos/ocr-results", delete(ai::clear_ocr_results))
+        .route("/{id}/photos/face-results", delete(ai::clear_face_results))
+        .route("/{id}/photos/clip-results", delete(ai::clear_clip_results))
+        .route("/{id}/photos/thumbnails", delete(ai::clear_thumbnails))
+        .route("/{id}/photos/clip-embed", post(ai::clip_embed))
+        .route("/{id}/photos/clip-search", get(ai::clip_search))
+        .route("/{id}/photos/face-detect", post(person::face_detect))
         // ── Persons (library-scoped) ──
-        .route(
-            "/{id}/persons",
-            get(person::list_persons),
-        )
-        .route(
-            "/{id}/persons/merge",
-            post(person::merge_persons),
-        )
+        .route("/{id}/persons", get(person::list_persons))
+        .route("/{id}/persons/merge", post(person::merge_persons))
         .route(
             "/{id}/persons/{personId}/photos",
             get(person::person_photos),
         )
-        .route(
-            "/{id}/persons/{personId}",
-            patch(person::rename_person),
-        )
+        .route("/{id}/persons/{personId}", patch(person::rename_person))
         // ── OCR result CRUD (non-scoped) ──
         .route(
             "/ocr-results/{ocr_id}",
@@ -262,18 +133,12 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             "/settings/geo",
             get(geo::get_photo_geo_settings).put(geo::update_photo_geo_settings),
         )
-        .route(
-            "/settings/geo/test",
-            post(geo::test_photo_geo_connection),
-        )
+        .route("/settings/geo/test", post(geo::test_photo_geo_connection))
         .route(
             "/settings/ai",
             get(ai::get_photo_ai_settings).put(ai::update_photo_ai_settings),
         )
-        .route(
-            "/settings/ai/test",
-            post(ai::test_photo_ai_connection),
-        )
+        .route("/settings/ai/test", post(ai::test_photo_ai_connection))
         .route(
             "/settings/ai/ocr-results",
             delete(ai::clear_all_ocr_results),
@@ -285,8 +150,5 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
                 .patch(crud::update_photo_library)
                 .delete(crud::delete_photo_library),
         )
-        .route(
-            "/{id}/sync",
-            post(sync::sync_photo),
-        )
+        .route("/{id}/sync", post(sync::sync_photo))
 }

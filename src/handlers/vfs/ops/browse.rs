@@ -12,10 +12,13 @@ use tracing::debug;
 use crate::AppState;
 use crate::handlers::{ApiResponse, err400, err404, err500, ok};
 use crate::services::source::normalize_source_path;
-use tokimo_package_utils::path::{internal_to_native, list_roots, native_to_internal, normalize_local_path};
+use tokimo_package_utils::path::{
+    internal_to_native, list_roots, native_to_internal, normalize_local_path,
+};
 
 use super::types::{
-    BrowseBatchRequest, BrowseDirectoryResponse, BrowseEntry, PathQuery, SourceStatEntry, StatEntriesRequest,
+    BrowseBatchRequest, BrowseDirectoryResponse, BrowseEntry, PathQuery, SourceStatEntry,
+    StatEntriesRequest,
 };
 
 /// Browse the local filesystem directly (no source / VFS).
@@ -24,7 +27,10 @@ use super::types::{
 /// 当 `path` 为 `/` 或空时，Windows 返回盘符列表，Linux 列出根目录。
 pub async fn browse_local(
     Query(query): Query<PathQuery>,
-) -> Result<Json<ApiResponse<BrowseDirectoryResponse>>, (StatusCode, Json<ApiResponse<BrowseDirectoryResponse>>)> {
+) -> Result<
+    Json<ApiResponse<BrowseDirectoryResponse>>,
+    (StatusCode, Json<ApiResponse<BrowseDirectoryResponse>>),
+> {
     let path_str = query.path.trim();
     if path_str.is_empty() || path_str == "/" {
         if cfg!(windows) {
@@ -56,7 +62,10 @@ pub async fn browse_local(
 /// Stat local filesystem entries (no source / VFS).
 pub async fn stat_local(
     Json(body): Json<StatEntriesRequest>,
-) -> Result<Json<ApiResponse<Vec<SourceStatEntry>>>, (StatusCode, Json<ApiResponse<Vec<SourceStatEntry>>>)> {
+) -> Result<
+    Json<ApiResponse<Vec<SourceStatEntry>>>,
+    (StatusCode, Json<ApiResponse<Vec<SourceStatEntry>>>),
+> {
     let mut stats = Vec::with_capacity(body.paths.len());
     for raw_path in body.paths {
         let Ok(path) = normalize_local_path(&raw_path) else {
@@ -72,7 +81,11 @@ pub async fn stat_local(
         match tokio::fs::metadata(&native).await {
             Ok(meta) => stats.push(SourceStatEntry {
                 path,
-                size: if meta.is_dir() { None } else { Some(meta.len()) },
+                size: if meta.is_dir() {
+                    None
+                } else {
+                    Some(meta.len())
+                },
                 modified_at: meta
                     .modified()
                     .ok()
@@ -94,7 +107,10 @@ pub async fn browse_vfs(
     State(state): State<Arc<AppState>>,
     Path(source_id): Path<String>,
     Query(query): Query<PathQuery>,
-) -> Result<Json<ApiResponse<BrowseDirectoryResponse>>, (StatusCode, Json<ApiResponse<BrowseDirectoryResponse>>)> {
+) -> Result<
+    Json<ApiResponse<BrowseDirectoryResponse>>,
+    (StatusCode, Json<ApiResponse<BrowseDirectoryResponse>>),
+> {
     let path = normalize_source_path(&query.path).map_err(err400)?;
     let vfs = state.sources.ensure_vfs(&source_id).await.map_err(err404)?;
     debug!("browse source={} path={}", source_id, path);
@@ -111,7 +127,11 @@ pub async fn browse_vfs_batch(
     (StatusCode, Json<ApiResponse<Vec<BrowseDirectoryResponse>>>),
 > {
     let vfs = state.sources.ensure_vfs(&source_id).await.map_err(err404)?;
-    debug!("browse batch source={} dirs={}", source_id, body.paths.len());
+    debug!(
+        "browse batch source={} dirs={}",
+        source_id,
+        body.paths.len()
+    );
 
     let paths: Vec<String> = body
         .paths
@@ -134,7 +154,10 @@ pub async fn stat_vfs(
     State(state): State<Arc<AppState>>,
     Path(source_id): Path<String>,
     Json(body): Json<StatEntriesRequest>,
-) -> Result<Json<ApiResponse<Vec<SourceStatEntry>>>, (StatusCode, Json<ApiResponse<Vec<SourceStatEntry>>>)> {
+) -> Result<
+    Json<ApiResponse<Vec<SourceStatEntry>>>,
+    (StatusCode, Json<ApiResponse<Vec<SourceStatEntry>>>),
+> {
     let vfs = state.sources.ensure_vfs(&source_id).await.map_err(err404)?;
     let mut listed_entries: HashMap<String, SourceStatEntry> = HashMap::new();
     let mut listed_dirs: HashMap<String, bool> = HashMap::new();
@@ -214,7 +237,10 @@ fn parent_path(path: &str) -> Option<String> {
 }
 
 async fn list_directory(vfs: &Arc<Vfs>, path: &str) -> Result<BrowseDirectoryResponse, String> {
-    let entries = vfs.list(StdPath::new(path)).await.map_err(|err| err.to_string())?;
+    let entries = vfs
+        .list(StdPath::new(path))
+        .await
+        .map_err(|err| err.to_string())?;
     let mut mapped_entries: Vec<BrowseEntry> = entries
         .into_iter()
         .map(|entry| BrowseEntry {
@@ -254,10 +280,11 @@ async fn list_local_directory(internal_path: &str) -> Result<BrowseDirectoryResp
             path: entry_path,
             is_directory: is_dir,
             size: if is_dir { None } else { Some(metadata.len()) },
-            modified_at: metadata
-                .modified()
-                .ok()
-                .and_then(|t| chrono::DateTime::<chrono::Utc>::from(t).to_api_datetime().into()),
+            modified_at: metadata.modified().ok().and_then(|t| {
+                chrono::DateTime::<chrono::Utc>::from(t)
+                    .to_api_datetime()
+                    .into()
+            }),
         });
     }
     entries.sort_by(|a, b| match (a.is_directory, b.is_directory) {

@@ -19,7 +19,9 @@ use crate::AppState;
 use crate::handlers::{ApiResponse, err400, err404, err500, ok};
 use crate::services::source::normalize_source_path;
 
-use super::vfs_types::{VIDEO_EXTENSIONS, VideoFileInfo, WalkProgress, WalkStats, WalkVideoFilesRequest};
+use super::vfs_types::{
+    VIDEO_EXTENSIONS, VideoFileInfo, WalkProgress, WalkStats, WalkVideoFilesRequest,
+};
 
 /// Max concurrent `vfs.list()` calls during walk.
 const WALK_CONCURRENCY: usize = 8;
@@ -30,7 +32,10 @@ pub async fn walk_vfs_video_files(
     State(state): State<Arc<AppState>>,
     Path(source_id): Path<String>,
     Json(body): Json<WalkVideoFilesRequest>,
-) -> Result<Json<ApiResponse<Vec<VideoFileInfo>>>, (StatusCode, Json<ApiResponse<Vec<VideoFileInfo>>>)> {
+) -> Result<
+    Json<ApiResponse<Vec<VideoFileInfo>>>,
+    (StatusCode, Json<ApiResponse<Vec<VideoFileInfo>>>),
+> {
     let root_path = normalize_source_path(&body.root_path).map_err(err400)?;
     let vfs = state.sources.ensure_vfs(&source_id).await.map_err(err404)?;
     debug!("walk video files source={} root={}", source_id, root_path);
@@ -47,12 +52,17 @@ pub async fn walk_vfs_video_files(
 }
 
 /// Collect all video files (convenience wrapper around the streaming version).
-pub async fn walk_video_files(vfs: Arc<Vfs>, root_path: &str, source_id: &str) -> Result<Vec<VideoFileInfo>, String> {
+pub async fn walk_video_files(
+    vfs: Arc<Vfs>,
+    root_path: &str,
+    source_id: &str,
+) -> Result<Vec<VideoFileInfo>, String> {
     let (tx, mut rx) = mpsc::channel(256);
     let rp = root_path.to_owned();
     let sid = source_id.to_owned();
 
-    let walk_handle = tokio::spawn(async move { walk_video_files_streaming(vfs, &rp, &sid, tx).await });
+    let walk_handle =
+        tokio::spawn(async move { walk_video_files_streaming(vfs, &rp, &sid, tx).await });
 
     let mut results = Vec::new();
     while let Some(video) = rx.recv().await {
@@ -84,7 +94,8 @@ pub async fn walk_video_files_streaming(
     pending_dirs.push_back(PathBuf::from(root_path));
 
     // In-flight concurrent list operations
-    let mut in_flight: FuturesUnordered<tokio::task::JoinHandle<Result<ListResult, String>>> = FuturesUnordered::new();
+    let mut in_flight: FuturesUnordered<tokio::task::JoinHandle<Result<ListResult, String>>> =
+        FuturesUnordered::new();
 
     // Seed initial tasks
     let initial_count = WALK_CONCURRENCY.min(pending_dirs.len());
@@ -165,7 +176,8 @@ pub async fn walk_files_streaming(
     let mut pending_dirs: VecDeque<PathBuf> = VecDeque::new();
     pending_dirs.push_back(PathBuf::from(root_path));
 
-    let mut in_flight: FuturesUnordered<tokio::task::JoinHandle<Result<ListResult, String>>> = FuturesUnordered::new();
+    let mut in_flight: FuturesUnordered<tokio::task::JoinHandle<Result<ListResult, String>>> =
+        FuturesUnordered::new();
 
     let initial_count = WALK_CONCURRENCY.min(pending_dirs.len());
     for _ in 0..initial_count {
@@ -229,7 +241,10 @@ struct ListResult {
     videos: Vec<VideoFileInfo>,
 }
 
-fn spawn_list_dir(vfs: Arc<Vfs>, dir: PathBuf) -> tokio::task::JoinHandle<Result<ListResult, String>> {
+fn spawn_list_dir(
+    vfs: Arc<Vfs>,
+    dir: PathBuf,
+) -> tokio::task::JoinHandle<Result<ListResult, String>> {
     tokio::spawn(async move { list_single_dir(&vfs, &dir).await })
 }
 
@@ -284,7 +299,8 @@ async fn list_single_dir(vfs: &Vfs, dir: &StdPath) -> Result<ListResult, String>
         if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
             videos.push(VideoFileInfo {
                 file_path: full_path,
-                dir_path: normalize_source_path(&dir.to_string_lossy()).map_err(|err| err.clone())?,
+                dir_path: normalize_source_path(&dir.to_string_lossy())
+                    .map_err(|err| err.clone())?,
                 file_size: entry.size,
                 mtime: entry.modified.map_or(0, |dt| dt.timestamp()),
             });
@@ -299,7 +315,11 @@ async fn list_single_dir(vfs: &Vfs, dir: &StdPath) -> Result<ListResult, String>
 }
 
 /// Like `list_single_dir` but matches against a custom set of extensions.
-async fn list_single_dir_ext(vfs: &Vfs, dir: &StdPath, extensions: &[&str]) -> Result<ListResult, String> {
+async fn list_single_dir_ext(
+    vfs: &Vfs,
+    dir: &StdPath,
+    extensions: &[&str],
+) -> Result<ListResult, String> {
     let dir_display = dir.to_string_lossy().to_string();
     let entries = vfs.list(dir).await.map_err(|err| err.to_string())?;
     let visible_entries: Vec<_> = entries
@@ -325,7 +345,8 @@ async fn list_single_dir_ext(vfs: &Vfs, dir: &StdPath, extensions: &[&str]) -> R
         if extensions.contains(&ext.as_str()) {
             videos.push(VideoFileInfo {
                 file_path: full_path,
-                dir_path: normalize_source_path(&dir.to_string_lossy()).map_err(|err| err.clone())?,
+                dir_path: normalize_source_path(&dir.to_string_lossy())
+                    .map_err(|err| err.clone())?,
                 file_size: entry.size,
                 mtime: entry.modified.map_or(0, |dt| dt.timestamp()),
             });
@@ -341,7 +362,10 @@ async fn list_single_dir_ext(vfs: &Vfs, dir: &StdPath, extensions: &[&str]) -> R
 
 // ── BDMV handling ───────────────────────────────────────────────────────
 
-async fn pick_bdmv_main_file(vfs: &Vfs, bdmv_parent_dir: &StdPath) -> Result<Option<VideoFileInfo>, String> {
+async fn pick_bdmv_main_file(
+    vfs: &Vfs,
+    bdmv_parent_dir: &StdPath,
+) -> Result<Option<VideoFileInfo>, String> {
     let stream_dir = format!(
         "{}/BDMV/STREAM",
         normalize_source_path(&bdmv_parent_dir.to_string_lossy())

@@ -39,6 +39,9 @@ where
             .filter(|v| !v.is_empty())
             .unwrap_or_default()
             .to_owned();
-        Ok(AuthUser(SessionAuth { user_id, session_id }))
+        Ok(AuthUser(SessionAuth {
+            user_id,
+            session_id,
+        }))
     }
 }
