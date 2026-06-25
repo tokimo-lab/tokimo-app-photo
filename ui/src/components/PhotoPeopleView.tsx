@@ -1,4 +1,5 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Pencil, User, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoOutput } from "../generated/rust-api";
@@ -36,6 +37,7 @@ export function PhotoPeopleView({
   navigateToPersonId,
   onNavigateToPersonHandled,
 }: PhotoPeopleViewProps) {
+  const queryClient = useQueryClient();
   const [view, setView] = useState<ViewState>({ level: "grid" });
   const [photosPage, setPhotosPage] = useState(1);
   const photosAccumRef = useRef<PhotoOutput[]>([]);
@@ -62,6 +64,7 @@ export function PhotoPeopleView({
   const renameMutation = api.photo.renamePerson.useMutation({
     onSuccess: () => {
       void personsQuery.refetch();
+      api.photo.getPhotoFaces.invalidate(queryClient);
       // Update local view state name
       if (view.person && editingId === view.person.id) {
         setView((prev) => ({
