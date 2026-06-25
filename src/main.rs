@@ -111,12 +111,11 @@ async fn run_server() -> anyhow::Result<()> {
         .unwrap_or_else(|_| PhotoAiSettings::default_value());
 
     // Initialize AI worker client
-    let ai_worker_slot: Arc<OnceLock<Arc<tokimo_perception::worker::client::AiWorkerClient>>> = Arc::new(OnceLock::new());
+    let ai_worker_slot: Arc<OnceLock<Arc<tokimo_perception::worker::client::AiWorkerClient>>> =
+        Arc::new(OnceLock::new());
     let perception_settings = tokimo_perception::worker::client::AiWorkerSettings::default();
-    let ai_client = tokimo_perception::worker::client::AiWorkerClient::from_settings(
-        &perception_settings,
-        &data_local_path(),
-    );
+    let ai_client =
+        tokimo_perception::worker::client::AiWorkerClient::from_settings(&perception_settings, &data_local_path());
     ai_worker_slot
         .set(ai_client)
         .map_err(|_| anyhow::anyhow!("ai_worker_slot already set"))?;
@@ -156,8 +155,18 @@ async fn run_server() -> anyhow::Result<()> {
 
     // Register job type handlers with main server
     bus_clients::jobs::register_handler(&client, "file_scrape", "dispatch_file_scrape").await?;
-    bus_clients::jobs::register_handler(&client, "person_sync_delete_source", "dispatch_person_sync_delete_source").await?;
-    bus_clients::jobs::register_handler(&client, "person_sync_register_faces", "dispatch_person_sync_register_faces").await?;
+    bus_clients::jobs::register_handler(
+        &client,
+        "person_sync_delete_source",
+        "dispatch_person_sync_delete_source",
+    )
+    .await?;
+    bus_clients::jobs::register_handler(
+        &client,
+        "person_sync_register_faces",
+        "dispatch_person_sync_register_faces",
+    )
+    .await?;
     bus_clients::jobs::register_handler(&client, "photo_clip_scan", "dispatch_photo_clip_scan").await?;
     bus_clients::jobs::register_handler(&client, "photo_clip", "dispatch_photo_clip").await?;
     bus_clients::jobs::register_handler(&client, "photo_clip_single", "dispatch_photo_clip_single").await?;
