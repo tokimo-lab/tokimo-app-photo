@@ -24,9 +24,9 @@ use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter}
 use crate::db::entities::{
     photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
-use crate::repos::PhotoLibraryRepo;
 use crate::error::{AppError, OptionExt};
-use crate::handlers::vfs::ops::{VideoFileInfo, PHOTO_EXTENSIONS, walk_files_streaming};
+use crate::handlers::vfs::ops::{PHOTO_EXTENSIONS, VideoFileInfo, walk_files_streaming};
+use crate::repos::PhotoLibraryRepo;
 use crate::services::source::SourceRegistry;
 
 /// Convert an absolute host path to a VFS-relative path.
@@ -302,6 +302,7 @@ impl AppSyncService {
                     "checksum": checksum,
                     "sourceId": source.id.to_string(),
                     "libType": "photo",
+                    "photoId": library_id.to_string(),
                     "photoLibraryId": library_id.to_string(),
                 }),
                 Some(user_id),

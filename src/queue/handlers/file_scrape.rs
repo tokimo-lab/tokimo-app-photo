@@ -42,8 +42,9 @@ pub async fn handle(
 
     let app_uuid = params
         .get("photoId")
+        .or_else(|| params.get("photoLibraryId"))
         .and_then(|v| v.as_str())
-        .ok_or("Missing photoId")?;
+        .ok_or("Missing photoId/photoLibraryId")?;
     let app_uuid = Uuid::parse_str(app_uuid)?;
 
     photo::handle(
