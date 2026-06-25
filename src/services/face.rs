@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::prelude::Expr;
 use sea_orm::*;
+use std::collections::HashMap;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -34,116 +35,36 @@ impl PhotoFaceService {
         format!("[{}]", inner.join(","))
     }
 
-    /// Find the closest person for a given embedding vector using centroid matching.
-    ///
-    /// Instead of comparing against the single nearest face (which causes chain
-    /// drift), we:
-    /// 1. Find the top-K nearest faces by vector distance
-    /// 2. Group by `person_id` and compute the average similarity per person
-    /// 3. Require the average similarity to exceed the threshold
-    ///
-    /// This prevents chain drift (A→B→C where A and C look nothing alike).
-    async fn find_closest_person(
-        db: &DatabaseConnection,
-        vec_lit: &str,
-        app_id: Uuid,
-        threshold: f64,
-    ) -> Result<Option<Uuid>, AppError> {
-        // Step 1: Find the top-50 nearest faces (by cosine distance), scoped to app
-        // Step 2: Group by person, average the similarity, require threshold
-        let sql = format!(
-            r"
-            WITH nearest AS (
-                SELECT pf.person_id,
-                       1 - (pf.vec <=> '{vec_lit}'::vector) AS similarity
-                FROM photo_faces pf
-                JOIN photos p ON p.id = pf.photo_id
-                WHERE pf.person_id IS NOT NULL
-                  AND pf.vec IS NOT NULL
-                  AND p.app_id = $1
-                ORDER BY pf.vec <=> '{vec_lit}'::vector
-                LIMIT 50
-            )
-            SELECT person_id,
-                   AVG(similarity) AS avg_sim,
-                   MIN(similarity) AS min_sim,
-                   COUNT(*)        AS face_count
-            FROM nearest
-            GROUP BY person_id
-            HAVING AVG(similarity) > {threshold}
-            ORDER BY AVG(similarity) DESC
-            LIMIT 1
-            ",
-        );
-
-        let stmt = Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, [app_id.into()]);
-        let row = db.query_one_raw(stmt).await?;
-
-        if let Some(row) = row {
-            let person_id: Option<Uuid> = row.try_get("", "person_id").ok();
-            if let Some(pid) = person_id {
-                return Ok(Some(pid));
-            }
+    async fn fetch_person_summaries(
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
+        person_ids: Vec<Uuid>,
+    ) -> Result<HashMap<Uuid, person_bus::PersonSummary>, AppError> {
+        if person_ids.is_empty() {
+            return Ok(HashMap::new());
         }
-
-        Ok(None)
+        let client = bus_client.ok_or_else(|| AppError::Internal("Person service unavailable".into()))?;
+        let uid = user_id.ok_or_else(|| AppError::Unauthorized("missing user id".into()))?;
+        let persons = person_bus::persons_by_ids(client, person_bus::photo_caller(Some(uid)), person_ids).await?;
+        Ok(persons.into_iter().map(|person| (person.id, person)).collect())
     }
 
-    /// Create a new person for an app.
-    async fn create_person(db: &DatabaseConnection, app_id: Uuid) -> Result<Uuid, AppError> {
-        let now = Utc::now().fixed_offset();
-        let person_id = Uuid::new_v4();
-        let model = photo_persons::ActiveModel {
-            id: Set(person_id),
-            app_id: Set(app_id),
-            name: Set(None),
-            avatar_face_id: Set(None),
-            face_count: Set(0),
-            is_hidden: Set(false),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
-        photo_persons::Entity::insert(model).exec(db).await?;
-        Ok(person_id)
-    }
-
-    /// Ensure a person exists in the local photo_persons table. Creates if not found.
-    async fn ensure_person_exists(db: &DatabaseConnection, person_id: Uuid, app_id: Uuid) -> Result<(), AppError> {
-        let existing = photo_persons::Entity::find_by_id(person_id).one(db).await?;
-        if existing.is_none() {
-            let now = Utc::now().fixed_offset();
-            let model = photo_persons::ActiveModel {
-                id: Set(person_id),
-                app_id: Set(app_id),
-                name: Set(None),
-                avatar_face_id: Set(None),
-                face_count: Set(0),
-                is_hidden: Set(false),
-                created_at: Set(now),
-                updated_at: Set(now),
-            };
-            photo_persons::Entity::insert(model).exec(db).await?;
-        }
-        Ok(())
-    }
-
-    /// Increment the `face_count` on a person and set avatar if not yet set.
-    async fn increment_person_face_count(
+    async fn face_ref(
         db: &DatabaseConnection,
-        person_id: Uuid,
+        photo_id: Uuid,
         face_id: i32,
-    ) -> Result<(), AppError> {
-        let person = photo_persons::Entity::find_by_id(person_id).one(db).await?;
-        if let Some(p) = person {
-            let mut active: photo_persons::ActiveModel = p.clone().into();
-            active.face_count = Set(p.face_count + 1);
-            if p.avatar_face_id.is_none() {
-                active.avatar_face_id = Set(Some(face_id));
-            }
-            active.updated_at = Set(Utc::now().fixed_offset());
-            active.update(db).await?;
-        }
-        Ok(())
+    ) -> Result<(photo_faces::Model, i32), AppError> {
+        let faces = photo_faces::Entity::find()
+            .filter(photo_faces::Column::PhotoId.eq(photo_id))
+            .order_by_asc(photo_faces::Column::Id)
+            .all(db)
+            .await?;
+        let (index, face) = faces
+            .into_iter()
+            .enumerate()
+            .find(|(_, face)| face.id == face_id)
+            .ok_or_else(|| AppError::NotFound("Face not found".into()))?;
+        Ok((face, index as i32))
     }
 
     /// Detect faces in a single photo and store embeddings.
@@ -264,51 +185,30 @@ impl PhotoFaceService {
             let row = db.query_one_raw(stmt).await?;
             let face_id: i32 = row.as_ref().and_then(|r| r.try_get::<i32>("", "id").ok()).unwrap_or(0);
 
-            // Assign to existing person or create a new one.
-            // Try person app bus first (if available), fall back to local matching.
             let person_id = if let (Some(bc), Some(uid)) = (bus_client, user_id) {
                 let caller = person_bus::photo_caller(Some(uid));
                 match person_bus::match_face(bc, caller, &image_hash, face_index as i32).await {
-                    Ok(resp) if resp.person_id.is_some() => {
-                        let pid = resp.person_id.unwrap();
-                        // Ensure person exists in local photo_persons table
-                        Self::ensure_person_exists(db, pid, photo.app_id).await?;
-                        pid
-                    }
-                    Ok(_) => {
-                        // Person app has no match — create a new local person
-                        Self::create_person(db, photo.app_id).await?
-                    }
+                    Ok(resp) => resp.person_id,
                     Err(e) => {
-                        warn!("[photo_face] person.match_face failed for photo {photo_id} face {face_index}: {e}");
-                        Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68)
-                            .await?
-                            .unwrap_or_else(|| Uuid::nil())
+                        warn!(
+                            "[photo_face] person.match_face failed for photo {photo_id} face {face_index}: {e}; leaving face unassigned"
+                        );
+                        None
                     }
                 }
             } else {
-                Self::find_closest_person(db, &vec_lit, photo.app_id, 0.68)
-                    .await?
-                    .unwrap_or_else(|| Uuid::nil())
+                None
             };
 
-            // If local fallback returned nil, create a new person
-            let person_id = if person_id == Uuid::nil() {
-                Self::create_person(db, photo.app_id).await?
-            } else {
-                person_id
-            };
-
-            // Link face → person
-            let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
-            let stmt = Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                update_sql,
-                [person_id.into(), face_id.into()],
-            );
-            db.execute_raw(stmt).await?;
-
-            Self::increment_person_face_count(db, person_id, face_id).await?;
+            if let Some(person_id) = person_id {
+                let update_sql = "UPDATE photo_faces SET person_id = $1 WHERE id = $2";
+                let stmt = Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    update_sql,
+                    [person_id.into(), face_id.into()],
+                );
+                db.execute_raw(stmt).await?;
+            }
         }
 
         Ok(count)
@@ -392,34 +292,68 @@ impl PhotoFaceService {
     }
 
     /// List all persons for an app.
-    pub async fn list_persons(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PersonOutput>, AppError> {
+    pub async fn list_persons(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
+    ) -> Result<Vec<PersonOutput>, AppError> {
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r"
-                SELECT pp.id, pp.name, pp.face_count,
-                       pf.photo_id as avatar_photo_id,
-                       p.thumbnail_path as avatar_thumbnail_path
-                FROM photo_persons pp
-                LEFT JOIN photo_faces pf ON pf.id = pp.avatar_face_id
-                LEFT JOIN photos p ON p.id = pf.photo_id
-                WHERE pp.app_id = $1 AND pp.is_hidden = false
-                ORDER BY pp.face_count DESC
+                WITH person_faces AS (
+                    SELECT pf.person_id,
+                           COUNT(*)::int AS face_count,
+                           (ARRAY_AGG(pf.photo_id ORDER BY pf.confidence DESC NULLS LAST, pf.id ASC))[1] AS avatar_photo_id
+                    FROM photo_faces pf
+                    JOIN photos p ON p.id = pf.photo_id
+                    WHERE p.app_id = $1
+                      AND p.deleted_at IS NULL
+                      AND pf.person_id IS NOT NULL
+                    GROUP BY pf.person_id
+                )
+                SELECT person_id, face_count, avatar_photo_id, p.thumbnail_path as avatar_thumbnail_path
+                FROM person_faces
+                LEFT JOIN photos p ON p.id = avatar_photo_id
+                ORDER BY face_count DESC
                 ",
                 [app_id.into()],
             ))
             .await?;
 
-        let mut persons = Vec::new();
+        let mut local_rows = Vec::new();
+        let mut person_ids = Vec::new();
         for row in rows {
-            persons.push(PersonOutput {
-                id: row.try_get::<Uuid>("", "id").unwrap_or_default().to_string(),
-                name: row.try_get("", "name").ok().flatten(),
-                face_count: row.try_get::<i32>("", "face_count").unwrap_or(0),
-                avatar_photo_id: row.try_get::<Uuid>("", "avatar_photo_id").ok().map(|u| u.to_string()),
-                avatar_thumbnail_path: row.try_get("", "avatar_thumbnail_path").ok().flatten(),
-            });
+            let person_id = row.try_get::<Uuid>("", "person_id").unwrap_or_default();
+            if person_id == Uuid::nil() {
+                continue;
+            }
+            person_ids.push(person_id);
+            local_rows.push((
+                person_id,
+                row.try_get::<i32>("", "face_count").unwrap_or(0),
+                row.try_get::<Uuid>("", "avatar_photo_id").ok().map(|u| u.to_string()),
+                row.try_get::<Option<String>>("", "avatar_thumbnail_path")
+                    .ok()
+                    .flatten(),
+            ));
         }
+
+        let summaries = Self::fetch_person_summaries(bus_client, user_id, person_ids).await?;
+        let persons = local_rows
+            .into_iter()
+            .filter_map(|(person_id, face_count, avatar_photo_id, avatar_thumbnail_path)| {
+                let summary = summaries.get(&person_id)?;
+                Some(PersonOutput {
+                    id: person_id.to_string(),
+                    name: summary.name.clone(),
+                    face_count,
+                    avatar_photo_id,
+                    avatar_thumbnail_path: avatar_thumbnail_path.or_else(|| summary.avatar_url.clone()),
+                })
+            })
+            .collect();
 
         Ok(persons)
     }
@@ -462,54 +396,53 @@ impl PhotoFaceService {
         Ok(Page::new(photo_ids_query, total, page))
     }
 
-    /// Merge two persons: move all faces from source to target, then delete source.
-    pub async fn merge_persons(db: &DatabaseConnection, target_id: Uuid, source_id: Uuid) -> Result<(), AppError> {
-        // Move all faces from source → target
+    /// Merge two persons in Person, then update the Photo cache for this library.
+    pub async fn merge_persons(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        target_id: Uuid,
+        source_id: Uuid,
+        bus_client: &std::sync::Arc<tokimo_bus_client::BusClient>,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        person_bus::merge_persons(
+            bus_client,
+            person_bus::photo_caller(Some(user_id)),
+            target_id,
+            source_id,
+        )
+        .await?;
+
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "UPDATE photo_faces SET person_id = $1 WHERE person_id = $2",
-            [target_id.into(), source_id.into()],
+            r"
+            UPDATE photo_faces
+            SET person_id = $1
+            WHERE person_id = $2
+              AND photo_id IN (SELECT id FROM photos WHERE app_id = $3)
+            ",
+            [target_id.into(), source_id.into(), app_id.into()],
         );
         db.execute_raw(stmt).await?;
-
-        // Recount faces for the target person
-        let count_stmt = Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT COUNT(*) as cnt FROM photo_faces WHERE person_id = $1",
-            [target_id.into()],
-        );
-        let new_count: i32 = db
-            .query_one_raw(count_stmt)
-            .await?
-            .and_then(|r| r.try_get::<i64>("", "cnt").ok())
-            .unwrap_or(0) as i32;
-
-        let target = photo_persons::Entity::find_by_id(target_id).one(db).await?;
-        if let Some(t) = target {
-            let mut active: photo_persons::ActiveModel = t.into();
-            active.face_count = Set(new_count);
-            active.updated_at = Set(Utc::now().fixed_offset());
-            active.update(db).await?;
-        }
-
-        // Delete the source person
         photo_persons::Entity::delete_by_id(source_id).exec(db).await?;
-
         Ok(())
     }
 
-    /// Rename a person.
-    pub async fn rename_person(db: &DatabaseConnection, person_id: Uuid, name: &str) -> Result<(), AppError> {
-        let person = photo_persons::Entity::find_by_id(person_id)
-            .one(db)
-            .await?
-            .not_found("Person not found")?;
-
-        let mut active: photo_persons::ActiveModel = person.into();
-        active.name = Set(Some(name.to_string()));
-        active.updated_at = Set(Utc::now().fixed_offset());
-        active.update(db).await?;
-
+    /// Rename a person in Person.
+    pub async fn rename_person(
+        bus_client: &std::sync::Arc<tokimo_bus_client::BusClient>,
+        user_id: Uuid,
+        person_id: Uuid,
+        name: &str,
+    ) -> Result<(), AppError> {
+        person_bus::update_person(
+            bus_client,
+            person_bus::photo_caller(Some(user_id)),
+            person_id,
+            Some(name.to_string()),
+            None,
+        )
+        .await?;
         Ok(())
     }
 
@@ -517,18 +450,29 @@ impl PhotoFaceService {
     ///
     /// If the face was previously assigned to another person, that person's `face_count` is
     /// decremented. The target person's `face_count` is incremented.
-    pub async fn assign_face_to_person(db: &DatabaseConnection, face_id: i32, person_id: Uuid) -> Result<(), AppError> {
+    pub async fn assign_face_to_person(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        face_id: i32,
+        person_id: Uuid,
+        bus_client: &std::sync::Arc<tokimo_bus_client::BusClient>,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        let (_face, face_index) = Self::face_ref(db, photo_id, face_id).await?;
+        person_bus::assign_face(
+            bus_client,
+            person_bus::photo_caller(Some(user_id)),
+            person_id,
+            &photo_id.to_string(),
+            face_index,
+        )
+        .await?;
+
         let txn = db.begin().await?;
         let face = photo_faces::Entity::find_by_id(face_id)
             .one(&txn)
             .await?
             .not_found("Face not found")?;
-
-        // Verify target person exists
-        let _target = photo_persons::Entity::find_by_id(person_id)
-            .one(&txn)
-            .await?
-            .not_found("Person not found")?;
 
         let old_person_id = face.person_id;
 
@@ -543,12 +487,10 @@ impl PhotoFaceService {
         active.person_id = Set(Some(person_id));
         active.update(&txn).await?;
 
-        // Decrement old person's face_count if applicable
         if let Some(old_pid) = old_person_id {
             Self::recount_person(&txn, old_pid).await?;
         }
 
-        // Recount target person
         Self::recount_person(&txn, person_id).await?;
 
         txn.commit().await?;
@@ -561,9 +503,25 @@ impl PhotoFaceService {
     /// and assigns the face to that new person.
     pub async fn create_person_from_face(
         db: &DatabaseConnection,
+        photo_id: Uuid,
         face_id: i32,
         name: Option<String>,
+        bus_client: &std::sync::Arc<tokimo_bus_client::BusClient>,
+        user_id: Uuid,
     ) -> Result<PersonOutput, AppError> {
+        let (_face_ref, face_index) = Self::face_ref(db, photo_id, face_id).await?;
+        let matched = person_bus::create_person_from_face(
+            bus_client,
+            person_bus::photo_caller(Some(user_id)),
+            name.clone(),
+            &photo_id.to_string(),
+            face_index,
+        )
+        .await?;
+        let person_id = matched
+            .person_id
+            .ok_or_else(|| AppError::Internal("person.create_person_from_face returned no person id".into()))?;
+
         let txn = db.begin().await?;
         let face = photo_faces::Entity::find_by_id(face_id)
             .one(&txn)
@@ -577,29 +535,12 @@ impl PhotoFaceService {
             .not_found("Photo not found")?;
 
         let old_person_id = face.person_id;
-
-        // Create the new person
-        let now = Utc::now().fixed_offset();
-        let person_id = Uuid::new_v4();
-        let person_model = photo_persons::ActiveModel {
-            id: Set(person_id),
-            app_id: Set(photo.app_id),
-            name: Set(name.clone()),
-            avatar_face_id: Set(Some(face_id)),
-            face_count: Set(1),
-            is_hidden: Set(false),
-            created_at: Set(now),
-            updated_at: Set(now),
-        };
         Self::clear_avatar_face(&txn, face_id).await?;
-        photo_persons::Entity::insert(person_model).exec(&txn).await?;
 
-        // Assign the face to the new person
         let mut active: photo_faces::ActiveModel = face.into();
         active.person_id = Set(Some(person_id));
         active.update(&txn).await?;
 
-        // Decrement old person's face_count if applicable
         if let Some(old_pid) = old_person_id {
             Self::recount_person(&txn, old_pid).await?;
         }
@@ -659,15 +600,19 @@ impl PhotoFaceService {
     }
 
     /// Get all detected faces for a specific photo, with person info.
-    pub async fn get_photo_faces(db: &DatabaseConnection, photo_id: Uuid) -> Result<Vec<PhotoFaceOutput>, AppError> {
+    pub async fn get_photo_faces(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
+    ) -> Result<Vec<PhotoFaceOutput>, AppError> {
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r"
                 SELECT pf.id, pf.x, pf.y, pf.w, pf.h, pf.confidence,
-                       pf.person_id, pp.name as person_name
+                       pf.person_id
                 FROM photo_faces pf
-                LEFT JOIN photo_persons pp ON pp.id = pf.person_id
                 WHERE pf.photo_id = $1
                 ORDER BY pf.confidence DESC NULLS LAST
                 ",
@@ -676,7 +621,12 @@ impl PhotoFaceService {
             .await?;
 
         let mut faces = Vec::new();
+        let mut person_ids = Vec::new();
         for row in rows {
+            let person_id = row.try_get::<Uuid>("", "person_id").ok();
+            if let Some(person_id) = person_id {
+                person_ids.push(person_id);
+            }
             faces.push(PhotoFaceOutput {
                 id: row.try_get::<i32>("", "id").unwrap_or(0),
                 x: row.try_get::<f64>("", "x").unwrap_or(0.0),
@@ -684,9 +634,25 @@ impl PhotoFaceService {
                 w: row.try_get::<f64>("", "w").unwrap_or(0.0),
                 h: row.try_get::<f64>("", "h").unwrap_or(0.0),
                 confidence: row.try_get::<f64>("", "confidence").ok(),
-                person_id: row.try_get::<Uuid>("", "person_id").ok().map(|u| u.to_string()),
-                person_name: row.try_get::<String>("", "person_name").ok(),
+                person_id: person_id.map(|u| u.to_string()),
+                person_name: None,
             });
+        }
+
+        person_ids.sort_unstable();
+        person_ids.dedup();
+        match Self::fetch_person_summaries(bus_client, user_id, person_ids).await {
+            Ok(summaries) => {
+                for face in &mut faces {
+                    let Some(person_id) = face.person_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()) else {
+                        continue;
+                    };
+                    face.person_name = summaries.get(&person_id).and_then(|person| person.name.clone());
+                }
+            }
+            Err(e) => {
+                warn!("[photo_face] person summary fetch failed for photo {photo_id}: {e}");
+            }
         }
 
         Ok(faces)

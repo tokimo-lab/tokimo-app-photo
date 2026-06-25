@@ -4,6 +4,9 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use tokimo_bus_auth::TokimoUser;
+use tokimo_bus_client::BusClient;
+use uuid::Uuid;
 
 use crate::AppState;
 use crate::bus_clients::jobs;
@@ -13,6 +16,17 @@ use crate::handlers::{ApiResponse, ok};
 use crate::repos::PhotoLibraryRepo;
 
 use super::parse_uuid;
+
+fn parse_user_id(user_id: &str) -> Result<Uuid, AppError> {
+    Uuid::parse_str(user_id).map_err(|_| AppError::BadRequest("invalid user id".into()))
+}
+
+fn person_client(state: &AppState) -> Result<&Arc<BusClient>, AppError> {
+    state
+        .bus_client
+        .get()
+        .ok_or_else(|| AppError::Internal("Person service unavailable".into()))
+}
 
 /// POST /api/apps/photo/{id}/photos/face-detect
 pub async fn face_detect(
@@ -46,9 +60,13 @@ pub async fn face_detect(
 pub async fn list_persons(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    TokimoUser { user_id }: TokimoUser,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let persons = crate::services::face::PhotoFaceService::list_persons(&state.db, app_id).await?;
+    let uid = parse_user_id(&user_id)?;
+    let client = person_client(&state)?;
+    let persons =
+        crate::services::face::PhotoFaceService::list_persons(&state.db, app_id, Some(client), Some(uid)).await?;
     Ok(ok(serde_json::to_value(persons).unwrap()))
 }
 
@@ -86,13 +104,17 @@ pub struct MergePersonsBody {
 pub async fn merge_persons(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    TokimoUser { user_id }: TokimoUser,
     Json(body): Json<MergePersonsBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let _app_id = parse_uuid(&id)?;
+    let app_id = parse_uuid(&id)?;
+    let uid = parse_user_id(&user_id)?;
+    let client = person_client(&state)?;
     let target_id = parse_uuid(&body.target_id)?;
     let source_id = parse_uuid(&body.source_id)?;
 
-    crate::services::face::PhotoFaceService::merge_persons(&state.db, target_id, source_id).await?;
+    crate::services::face::PhotoFaceService::merge_persons(&state.db, app_id, target_id, source_id, client, uid)
+        .await?;
 
     Ok(ok(serde_json::json!({"success": true})))
 }
@@ -106,12 +128,15 @@ pub struct RenamePersonBody {
 pub async fn rename_person(
     State(state): State<Arc<AppState>>,
     Path((id, person_id)): Path<(String, String)>,
+    TokimoUser { user_id }: TokimoUser,
     Json(body): Json<RenamePersonBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let _app_id = parse_uuid(&id)?;
+    let uid = parse_user_id(&user_id)?;
+    let client = person_client(&state)?;
     let pid = parse_uuid(&person_id)?;
 
-    crate::services::face::PhotoFaceService::rename_person(&state.db, pid, &body.name).await?;
+    crate::services::face::PhotoFaceService::rename_person(client, uid, pid, &body.name).await?;
 
     Ok(ok(serde_json::json!({"success": true})))
 }
@@ -126,15 +151,19 @@ pub struct AssignFaceBody {
 pub async fn assign_face_to_person(
     State(state): State<Arc<AppState>>,
     Path((photo_id, face_id)): Path<(String, String)>,
+    TokimoUser { user_id }: TokimoUser,
     Json(body): Json<AssignFaceBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let _photo_id = parse_uuid(&photo_id)?;
+    let photo_id = parse_uuid(&photo_id)?;
+    let uid = parse_user_id(&user_id)?;
+    let client = person_client(&state)?;
     let fid: i32 = face_id
         .parse()
         .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
     let person_id = parse_uuid(&body.person_id)?;
 
-    crate::services::face::PhotoFaceService::assign_face_to_person(&state.db, fid, person_id).await?;
+    crate::services::face::PhotoFaceService::assign_face_to_person(&state.db, photo_id, fid, person_id, client, uid)
+        .await?;
 
     Ok(ok(serde_json::json!({"success": true})))
 }
@@ -148,14 +177,20 @@ pub struct CreatePersonFromFaceBody {
 pub async fn create_person_from_face(
     State(state): State<Arc<AppState>>,
     Path((photo_id, face_id)): Path<(String, String)>,
+    TokimoUser { user_id }: TokimoUser,
     Json(body): Json<CreatePersonFromFaceBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
-    let _photo_id = parse_uuid(&photo_id)?;
+    let photo_id = parse_uuid(&photo_id)?;
+    let uid = parse_user_id(&user_id)?;
+    let client = person_client(&state)?;
     let fid: i32 = face_id
         .parse()
         .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
 
-    let person = crate::services::face::PhotoFaceService::create_person_from_face(&state.db, fid, body.name).await?;
+    let person = crate::services::face::PhotoFaceService::create_person_from_face(
+        &state.db, photo_id, fid, body.name, client, uid,
+    )
+    .await?;
 
     Ok(ok(serde_json::to_value(person).unwrap()))
 }
@@ -164,8 +199,12 @@ pub async fn create_person_from_face(
 pub async fn get_photo_faces(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    TokimoUser { user_id }: TokimoUser,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let photo_id = parse_uuid(&id)?;
-    let faces = crate::services::face::PhotoFaceService::get_photo_faces(&state.db, photo_id).await?;
+    let uid = parse_user_id(&user_id)?;
+    let client = state.bus_client.get();
+    let faces =
+        crate::services::face::PhotoFaceService::get_photo_faces(&state.db, photo_id, client, Some(uid)).await?;
     Ok(ok(serde_json::to_value(faces).unwrap()))
 }
