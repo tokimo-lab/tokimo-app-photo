@@ -3,4 +3,4 @@
 /**
  * Photo album list item
  */
-export type PhotoAlbumOutput = { id: string, appId: string, name: string, description: string | null, coverPhotoId: string | null, albumType: string, photoCount: number, };
+export type PhotoAlbumOutput = { id: string, appId: string, name: string, description: string | null, coverPhotoId: string | null, albumType: string, ownerUserId: string | null, sourceRef: string | null, sourceLabel: string | null, sourceMeta: unknown, photoCount: number, };

@@ -1,5 +1,6 @@
 // Photo-specific entities
 pub mod photo_albums;
+pub mod photo_album_user_shares;
 pub mod photo_clip_vectors;
 pub mod photo_faces;
 pub mod photo_geo_cache;

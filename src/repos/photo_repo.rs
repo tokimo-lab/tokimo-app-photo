@@ -1,13 +1,13 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use uuid::Uuid;
 
-use crate::db::entities::{photo_albums, photos, vfs};
+use crate::db::entities::{photo_album_user_shares, photo_albums, photo_faces, photos, vfs};
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::models::{FolderInfo, PhotoAlbumOutput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::models::{FolderInfo, PhotoAlbumOutput, PhotoAlbumSourceInput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
 
 #[derive(Debug, serde::Serialize)]
 pub struct TimelineEntry {
@@ -135,14 +135,45 @@ impl PhotoRepo {
         Ok(new_val)
     }
 
-    /// List photo albums
-    pub async fn list_albums(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<PhotoAlbumOutput>, AppError> {
-        let items = photo_albums::Entity::find()
-            .filter(photo_albums::Column::AppId.eq(app_id))
-            .order_by_asc(photo_albums::Column::SortOrder)
-            .into_partial_model::<PhotoAlbumOutput>()
+    /// List photo albums visible to a user.
+    pub async fn list_albums(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        scope: &str,
+    ) -> Result<Vec<PhotoAlbumOutput>, AppError> {
+        let shared_album_ids = photo_album_user_shares::Entity::find()
+            .filter(photo_album_user_shares::Column::UserId.eq(user_id))
+            .select_only()
+            .column(photo_album_user_shares::Column::AlbumId)
+            .into_tuple::<Uuid>()
             .all(db)
             .await?;
+
+        let mut query = photo_albums::Entity::find()
+            .filter(photo_albums::Column::AppId.eq(app_id))
+            .order_by_asc(photo_albums::Column::SortOrder);
+
+        query = match scope {
+            "mine" => query.filter(
+                Condition::any()
+                    .add(photo_albums::Column::OwnerUserId.eq(user_id))
+                    .add(photo_albums::Column::OwnerUserId.is_null()),
+            ),
+            "shared" => query.filter(photo_albums::Column::Id.eq_any(shared_album_ids)),
+            _ => query.filter(
+                Condition::any()
+                    .add(photo_albums::Column::OwnerUserId.eq(user_id))
+                    .add(photo_albums::Column::OwnerUserId.is_null())
+                    .add(photo_albums::Column::Id.eq_any(shared_album_ids)),
+            ),
+        };
+
+        let albums = query.all(db).await?;
+        let mut items = Vec::with_capacity(albums.len());
+        for album in albums {
+            items.push(Self::album_output(db, album).await?);
+        }
         Ok(items)
     }
 
@@ -270,8 +301,10 @@ impl PhotoRepo {
     pub async fn create_album(
         db: &DatabaseConnection,
         app_id: Uuid,
+        owner_user_id: Uuid,
         name: &str,
         description: Option<&str>,
+        source: Option<PhotoAlbumSourceInput>,
     ) -> Result<PhotoAlbumOutput, AppError> {
         let album_id = Uuid::new_v4();
         let max_sort = photo_albums::Entity::find()
@@ -284,23 +317,129 @@ impl PhotoRepo {
             .flatten()
             .unwrap_or(0);
 
+        let (album_type, source_ref, source_label, source_meta) = if let Some(src) = source {
+            match src.kind.as_str() {
+                "person" | "folder" | "clip" => (
+                    src.kind,
+                    Some(src.source_ref),
+                    Some(src.label),
+                    if matches!(src.meta, serde_json::Value::Null) {
+                        serde_json::json!({})
+                    } else {
+                        src.meta
+                    },
+                ),
+                _ => return Err(AppError::BadRequest("unsupported album source kind".into())),
+            }
+        } else {
+            ("manual".to_string(), None, None, serde_json::json!({}))
+        };
+
         let active = photo_albums::ActiveModel {
             id: Set(album_id),
             app_id: Set(app_id),
             name: Set(name.to_string()),
             description: Set(description.map(std::string::ToString::to_string)),
-            album_type: Set("manual".to_string()),
+            album_type: Set(album_type),
+            owner_user_id: Set(Some(owner_user_id)),
+            source_ref: Set(source_ref),
+            source_label: Set(source_label),
+            source_meta: Set(source_meta),
             sort_order: Set(max_sort + 1),
             photo_count: Set(0),
             ..Default::default()
         };
         photo_albums::Entity::insert(active).exec(db).await?;
 
-        photo_albums::Entity::find_by_id(album_id)
-            .into_partial_model::<PhotoAlbumOutput>()
+        let album = photo_albums::Entity::find_by_id(album_id)
             .one(db)
             .await?
-            .internal("Failed to read created album")
+            .internal("Failed to read created album")?;
+        Self::album_output(db, album).await
+    }
+
+    pub async fn get_album(db: &DatabaseConnection, album_id: Uuid) -> Result<photo_albums::Model, AppError> {
+        photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")
+    }
+
+    pub async fn can_view_album(db: &DatabaseConnection, album_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+        let album = Self::get_album(db, album_id).await?;
+        if album.owner_user_id.is_none() || album.owner_user_id == Some(user_id) {
+            return Ok(true);
+        }
+        let shared = photo_album_user_shares::Entity::find()
+            .filter(photo_album_user_shares::Column::AlbumId.eq(album_id))
+            .filter(photo_album_user_shares::Column::UserId.eq(user_id))
+            .count(db)
+            .await?;
+        Ok(shared > 0)
+    }
+
+    pub async fn can_manage_album(db: &DatabaseConnection, album_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+        let album = Self::get_album(db, album_id).await?;
+        Ok(album.owner_user_id.is_none() || album.owner_user_id == Some(user_id))
+    }
+
+    pub async fn list_album_user_shares(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+    ) -> Result<Vec<photo_album_user_shares::Model>, AppError> {
+        Ok(photo_album_user_shares::Entity::find()
+            .filter(photo_album_user_shares::Column::AlbumId.eq(album_id))
+            .order_by_asc(photo_album_user_shares::Column::CreatedAt)
+            .all(db)
+            .await?)
+    }
+
+    pub async fn upsert_album_user_share(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+        user_id: Uuid,
+        created_by: Uuid,
+    ) -> Result<(), AppError> {
+        let now = Utc::now().fixed_offset();
+        let existing = photo_album_user_shares::Entity::find()
+            .filter(photo_album_user_shares::Column::AlbumId.eq(album_id))
+            .filter(photo_album_user_shares::Column::UserId.eq(user_id))
+            .one(db)
+            .await?;
+
+        if let Some(model) = existing {
+            let mut active: photo_album_user_shares::ActiveModel = model.into();
+            active.permission = Set("view".to_string());
+            active.updated_at = Set(now);
+            active.update(db).await?;
+            return Ok(());
+        }
+
+        photo_album_user_shares::Entity::insert(photo_album_user_shares::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            album_id: Set(album_id),
+            user_id: Set(user_id),
+            permission: Set("view".to_string()),
+            created_by: Set(Some(created_by)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        })
+        .exec(db)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_album_user_share(
+        db: &DatabaseConnection,
+        album_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        photo_album_user_shares::Entity::delete_many()
+            .filter(photo_album_user_shares::Column::AlbumId.eq(album_id))
+            .filter(photo_album_user_shares::Column::UserId.eq(user_id))
+            .exec(db)
+            .await?;
+        Ok(())
     }
 
     /// Delete a photo album (unlinks photos but doesn't delete them)
@@ -321,10 +460,13 @@ impl PhotoRepo {
         album_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<i32, AppError> {
-        photo_albums::Entity::find_by_id(album_id)
+        let album = photo_albums::Entity::find_by_id(album_id)
             .one(db)
             .await?
             .not_found("Album not found")?;
+        if album.album_type != "manual" {
+            return Err(AppError::BadRequest("dynamic albums cannot be edited manually".into()));
+        }
 
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
@@ -359,6 +501,14 @@ impl PhotoRepo {
         album_id: Uuid,
         photo_ids: &[Uuid],
     ) -> Result<i32, AppError> {
+        let album = photo_albums::Entity::find_by_id(album_id)
+            .one(db)
+            .await?
+            .not_found("Album not found")?;
+        if album.album_type != "manual" {
+            return Err(AppError::BadRequest("dynamic albums cannot be edited manually".into()));
+        }
+
         photos::Entity::update_many()
             .filter(photos::Column::Id.is_in(photo_ids.to_vec()))
             .filter(photos::Column::PhotoAlbumId.eq(album_id))
@@ -691,8 +841,16 @@ impl PhotoRepo {
         album_id: Uuid,
         page: &PageInput,
     ) -> Result<Page<PhotoOutput>, AppError> {
-        let query = photos::Entity::find()
-            .filter(photos::Column::PhotoAlbumId.eq(album_id))
+        let album = Self::get_album(db, album_id).await?;
+        Self::list_album_photos_for_album(db, &album, page).await
+    }
+
+    pub async fn list_album_photos_for_album(
+        db: &DatabaseConnection,
+        album: &photo_albums::Model,
+        page: &PageInput,
+    ) -> Result<Page<PhotoOutput>, AppError> {
+        let query = Self::album_photos_query(album)?
             .filter(photos::Column::IsHidden.eq(false))
             .filter(photos::Column::DeletedAt.is_null())
             .order_by_desc(photos::Column::TakenAt)
@@ -706,6 +864,89 @@ impl PhotoRepo {
             .await?;
 
         Ok(Page::new(items, total, page))
+    }
+
+    pub async fn album_contains_photo(
+        db: &DatabaseConnection,
+        album: &photo_albums::Model,
+        photo_id: Uuid,
+    ) -> Result<bool, AppError> {
+        if album.album_type == "clip" {
+            return Ok(false);
+        }
+        let count = Self::album_photos_query(album)?
+            .filter(photos::Column::Id.eq(photo_id))
+            .filter(photos::Column::IsHidden.eq(false))
+            .filter(photos::Column::DeletedAt.is_null())
+            .count(db)
+            .await?;
+        Ok(count > 0)
+    }
+
+    pub async fn album_output(db: &DatabaseConnection, album: photo_albums::Model) -> Result<PhotoAlbumOutput, AppError> {
+        let mut output = PhotoAlbumOutput::from(album.clone());
+        if album.album_type != "clip" {
+            let query = Self::album_photos_query(&album)?
+                .filter(photos::Column::IsHidden.eq(false))
+                .filter(photos::Column::DeletedAt.is_null());
+            output.photo_count = query.clone().count(db).await? as i32;
+            output.cover_photo_id = query
+                .order_by_desc(photos::Column::TakenAt)
+                .order_by_desc(photos::Column::CreatedAt)
+                .select_only()
+                .column(photos::Column::Id)
+                .into_tuple::<Uuid>()
+                .one(db)
+                .await?;
+        }
+        Ok(output)
+    }
+
+    fn album_photos_query(album: &photo_albums::Model) -> Result<Select<photos::Entity>, AppError> {
+        let query = match album.album_type.as_str() {
+            "manual" => photos::Entity::find().filter(photos::Column::PhotoAlbumId.eq(album.id)),
+            "person" => {
+                let person_id = album
+                    .source_ref
+                    .as_deref()
+                    .ok_or_else(|| AppError::BadRequest("person album missing source_ref".into()))?
+                    .parse::<Uuid>()
+                    .map_err(|_| AppError::BadRequest("person album source_ref is not a uuid".into()))?;
+                photos::Entity::find()
+                    .filter(photos::Column::AppId.eq(album.app_id))
+                    .filter(
+                        photos::Column::Id.in_subquery(
+                            sea_orm::sea_query::Query::select()
+                                .distinct()
+                                .column(photo_faces::Column::PhotoId)
+                                .from(photo_faces::Entity)
+                                .and_where(photo_faces::Column::PersonId.eq(person_id))
+                                .to_owned(),
+                        ),
+                    )
+            }
+            "folder" => {
+                let source_ref = album
+                    .source_ref
+                    .as_deref()
+                    .ok_or_else(|| AppError::BadRequest("folder album missing source_ref".into()))?;
+                let prefix = if source_ref.is_empty() || source_ref == "/" {
+                    "/".to_string()
+                } else {
+                    format!("{}/", source_ref.trim_end_matches('/'))
+                };
+                photos::Entity::find()
+                    .filter(photos::Column::AppId.eq(album.app_id))
+                    .filter(photos::Column::Path.starts_with(prefix))
+            }
+            "clip" => {
+                return Err(AppError::BadRequest(
+                    "clip albums are resolved through PhotoClipService".into(),
+                ));
+            }
+            other => return Err(AppError::BadRequest(format!("unsupported album type {other}"))),
+        };
+        Ok(query)
     }
 
     /// List photos filtered by geo location fields.

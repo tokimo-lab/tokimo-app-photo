@@ -48,6 +48,30 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             get(album::list_album_photos),
         )
         .route(
+            "/albums/{id}/share",
+            get(album::get_album_share),
+        )
+        .route(
+            "/albums/{id}/share-link",
+            patch(album::patch_album_share_link),
+        )
+        .route(
+            "/albums/{id}/shares",
+            post(album::put_album_user_share),
+        )
+        .route(
+            "/albums/{id}/shares/{user_id}",
+            delete(album::delete_album_user_share),
+        )
+        .route(
+            "/public/share/{token}/album",
+            post(album::public_album_by_token),
+        )
+        .route(
+            "/public/share/{token}/photo/{photo_id}/image",
+            get(album::public_album_photo_image),
+        )
+        .route(
             "/albums/{id}/add-photos",
             post(album::add_photos_to_album),
         )

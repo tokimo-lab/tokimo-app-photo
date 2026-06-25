@@ -17,6 +17,13 @@ pub struct Model {
     pub cover_photo_id: Option<Uuid>,
     #[sea_orm(column_type = "Text")]
     pub album_type: String,
+    pub owner_user_id: Option<Uuid>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub source_ref: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub source_label: Option<String>,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub source_meta: Json,
     pub photo_count: i32,
     pub sort_order: i32,
     pub created_at: Option<DateTimeWithTimeZone>,

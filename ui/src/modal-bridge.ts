@@ -20,10 +20,18 @@ export interface CreateAlbumBridge {
   onCreated?: () => void;
 }
 
+export interface ShareAlbumBridge {
+  kind: "share-album";
+  ctx: AppRuntimeCtx;
+  albumId: string;
+  albumName: string;
+}
+
 export type ModalBridge =
   | LibraryEditorBridge
   | AddOnlineMediaBridge
-  | CreateAlbumBridge;
+  | CreateAlbumBridge
+  | ShareAlbumBridge;
 
 const registry = new Map<string, ModalBridge>();
 let counter = 0;

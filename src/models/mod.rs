@@ -1,6 +1,6 @@
 use sea_orm::DerivePartialModel;
 use sea_orm::entity::prelude::DateTimeWithTimeZone;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -220,8 +220,7 @@ pub struct PhotoLibrarySourceOutput {
 }
 
 /// Photo album list item
-#[derive(Debug, Clone, Serialize, DerivePartialModel, TS)]
-#[sea_orm(entity = "photo_albums::Entity")]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PhotoAlbumOutput {
@@ -234,5 +233,40 @@ pub struct PhotoAlbumOutput {
     #[ts(type = "string | null")]
     pub cover_photo_id: Option<Uuid>,
     pub album_type: String,
+    #[ts(type = "string | null")]
+    pub owner_user_id: Option<Uuid>,
+    pub source_ref: Option<String>,
+    pub source_label: Option<String>,
+    pub source_meta: serde_json::Value,
     pub photo_count: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PhotoAlbumSourceInput {
+    pub kind: String,
+    #[serde(rename = "ref")]
+    pub source_ref: String,
+    pub label: String,
+    #[serde(default)]
+    pub meta: serde_json::Value,
+}
+
+impl From<photo_albums::Model> for PhotoAlbumOutput {
+    fn from(album: photo_albums::Model) -> Self {
+        Self {
+            id: album.id,
+            app_id: album.app_id,
+            name: album.name,
+            description: album.description,
+            cover_photo_id: album.cover_photo_id,
+            album_type: album.album_type,
+            owner_user_id: album.owner_user_id,
+            source_ref: album.source_ref,
+            source_label: album.source_label,
+            source_meta: album.source_meta,
+            photo_count: album.photo_count,
+        }
+    }
 }

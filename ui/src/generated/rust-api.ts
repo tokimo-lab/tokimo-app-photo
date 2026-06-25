@@ -59,6 +59,20 @@ interface ListPhotosInput {
   afterDate?: string;
 }
 
+export interface PhotoAlbumSourceInput {
+  kind: "person" | "folder" | "clip";
+  ref: string;
+  label: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface AlbumShareStatus {
+  linkEnabled: boolean;
+  token: string | null;
+  url: string | null;
+  users: Array<{ userId: string; permission: string }>;
+}
+
 interface PhotoGeoSettings {
   provider: string;
   enabled: boolean;
@@ -276,18 +290,35 @@ export const photoApi = {
   }),
 
   // ── Albums ──
-  listPhotoAlbums: createQuery<{ id: string }, PhotoAlbumOutput[]>({
+  listPhotoAlbums: createQuery<
+    { id: string; scope?: "all" | "mine" | "shared" },
+    PhotoAlbumOutput[]
+  >({
     path: "/api/apps/photo/{id}/photo-albums",
     pathFn: (input) => `/api/apps/photo/${enc(input.id)}/photo-albums`,
+    paramsFn: (input) => {
+      const p: Record<string, string> = {};
+      if (input.scope) p.scope = input.scope;
+      return p;
+    },
   }),
   createPhotoAlbum: createMutation<
-    { id: string; name: string; description?: string },
+    {
+      id: string;
+      name: string;
+      description?: string;
+      source?: PhotoAlbumSourceInput;
+    },
     PhotoAlbumOutput
   >({
     method: "POST",
     path: "/api/apps/photo/{id}/photo-albums",
     pathFn: (input) => `/api/apps/photo/${enc(input.id)}/photo-albums`,
-    bodyFn: (input) => ({ name: input.name, description: input.description }),
+    bodyFn: (input) => ({
+      name: input.name,
+      description: input.description,
+      source: input.source,
+    }),
   }),
   deletePhotoAlbum: createPathMutation<
     { albumId: string },
@@ -328,6 +359,37 @@ export const photoApi = {
       if (input.pageSize) p.pageSize = String(input.pageSize);
       return p;
     },
+  }),
+  getAlbumShare: createQuery<{ albumId: string }, AlbumShareStatus>({
+    path: "/api/apps/photo/albums/{id}/share",
+    pathFn: (input) => `/api/apps/photo/albums/${enc(input.albumId)}/share`,
+  }),
+  patchAlbumShareLink: createMutation<
+    { albumId: string; enabled: boolean },
+    AlbumShareStatus
+  >({
+    method: "PATCH",
+    path: "/api/apps/photo/albums/{id}/share-link",
+    pathFn: (input) =>
+      `/api/apps/photo/albums/${enc(input.albumId)}/share-link`,
+    bodyFn: (input) => ({ enabled: input.enabled }),
+  }),
+  putAlbumUserShare: createMutation<
+    { albumId: string; userId: string },
+    AlbumShareStatus
+  >({
+    method: "POST",
+    path: "/api/apps/photo/albums/{id}/shares",
+    pathFn: (input) => `/api/apps/photo/albums/${enc(input.albumId)}/shares`,
+    bodyFn: (input) => ({ userId: input.userId }),
+  }),
+  deleteAlbumUserShare: createPathMutation<
+    { albumId: string; userId: string },
+    AlbumShareStatus
+  >({
+    method: "DELETE",
+    pathFn: (input) =>
+      `/api/apps/photo/albums/${enc(input.albumId)}/shares/${enc(input.userId)}`,
   }),
 
   // ── Batch operations ──

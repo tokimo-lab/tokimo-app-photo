@@ -1,7 +1,17 @@
-import { Button, Empty, Spin } from "@tokimo/ui";
+import { Button, Empty, Input, SegmentedControl, Spin } from "@tokimo/ui";
 import { useRuntimeCtx, useWindowActions } from "@tokimo/sdk";
-import { Grid3x3, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+  FolderOpen,
+  Grid3x3,
+  Plus,
+  Search,
+  Share2,
+  Sparkles,
+  Tag,
+  Trash2,
+  UserRound,
+} from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import type { PhotoAlbumOutput, PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { thumbUrl } from "../lib/thumb";
@@ -10,19 +20,28 @@ import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { PAGE_SIZE } from "./photo-utils";
 
-// ── Album Detail View ────────────────────────────────────────────────────────
+type AlbumScope = "all" | "mine" | "shared";
+
+const albumTypeMeta = {
+  manual: { label: "手动", icon: Grid3x3 },
+  person: { label: "人物", icon: UserRound },
+  folder: { label: "文件夹", icon: FolderOpen },
+  clip: { label: "标签", icon: Tag },
+} as const;
 
 function AlbumDetailView({
   album,
   onBack,
   onToggleFavorite,
   onDeleteAlbum,
+  onShareAlbum,
   onNavigateToPerson,
 }: {
   album: PhotoAlbumOutput;
   onBack: () => void;
   onToggleFavorite?: (photo: PhotoOutput) => void;
   onDeleteAlbum: (albumId: string) => void;
+  onShareAlbum: (album: PhotoAlbumOutput) => void;
   onNavigateToPerson?: (personId: string) => void;
 }) {
   const [page, setPage] = useState(1);
@@ -35,37 +54,61 @@ function AlbumDetailView({
 
   const photos = photosQuery.data?.items ?? [];
   const total = photosQuery.data?.total ?? 0;
+  const isDynamic = album.albumType !== "manual";
+  const meta =
+    albumTypeMeta[album.albumType as keyof typeof albumTypeMeta] ??
+    albumTypeMeta.manual;
+  const TypeIcon = meta.icon;
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             className="cursor-pointer text-sm text-fg-muted hover:text-fg-secondary"
             onClick={onBack}
           >
-            ← 返回
+            ← 相册
           </button>
-          <h3 className="text-lg font-semibold text-fg-primary">
-            {album.name}
-          </h3>
-          <span className="text-sm text-fg-muted">{total} 张</span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="truncate text-lg font-semibold text-fg-primary">
+                {album.name}
+              </h3>
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-fill-secondary px-2 py-0.5 text-xs text-fg-secondary">
+                <TypeIcon className="h-3 w-3" />
+                {meta.label}
+              </span>
+            </div>
+            <p className="text-sm text-fg-muted">
+              {total} 张
+              {isDynamic && album.sourceLabel
+                ? ` · 自动更新自 ${album.sourceLabel}`
+                : ""}
+            </p>
+          </div>
         </div>
-        <Button
-          onClick={() => onDeleteAlbum(album.id)}
-          icon={<Trash2 className="h-4 w-4" />}
-        >
-          删除
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => onShareAlbum(album)}
+            icon={<Share2 className="h-4 w-4" />}
+          >
+            分享
+          </Button>
+          <Button
+            onClick={() => onDeleteAlbum(album.id)}
+            icon={<Trash2 className="h-4 w-4" />}
+          >
+            删除
+          </Button>
+        </div>
       </div>
 
       {album.description && (
         <p className="text-sm text-fg-muted">{album.description}</p>
       )}
 
-      {/* Photos grid */}
       {photosQuery.isLoading ? (
         <div className="flex h-64 items-center justify-center">
           <Spin />
@@ -89,7 +132,11 @@ function AlbumDetailView({
           )}
         </>
       ) : (
-        <Empty description="相册内暂无照片" />
+        <Empty
+          description={
+            isDynamic ? "这个自动相册暂时没有匹配照片" : "相册内暂无照片"
+          }
+        />
       )}
 
       {selectedPhoto && (
@@ -106,12 +153,10 @@ function AlbumDetailView({
   );
 }
 
-// ── Albums Grid ──────────────────────────────────────────────────────────────
-
 export function PhotoAlbumsView({
   appId,
-  albums,
-  isLoading,
+  albums: initialAlbums,
+  isLoading: initialLoading,
   onToggleFavorite,
   onRefresh,
   onNavigateToPerson,
@@ -125,11 +170,31 @@ export function PhotoAlbumsView({
 }) {
   const ctx = useRuntimeCtx();
   const { openModalWindow } = useWindowActions();
+  const [scope, setScope] = useState<AlbumScope>("all");
+  const [search, setSearch] = useState("");
   const [activeAlbum, setActiveAlbum] = useState<PhotoAlbumOutput | null>(null);
+
+  const albumsQuery = api.photo.listPhotoAlbums.useQuery(
+    { id: appId, scope },
+    { enabled: !!appId },
+  );
+  const albums = albumsQuery.data ?? initialAlbums;
+  const isLoading = albumsQuery.isLoading && initialLoading;
+
+  const filteredAlbums = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return albums;
+    return albums.filter((album) =>
+      [album.name, album.description, album.sourceLabel]
+        .filter(Boolean)
+        .some((text) => text!.toLowerCase().includes(keyword)),
+    );
+  }, [albums, search]);
 
   const deleteMutation = api.photo.deletePhotoAlbum.useMutation({
     onSuccess: () => {
       setActiveAlbum(null);
+      void albumsQuery.refetch();
       onRefresh();
     },
   });
@@ -139,22 +204,44 @@ export function PhotoAlbumsView({
       kind: "create-album",
       ctx,
       appId,
-      onCreated: onRefresh,
+      onCreated: () => {
+        void albumsQuery.refetch();
+        onRefresh();
+      },
     });
     openModalWindow({
       component: () => import("./CreateAlbumWindow"),
       title: "新建相册",
-      width: 440,
-      height: 320,
+      width: 620,
+      height: 620,
       metadata: { bridgeId },
     });
-  }, [appId, ctx, onRefresh, openModalWindow]);
+  }, [albumsQuery, appId, ctx, onRefresh, openModalWindow]);
+
+  const openShareAlbumWindow = useCallback(
+    (album: PhotoAlbumOutput) => {
+      const bridgeId = registerBridge({
+        kind: "share-album",
+        ctx,
+        albumId: album.id,
+        albumName: album.name,
+      });
+      openModalWindow({
+        component: () => import("./ShareAlbumWindow"),
+        title: `分享相册 · ${album.name}`,
+        width: 560,
+        height: 520,
+        metadata: { bridgeId },
+      });
+    },
+    [ctx, openModalWindow],
+  );
 
   const handleDelete = useCallback(
     (albumId: string) => {
       deleteMutation.mutate({ albumId });
     },
-    [deleteMutation.mutate],
+    [deleteMutation],
   );
 
   if (activeAlbum) {
@@ -164,6 +251,7 @@ export function PhotoAlbumsView({
         onBack={() => setActiveAlbum(null)}
         onToggleFavorite={onToggleFavorite}
         onDeleteAlbum={handleDelete}
+        onShareAlbum={openShareAlbumWindow}
         onNavigateToPerson={onNavigateToPerson}
       />
     );
@@ -179,64 +267,58 @@ export function PhotoAlbumsView({
 
   return (
     <div className="flex flex-col gap-4">
-      {albums.length > 0 && (
-        <div className="flex items-center gap-3 pl-1 pr-14 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
-            <Grid3x3 className="h-3.5 w-3.5" />
+            <Grid3x3 className="h-4 w-4" />
             相册
           </span>
-          <span className="text-fg-muted">{albums.length} 个相册</span>
-          <Button
-            size="small"
-            onClick={openCreateAlbumWindow}
-            icon={<Plus className="h-4 w-4" />}
-          >
-            新建相册
-          </Button>
+          <span className="text-sm text-fg-muted">
+            {filteredAlbums.length} / {albums.length}
+          </span>
         </div>
-      )}
+        <Button
+          size="small"
+          onClick={openCreateAlbumWindow}
+          icon={<Plus className="h-4 w-4" />}
+        >
+          新建相册
+        </Button>
+      </div>
 
-      {/* Albums grid */}
-      {albums.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          value={scope}
+          onChange={(value) => setScope(value as AlbumScope)}
+          options={[
+            { label: "全部", value: "all" },
+            { label: "我的相册", value: "mine" },
+            { label: "他人分享", value: "shared" },
+          ]}
+        />
+        <div className="relative min-w-56 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索相册"
+            className="w-full pl-9"
+          />
+        </div>
+      </div>
+
+      {filteredAlbums.length > 0 ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-          {albums.map((album) => (
-            <button
+          {filteredAlbums.map((album) => (
+            <AlbumCard
               key={album.id}
-              type="button"
-              className="group cursor-pointer overflow-hidden rounded-xl border border-border-base bg-white/50 text-left transition-shadow hover:shadow-lg dark:bg-white/[0.03]"
+              album={album}
               onClick={() => setActiveAlbum(album)}
-            >
-              <div className="aspect-[4/3] bg-fill-tertiary">
-                {album.coverPhotoId ? (
-                  <img
-                    src={thumbUrl("photo", album.coverPhotoId, 400)}
-                    alt={album.name}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Grid3x3 className="h-10 w-10 text-neutral-300 dark:text-neutral-600" />
-                  </div>
-                )}
-              </div>
-              <div className="p-3">
-                <p className="truncate text-sm font-medium text-fg-primary">
-                  {album.name}
-                </p>
-                <p className="mt-0.5 text-xs text-fg-muted">
-                  {album.photoCount} 张照片
-                </p>
-              </div>
-            </button>
+            />
           ))}
         </div>
       ) : (
-        <Empty
-          className="min-h-80 py-0"
-          description="暂无相册"
-        >
+        <Empty className="min-h-80 py-0" description="暂无相册">
           <Button
             onClick={openCreateAlbumWindow}
             icon={<Plus className="h-4 w-4" />}
@@ -245,7 +327,61 @@ export function PhotoAlbumsView({
           </Button>
         </Empty>
       )}
-
     </div>
+  );
+}
+
+function AlbumCard({
+  album,
+  onClick,
+}: {
+  album: PhotoAlbumOutput;
+  onClick: () => void;
+}) {
+  const meta =
+    albumTypeMeta[album.albumType as keyof typeof albumTypeMeta] ??
+    albumTypeMeta.manual;
+  const TypeIcon = meta.icon;
+  const isDynamic = album.albumType !== "manual";
+
+  return (
+    <button
+      type="button"
+      className="group cursor-pointer overflow-hidden rounded-lg border border-base bg-surface-raised text-left transition-shadow hover:shadow-lg"
+      onClick={onClick}
+    >
+      <div className="relative aspect-[4/3] bg-fill-tertiary">
+        {album.coverPhotoId ? (
+          <img
+            src={thumbUrl("photo", album.coverPhotoId, 400)}
+            alt={album.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            {isDynamic ? (
+              <Sparkles className="h-10 w-10 text-fg-muted" />
+            ) : (
+              <Grid3x3 className="h-10 w-10 text-fg-muted" />
+            )}
+          </div>
+        )}
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-surface-overlay/90 px-2 py-1 text-xs text-fg-secondary shadow-sm backdrop-blur-sm">
+          <TypeIcon className="h-3 w-3" />
+          {meta.label}
+        </span>
+      </div>
+      <div className="space-y-1 p-3">
+        <p className="truncate text-sm font-medium text-fg-primary">
+          {album.name}
+        </p>
+        <p className="text-xs text-fg-muted">
+          {album.photoCount} 张照片
+          {album.sourceLabel ? ` · ${album.sourceLabel}` : ""}
+        </p>
+      </div>
+    </button>
   );
 }
