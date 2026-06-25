@@ -66,6 +66,12 @@ export interface PhotoAlbumSourceInput {
   meta?: Record<string, unknown>;
 }
 
+export interface PhotoClipTagOption {
+  category: string;
+  icon: string;
+  subcategory: string;
+}
+
 export interface AlbumShareStatus {
   linkEnabled: boolean;
   token: string | null;
@@ -598,6 +604,10 @@ export const photoApi = {
     path: "/api/apps/photo/{id}/photos/clip-search",
     pathFn: (input) => `/api/apps/photo/${enc(input.id)}/photos/clip-search`,
     paramsFn: (input) => ({ q: input.q }),
+  }),
+  listClipTagOptions: createQuery<{ id: string }, PhotoClipTagOption[]>({
+    path: "/api/apps/photo/{id}/photos/clip-tags",
+    pathFn: (input) => `/api/apps/photo/${enc(input.id)}/photos/clip-tags`,
   }),
   faceDetect: createPathMutation<{ id: string }, { status: string }>({
     method: "POST",

@@ -1,5 +1,5 @@
 import type { ShellWindowHandle } from "@tokimo/sdk";
-import { Button, Empty, Input, SegmentedControl, Spin } from "@tokimo/ui";
+import { Button, Empty, Input, SegmentedControl, Select, Spin } from "@tokimo/ui";
 import { CheckCircle2, FolderOpen, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { queryClient } from "../index";
@@ -32,7 +32,6 @@ function CreateAlbumContent({
   const [selectedSource, setSelectedSource] = useState<SelectedSource | null>(
     null,
   );
-  const [clipQuery, setClipQuery] = useState("");
 
   const personsQuery = api.photo.listPersons.useQuery(
     { id: bridge.appId },
@@ -41,6 +40,10 @@ function CreateAlbumContent({
   const foldersQuery = api.photo.listPhotoFolders.useQuery(
     { id: bridge.appId, path: "/" },
     { enabled: mode === "auto" && sourceKind === "folder" },
+  );
+  const clipTagsQuery = api.photo.listClipTagOptions.useQuery(
+    { id: bridge.appId },
+    { enabled: mode === "auto" && sourceKind === "clip" },
   );
 
   const effectiveName = useMemo(() => {
@@ -62,15 +65,11 @@ function CreateAlbumContent({
     if (!trimmedName) return;
     let source: PhotoAlbumSourceInput | undefined;
     if (mode === "auto") {
-      const finalSource =
-        sourceKind === "clip" && clipQuery.trim()
-          ? { kind: "clip" as const, ref: clipQuery.trim(), label: clipQuery.trim() }
-          : selectedSource;
-      if (!finalSource) return;
+      if (!selectedSource) return;
       source = {
-        kind: finalSource.kind,
-        ref: finalSource.ref,
-        label: finalSource.label,
+        kind: selectedSource.kind,
+        ref: selectedSource.ref,
+        label: selectedSource.label,
       };
     }
     createMutation.mutate({
@@ -84,8 +83,7 @@ function CreateAlbumContent({
   const createDisabled =
     createMutation.isPending ||
     !effectiveName.trim() ||
-    (mode === "auto" &&
-      !(sourceKind === "clip" ? clipQuery.trim() : selectedSource));
+    (mode === "auto" && !selectedSource);
 
   return (
     <div className="flex h-full flex-col bg-surface-base text-fg-primary">
@@ -117,7 +115,6 @@ function CreateAlbumContent({
                 ? selectedSource.label
                 : "输入相册名称"
             }
-            size="large"
             autoFocus
           />
         </label>
@@ -153,16 +150,12 @@ function CreateAlbumContent({
               />
             )}
             {sourceKind === "clip" && (
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-fg-secondary">
-                  标签 / 描述
-                </span>
-                <Input
-                  value={clipQuery}
-                  onChange={(e) => setClipQuery(e.target.value)}
-                  placeholder="例如：海边、猫、夜景"
-                />
-              </label>
+              <ClipTagSourcePicker
+                selected={selectedSource}
+                tags={clipTagsQuery.data ?? []}
+                isLoading={clipTagsQuery.isLoading}
+                onSelect={setSelectedSource}
+              />
             )}
           </div>
         )}
@@ -215,7 +208,7 @@ function PersonSourcePicker({
     avatarThumbnailPath: string | null;
   }>;
   isLoading: boolean;
-  onSelect: (source: SelectedSource) => void;
+  onSelect: (source: SelectedSource | null) => void;
 }) {
   if (isLoading) return <PickerLoading />;
   if (persons.length === 0) return <Empty description="暂无人物" />;
@@ -234,7 +227,7 @@ function PersonSourcePicker({
                 : "border-base bg-surface-raised hover:bg-surface-overlay-hover"
             }`}
             onClick={() =>
-              onSelect({ kind: "person", ref: person.id, label })
+              onSelect(active ? null : { kind: "person", ref: person.id, label })
             }
           >
             {active && (
@@ -276,7 +269,7 @@ function FolderSourcePicker({
     coverPhotoId: string | null;
   }>;
   isLoading: boolean;
-  onSelect: (source: SelectedSource) => void;
+  onSelect: (source: SelectedSource | null) => void;
 }) {
   if (isLoading) return <PickerLoading />;
   if (folders.length === 0) return <Empty description="暂无文件夹" />;
@@ -294,11 +287,15 @@ function FolderSourcePicker({
                 : "border-transparent bg-surface-raised hover:bg-surface-overlay-hover"
             }`}
             onClick={() =>
-              onSelect({
-                kind: "folder",
-                ref: folder.path,
-                label: folder.name,
-              })
+              onSelect(
+                active
+                  ? null
+                  : {
+                      kind: "folder",
+                      ref: folder.path,
+                      label: folder.name,
+                    },
+              )
             }
           >
             <FolderOpen className="h-4 w-4 text-fg-muted" />
@@ -310,6 +307,58 @@ function FolderSourcePicker({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function ClipTagSourcePicker({
+  selected,
+  tags,
+  isLoading,
+  onSelect,
+}: {
+  selected: SelectedSource | null;
+  tags: Array<{
+    category: string;
+    icon: string;
+    subcategory: string;
+  }>;
+  isLoading: boolean;
+  onSelect: (source: SelectedSource | null) => void;
+}) {
+  if (isLoading) return <PickerLoading />;
+  if (tags.length === 0) return <Empty description="暂无标签" />;
+
+  return (
+    <div>
+      <span className="mb-1 block text-sm font-medium text-fg-secondary">
+        标签
+      </span>
+      <Select
+        value={selected?.kind === "clip" ? selected.ref : undefined}
+        onChange={(value) => {
+          if (!value) {
+            onSelect(null);
+            return;
+          }
+          const tag = tags.find((item) => item.subcategory === value);
+          if (!tag) return;
+          onSelect({
+            kind: "clip",
+            ref: tag.subcategory,
+            label: `${tag.icon} ${tag.subcategory}`,
+          });
+        }}
+        options={tags.map((tag) => ({
+          value: tag.subcategory,
+          label: `${tag.icon} ${tag.subcategory}`,
+          tagLabel: tag.subcategory,
+        }))}
+        allowClear
+        showSearch
+        placeholder="选择标签"
+        className="w-full"
+      />
     </div>
   );
 }

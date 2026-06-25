@@ -256,6 +256,31 @@ pub struct PhotoTag {
     pub score: f64,
 }
 
+#[derive(Debug, serde::Serialize, ts_rs::TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoClipTagOption {
+    pub category: String,
+    pub icon: String,
+    pub subcategory: String,
+}
+
+/// GET /api/apps/photo/{id}/photos/clip-tags
+pub async fn clip_tag_options(Path(_id): Path<String>) -> Result<Json<ApiResponse<Vec<PhotoClipTagOption>>>, AppError> {
+    let options = tokimo_perception::clip_categories::CATEGORIES
+        .iter()
+        .flat_map(|category| {
+            category.subs.iter().map(|subcategory| PhotoClipTagOption {
+                category: category.name.to_string(),
+                icon: category.icon.to_string(),
+                subcategory: (*subcategory).to_string(),
+            })
+        })
+        .collect();
+
+    Ok(ok(options))
+}
+
 /// GET /api/apps/photo/{photoId}/tags
 pub async fn photo_tags(
     State(state): State<Arc<AppState>>,

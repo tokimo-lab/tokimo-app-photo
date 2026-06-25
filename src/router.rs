@@ -34,6 +34,10 @@ pub fn build_photo_app_routes() -> Router<Arc<AppState>> {
             "/{id}/photos/timeline-index",
             get(browse::timeline_index),
         )
+        .route(
+            "/{id}/photos/clip-tags",
+            get(browse::clip_tag_options),
+        )
         // ── Albums ──
         .route(
             "/{id}/photo-albums",
