@@ -37,7 +37,7 @@ axum = { version = "0.8", features = ["json", "multipart"] }
 ts-rs = { version = "12", features = ["serde-json-impl"] }
 
 # ── Workspace-local packages ──
-tokimo-perception         = { git = "https://github.com/tokimo-lab/tokimo-perception.git", rev = "ae6d35c" }
+tokimo-media-intelligence = { git = "https://github.com/tokimo-lab/tokimo-media-intelligence.git", rev = "cb22558" }
 tokimo-package-image      = { git = "https://github.com/tokimo-lab/tokimo-package-image.git", rev = "1fbce46" }
 tokimo-package-ffmpeg     = { git = "https://github.com/tokimo-lab/tokimo-package-ffmpeg.git", rev = "b3bb5c8c" }
 tokimo-package-utils      = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "b1edb7b9" }

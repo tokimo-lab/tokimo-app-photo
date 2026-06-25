@@ -132,7 +132,7 @@ impl PhotoFaceService {
     pub async fn apply_face_detections(
         db: &DatabaseConnection,
         photo_id: Uuid,
-        detections: Vec<tokimo_perception::worker::protocol::types::FaceDetection>,
+        detections: Vec<tokimo_media_intelligence::worker::protocol::types::FaceDetection>,
         bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
         user_id: Option<Uuid>,
     ) -> Result<usize, AppError> {

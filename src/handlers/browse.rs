@@ -276,7 +276,7 @@ pub struct PhotoClipTagOption {
 pub async fn clip_tag_options(
     Path(_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<PhotoClipTagOption>>>, AppError> {
-    let options = tokimo_perception::clip_categories::CATEGORIES
+    let options = tokimo_media_intelligence::clip_categories::CATEGORIES
         .iter()
         .flat_map(|category| {
             category.subs.iter().map(|subcategory| PhotoClipTagOption {

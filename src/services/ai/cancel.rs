@@ -29,7 +29,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::queue::cancellation::JobCancel;
-use tokimo_perception::worker::client::AiWorkerClient;
+use tokimo_media_intelligence::worker::client::MediaIntelligenceWorkerClient;
 
 tokio::task_local! {
     /// Task-local job context set by the queue worker before invoking a
@@ -72,7 +72,7 @@ impl AiCancelScope {
     /// Start a cancel scope for an AI inference unit keyed by `unit_id`
     /// (typically a photo id). Returns `None` if not currently running
     /// inside a queue handler.
-    pub fn start(ai: &Arc<AiWorkerClient>, unit_id: Uuid) -> Option<Self> {
+    pub fn start(ai: &Arc<MediaIntelligenceWorkerClient>, unit_id: Uuid) -> Option<Self> {
         let ctx = current_job()?;
         let request_id = format!("{}:{}", ctx.job_id, unit_id);
         let done = Arc::new(Notify::new());
@@ -109,7 +109,7 @@ impl Drop for AiCancelScope {
 }
 
 fn spawn_watcher(
-    ai: Arc<AiWorkerClient>,
+    ai: Arc<MediaIntelligenceWorkerClient>,
     cancel: JobCancel,
     request_id: String,
     done: Arc<Notify>,

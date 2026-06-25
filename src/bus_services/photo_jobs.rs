@@ -373,7 +373,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .faces
                     .into_iter()
                     .map(
-                        |face| tokimo_perception::worker::protocol::types::FaceDetection {
+                        |face| tokimo_media_intelligence::worker::protocol::types::FaceDetection {
                             x: face.x,
                             y: face.y,
                             w: face.w,
