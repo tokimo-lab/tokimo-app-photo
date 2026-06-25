@@ -54,80 +54,86 @@ export function PhotoFoldersView({
 
   return (
     <>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1 text-sm">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.path} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />}
-            <button
-              type="button"
-              className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-fill-tertiary ${
-                i === breadcrumbs.length - 1
-                  ? "font-medium text-fg-primary"
-                  : "text-fg-muted"
-              }`}
-              onClick={() => setCurrentPath(crumb.path)}
-            >
-              {crumb.label}
-            </button>
-          </span>
-        ))}
+      <div className="space-y-3 px-4">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1 text-sm">
+          {breadcrumbs.map((crumb, i) => (
+            <span key={crumb.path} className="flex items-center gap-1">
+              {i > 0 && (
+                <ChevronRight className="h-3.5 w-3.5 text-fg-muted" />
+              )}
+              <button
+                type="button"
+                className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors hover:bg-fill-tertiary ${
+                  i === breadcrumbs.length - 1
+                    ? "font-medium text-fg-primary"
+                    : "text-fg-muted"
+                }`}
+                onClick={() => setCurrentPath(crumb.path)}
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Subdirectories */}
+        {folders.length > 0 && (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+            {folders.map((folder) => (
+              <button
+                key={folder.path}
+                type="button"
+                className="group flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-white/50 p-3 text-left transition-colors hover:bg-fill-tertiary dark:bg-white/[0.03]"
+                onClick={() => setCurrentPath(folder.path)}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
+                  {folder.coverPhotoId ? (
+                    <img
+                      src={thumbUrl("photo", folder.coverPhotoId, 80)}
+                      alt=""
+                      className="h-full w-full rounded-lg object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <FolderOpen className="h-5 w-5 text-fg-muted" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-fg-primary">
+                    {folder.name}
+                  </p>
+                  <p className="text-xs text-fg-muted">
+                    {folder.photoCount} 张
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Photos in current directory */}
+        {photos.length > 0 && (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-1.5">
+            {photos.map((photo) => (
+              <PhotoThumbnail
+                key={photo.id}
+                photo={photo}
+                onClick={setSelectedPhoto}
+                onToggleFavorite={onToggleFavorite}
+                isSelecting={isSelecting}
+                isSelected={selectedIds?.has(photo.id)}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
+
+        {folders.length === 0 && photos.length === 0 && (
+          <Empty description="此文件夹为空" />
+        )}
       </div>
-
-      {/* Subdirectories */}
-      {folders.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
-          {folders.map((folder) => (
-            <button
-              key={folder.path}
-              type="button"
-              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-border-base bg-white/50 p-3 text-left transition-colors hover:bg-fill-tertiary dark:bg-white/[0.03]"
-              onClick={() => setCurrentPath(folder.path)}
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-fill-tertiary">
-                {folder.coverPhotoId ? (
-                  <img
-                    src={thumbUrl("photo", folder.coverPhotoId, 80)}
-                    alt=""
-                    className="h-full w-full rounded-lg object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <FolderOpen className="h-5 w-5 text-fg-muted" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-fg-primary">
-                  {folder.name}
-                </p>
-                <p className="text-xs text-fg-muted">{folder.photoCount} 张</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Photos in current directory */}
-      {photos.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-1.5">
-          {photos.map((photo) => (
-            <PhotoThumbnail
-              key={photo.id}
-              photo={photo}
-              onClick={setSelectedPhoto}
-              onToggleFavorite={onToggleFavorite}
-              isSelecting={isSelecting}
-              isSelected={selectedIds?.has(photo.id)}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      )}
-
-      {folders.length === 0 && photos.length === 0 && (
-        <Empty description="此文件夹为空" />
-      )}
 
       {selectedPhoto && (
         <PhotoLightbox

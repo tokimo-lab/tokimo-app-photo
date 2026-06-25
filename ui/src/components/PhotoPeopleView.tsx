@@ -172,7 +172,7 @@ export function PhotoPeopleView({
   return (
     <div className="flex flex-col gap-4">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 pl-1 pr-14 text-sm">
+      <div className="flex items-center gap-2 pl-4 pr-14 text-sm">
         {view.level === "detail" ? (
           <button
             type="button"

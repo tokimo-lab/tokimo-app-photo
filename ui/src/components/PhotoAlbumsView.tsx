@@ -61,7 +61,7 @@ function AlbumDetailView({
   const TypeIcon = meta.icon;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 px-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -266,7 +266,7 @@ export function PhotoAlbumsView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex items-center gap-1.5 font-medium text-fg-secondary">

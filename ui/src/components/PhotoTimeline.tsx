@@ -518,7 +518,7 @@ export function PhotoTimeline({
 
   return (
     <>
-      <div ref={measureRef} className="pr-14 lg:pr-14">
+      <div ref={measureRef} className="pl-4 pr-14">
         {/* Upward loading indicator */}
         {hasNewer && isLoadingNewer && (
           <div className="flex justify-center py-4">

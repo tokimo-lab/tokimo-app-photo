@@ -322,7 +322,7 @@ export default function PhotoAppPage({
         ) : tab === "timeline" && similarSourceId ? (
           /* ── Similar photos filtered view ─────────────────────────── */
           <>
-            <div className="flex items-center gap-1 pl-1 pr-14 text-sm">
+            <div className="flex items-center gap-1 pl-4 pr-14 text-sm">
               <button
                 type="button"
                 onClick={() => setSimilarSourceId(null)}
@@ -363,7 +363,7 @@ export default function PhotoAppPage({
         ) : tab === "timeline" && tagFilter ? (
           /* ── Tag filtered view ──────────────────────────────────────── */
           <>
-            <div className="flex items-center gap-1 pl-1 pr-14 text-sm">
+            <div className="flex items-center gap-1 pl-4 pr-14 text-sm">
               <button
                 type="button"
                 onClick={() => setTagFilter(null)}
