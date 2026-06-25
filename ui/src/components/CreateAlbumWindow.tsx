@@ -180,7 +180,7 @@ function CreateAlbumContent({
           />
         </label>
       </div>
-      <div className="flex justify-end gap-3 border-t border-subtle p-4">
+      <div className="flex justify-end gap-3 p-4 pt-2">
         <Button
           onClick={() => win.close()}
           disabled={createMutation.isPending}

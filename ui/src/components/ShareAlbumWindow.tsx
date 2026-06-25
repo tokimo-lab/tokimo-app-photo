@@ -165,7 +165,7 @@ function ShareAlbumContent({
           </>
         )}
       </div>
-      <div className="flex justify-end border-t border-subtle p-4">
+      <div className="flex justify-end p-4 pt-2">
         <Button onClick={() => win.close()}>关闭</Button>
       </div>
     </div>
