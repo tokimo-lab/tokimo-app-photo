@@ -19,40 +19,6 @@ use crate::models::{PersonOutput, PhotoFaceOutput, PhotoOutput};
 pub struct PhotoFaceService;
 
 impl PhotoFaceService {
-    /// Detect faces in an image using the integrated AI service.
-    async fn represent(
-        bus: &tokimo_bus_client::BusClient,
-        user_id: Uuid,
-        image: media_bus::ImageInput,
-        request_id: Option<String>,
-    ) -> Result<Vec<tokimo_perception::worker::protocol::types::FaceDetection>, AppError> {
-        let result = media_bus::detect_faces(
-            bus,
-            media_bus::photo_caller(user_id),
-            media_bus::FaceDetectRequest { image, request_id },
-        )
-        .await
-        .map_err(|e| AppError::Internal(format!("Face detection error: {e}")))?;
-        Ok(result
-            .faces
-            .into_iter()
-            .filter_map(|face| {
-                let embedding = face.embedding?;
-                if face.bbox.len() < 4 {
-                    return None;
-                }
-                Some(tokimo_perception::worker::protocol::types::FaceDetection {
-                    x: face.bbox[0].round() as i32,
-                    y: face.bbox[1].round() as i32,
-                    w: face.bbox[2].round() as i32,
-                    h: face.bbox[3].round() as i32,
-                    confidence: face.confidence as f32,
-                    embedding,
-                })
-            })
-            .collect())
-    }
-
     /// Format a 512-d embedding as a pgvector literal: `[0.1,0.2,…]`
     fn vec_literal(embedding: &[f64]) -> String {
         let inner: Vec<String> = embedding.iter().map(std::string::ToString::to_string).collect();
@@ -97,6 +63,7 @@ impl PhotoFaceService {
     /// registered with the person app via bus for cross-app person matching.
     pub async fn detect_faces(
         db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
         photo_id: Uuid,
         bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
         user_id: Option<Uuid>,
@@ -106,16 +73,33 @@ impl PhotoFaceService {
             .await?
             .not_found("Photo not found")?;
 
-        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
-        let bus = bus_client.ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
+        let _ = bus_client.ok_or_else(|| AppError::Internal("jobs service unavailable".into()))?;
         let uid = user_id.ok_or_else(|| AppError::Unauthorized("missing user id".into()))?;
-        let detections = Self::represent(
-            bus,
+        let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
+        let data = crate::services::media_jobs::create_media_job_and_wait(
+            state,
             uid,
-            media_bus::image_input_for_photo(&photo, image_path)?,
-            Some(photo_id.to_string()),
+            "media_detect_faces_photo",
+            serde_json::json!({
+                "photoId": photo_id,
+                "image": media_bus::image_input_for_photo(&photo, image_path)?,
+            }),
         )
         .await?;
+        Ok(data.get("faceCount").and_then(|v| v.as_u64()).unwrap_or(0) as usize)
+    }
+
+    pub async fn apply_face_detections(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        detections: Vec<tokimo_perception::worker::protocol::types::FaceDetection>,
+        bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
+        user_id: Option<Uuid>,
+    ) -> Result<usize, AppError> {
+        photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .not_found("Photo not found")?;
         let count = detections.len();
 
         if count == 0 {
@@ -253,7 +237,7 @@ impl PhotoFaceService {
         }
         let total = pending.len();
         info!("[photo_face] Processing {total} photos for app {app_id}");
-        let (success, _, _) = Self::process_photo_ids(db, pending, bus_client, user_id).await;
+        let (success, _, _) = Self::process_photo_ids(db, state, pending, bus_client, user_id).await;
         info!("[photo_face] Done: {success}/{total} photos processed");
         Ok(success)
     }
@@ -290,6 +274,7 @@ impl PhotoFaceService {
     /// Process an explicit set of photo IDs (used by child batch jobs).
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
+        state: &std::sync::Arc<crate::AppState>,
         ids: Vec<Uuid>,
         bus_client: Option<&std::sync::Arc<tokimo_bus_client::BusClient>>,
         user_id: Option<Uuid>,
@@ -298,7 +283,7 @@ impl PhotoFaceService {
         let mut failures = 0u32;
         let mut errors: Vec<String> = Vec::new();
         for photo_id in ids {
-            match Self::detect_faces(db, photo_id, bus_client, user_id).await {
+            match Self::detect_faces(db, state, photo_id, bus_client, user_id).await {
                 Ok(_) => success += 1,
                 Err(e) => {
                     failures += 1;

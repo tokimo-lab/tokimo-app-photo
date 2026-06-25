@@ -130,26 +130,38 @@ impl PhotoClipService {
     /// For CLIP we only need 224×224 input, so we decode HEIC/AVIF at a small
     /// resolution (512px) instead of full-size, which is ~10× faster.
     async fn embed_photo_model(
-        db: &DatabaseConnection,
+        _db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
         user_id: Uuid,
     ) -> Result<(), AppError> {
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
-        let bus = state
+        let _ = state
             .bus_client
             .get()
-            .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
-        let vec = Self::embed_image(
-            bus,
+            .ok_or_else(|| AppError::Internal("jobs service unavailable".into()))?;
+        crate::services::media_jobs::create_media_job_and_wait(
+            state,
             user_id,
-            media_bus::image_input_for_photo(photo, image_path)?,
-            Some(photo.id.to_string()),
+            "media_embed_image_photo",
+            serde_json::json!({
+                "photoId": photo.id,
+                "image": media_bus::image_input_for_photo(photo, image_path)?,
+            }),
         )
         .await?;
-        Self::store_vector(db, photo.id, &vec).await?;
 
         Ok(())
+    }
+
+    pub async fn apply_clip_embedding(db: &DatabaseConnection, photo_id: Uuid, embedding: Vec<f32>) -> Result<(), AppError> {
+        if embedding.len() != 512 {
+            return Err(AppError::Internal(format!(
+                "CLIP img returned {} dims, expected 512",
+                embedding.len()
+            )));
+        }
+        Self::store_vector(db, photo_id, &embedding).await
     }
 
     /// Load bytes for a single photo using a pre-resolved base path (no DB lookup).

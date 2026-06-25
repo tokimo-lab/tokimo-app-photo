@@ -1,11 +1,18 @@
 use std::sync::Arc;
 
+use sea_orm::{ActiveModelTrait, Set};
+use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use tokimo_bus_client::BusClientBuilder;
 use tokimo_bus_protocol::{BusError, HttpMethod, MethodDecl};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::bus_clients::media_intelligence as media_bus;
+use crate::db::entities::photos;
+use crate::services::clip::PhotoClipService;
+use crate::services::face::PhotoFaceService;
+use crate::services::ocr::PhotoOcrService;
 use crate::AppState;
 
 fn decl(name: &str, description: &str) -> MethodDecl {
@@ -23,6 +30,16 @@ fn caller_user_id(caller: &tokimo_bus_protocol::CallerCtx) -> Option<Uuid> {
     caller.user_id.as_deref().and_then(|s| Uuid::parse_str(s).ok())
 }
 
+fn require_os_caller(caller: &tokimo_bus_protocol::CallerCtx, method: &str) -> Result<(), BusError> {
+    if caller.caller_app_id.as_deref() == Some("os") {
+        return Ok(());
+    }
+    Err(BusError::Unauthorized {
+        service: "photo".into(),
+        method: method.into(),
+    })
+}
+
 fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
     let v: JsonValue = serde_json::from_slice(raw).map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
     let job = v
@@ -35,6 +52,14 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
         .and_then(|s| Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}"))))?;
     let params = job.get("params").cloned().unwrap_or(JsonValue::Null);
     Ok((job_id, params))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyMediaResult<T> {
+    photo_id: Uuid,
+    result: T,
+    model_name: Option<String>,
 }
 
 pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuilder {
@@ -52,6 +77,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
     let ctx_ocr_single = ctx.clone();
     let ctx_geocode_scan = ctx.clone();
     let ctx_geocode = ctx.clone();
+    let ctx_apply_ocr = ctx.clone();
+    let ctx_apply_face = ctx.clone();
+    let ctx_apply_clip = ctx.clone();
+    let ctx_apply_gps = ctx.clone();
 
     builder
         .method(decl(
@@ -253,6 +282,98 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     .map_err(|e| BusError::Internal(e.to_string()))
             }
         })
+        // ── Media intelligence apply callbacks ──────────────────────────────
+        .method(decl("apply_media_ocr_result", "Apply OCR result produced by OS media jobs"))
+        .on_invoke("apply_media_ocr_result", move |req| {
+            let ctx = ctx_apply_ocr.clone();
+            async move {
+                require_os_caller(&req.caller, "apply_media_ocr_result")?;
+                let input: ApplyMediaResult<media_bus::OcrResult> = serde_json::from_slice(&req.payload)
+                    .map_err(|e| BusError::BadRequest(format!("apply_media_ocr_result json decode: {e}")))?;
+                let model_name = input.model_name.unwrap_or_else(|| "rapid-ocr-rust".to_string());
+                let count =
+                    PhotoOcrService::apply_ocr_results(&ctx.db, input.photo_id, model_name, input.result, None)
+                        .await
+                        .map_err(|e| BusError::Internal(e.to_string()))?;
+                serde_json::to_vec(&serde_json::json!({ "ocrCount": count }))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("apply_media_face_result", "Apply face detections produced by OS media jobs"))
+        .on_invoke("apply_media_face_result", move |req| {
+            let ctx = ctx_apply_face.clone();
+            async move {
+                require_os_caller(&req.caller, "apply_media_face_result")?;
+                let input: ApplyMediaResult<media_bus::FaceResult> = serde_json::from_slice(&req.payload)
+                    .map_err(|e| BusError::BadRequest(format!("apply_media_face_result json decode: {e}")))?;
+                let detections = input
+                    .result
+                    .faces
+                    .into_iter()
+                    .map(|face| tokimo_perception::worker::protocol::types::FaceDetection {
+                        x: face.x,
+                        y: face.y,
+                        w: face.w,
+                        h: face.h,
+                        confidence: face.confidence,
+                        embedding: face.embedding,
+                    })
+                    .collect();
+                let count = PhotoFaceService::apply_face_detections(
+                    &ctx.db,
+                    input.photo_id,
+                    detections,
+                    ctx.bus_client.get(),
+                    caller_user_id(&req.caller),
+                )
+                .await
+                .map_err(|e| BusError::Internal(e.to_string()))?;
+                serde_json::to_vec(&serde_json::json!({ "faceCount": count }))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("apply_media_clip_result", "Apply CLIP embedding produced by OS media jobs"))
+        .on_invoke("apply_media_clip_result", move |req| {
+            let ctx = ctx_apply_clip.clone();
+            async move {
+                require_os_caller(&req.caller, "apply_media_clip_result")?;
+                let input: ApplyMediaResult<media_bus::ClipResult> = serde_json::from_slice(&req.payload)
+                    .map_err(|e| BusError::BadRequest(format!("apply_media_clip_result json decode: {e}")))?;
+                PhotoClipService::apply_clip_embedding(&ctx.db, input.photo_id, input.result.embedding)
+                    .await
+                    .map_err(|e| BusError::Internal(e.to_string()))?;
+                serde_json::to_vec(&serde_json::json!({ "status": "ok" }))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
+        .method(decl("apply_media_gps_result", "Apply GPS result produced by OS media jobs"))
+        .on_invoke("apply_media_gps_result", move |req| {
+            let ctx = ctx_apply_gps.clone();
+            async move {
+                require_os_caller(&req.caller, "apply_media_gps_result")?;
+                let input: ApplyMediaResult<media_bus::GpsResult> = serde_json::from_slice(&req.payload)
+                    .map_err(|e| BusError::BadRequest(format!("apply_media_gps_result json decode: {e}")))?;
+                let active = photos::ActiveModel {
+                    id: Set(input.photo_id),
+                    gps_latitude: Set(Some(input.result.latitude)),
+                    gps_longitude: Set(Some(input.result.longitude)),
+                    gps_altitude: Set(input.result.altitude),
+                    geo_province: Set(input.result.province),
+                    geo_city: Set(input.result.city),
+                    geo_district: Set(input.result.district),
+                    location_name: Set(input.result.formatted_address.clone()),
+                    geo_address: Set(input.result.formatted_address),
+                    updated_at: Set(Some(chrono::Utc::now().fixed_offset())),
+                    ..Default::default()
+                };
+                active
+                    .update(&ctx.db)
+                    .await
+                    .map_err(|e| BusError::Internal(e.to_string()))?;
+                serde_json::to_vec(&serde_json::json!({ "status": "ok" }))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
         // ── Capabilities ─────────────────────────────────────────────────────
         .method(decl("capabilities", "Return photo bus service capabilities"))
         .on_invoke("capabilities", |_req| async move {
@@ -273,6 +394,10 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
                     "dispatch_photo_ocr_single",
                     "dispatch_photo_geocode_scan",
                     "dispatch_photo_geocode",
+                    "apply_media_ocr_result",
+                    "apply_media_face_result",
+                    "apply_media_clip_result",
+                    "apply_media_gps_result",
                     "capabilities",
                 ],
             }))

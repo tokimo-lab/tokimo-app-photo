@@ -32,7 +32,7 @@ pub struct OcrImageRequest {
     pub aux_model_name: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OcrItem {
     pub text: String,
@@ -48,7 +48,7 @@ pub struct OcrItem {
     pub corners: Option<Vec<[f64; 2]>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OcrResult {
     pub items: Vec<OcrItem>,
@@ -61,15 +61,18 @@ pub struct FaceDetectRequest {
     pub request_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FaceItem {
-    pub bbox: Vec<f64>,
-    pub confidence: f64,
-    pub embedding: Option<Vec<f32>>,
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    pub confidence: f32,
+    pub embedding: Vec<f32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FaceResult {
     pub faces: Vec<FaceItem>,
@@ -95,10 +98,22 @@ pub struct ClassifyVectorRequest {
     pub vector: Vec<f32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipResult {
     pub embedding: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpsResult {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub altitude: Option<f64>,
+    pub province: Option<String>,
+    pub city: Option<String>,
+    pub district: Option<String>,
+    pub formatted_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

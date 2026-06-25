@@ -25,6 +25,6 @@ pub async fn handle(
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
     let bus = state.bus_client.get();
-    let count = PhotoFaceService::detect_faces(db, photo_uuid, bus, user_id).await?;
+    let count = PhotoFaceService::detect_faces(db, state, photo_uuid, bus, user_id).await?;
     Ok(Some(json!({ "faceCount": count })))
 }

@@ -174,21 +174,51 @@ impl PhotoOcrService {
         let aux_model_name = settings.ocr_aux_model_name.clone();
 
         let image_path = photo.thumbnail_path.as_deref().unwrap_or(photo.path.as_str());
-        let bus = state
-            .bus_client
-            .get()
-            .ok_or_else(|| AppError::Internal("Media intelligence service unavailable".into()))?;
-        let request_id = Some(photo_id.to_string());
-
-        let (results, debug_info) = Self::ocr_image(
-            bus,
+        let data = crate::services::media_jobs::create_media_job_and_wait(
+            state,
             user_id,
-            media_bus::image_input_for_photo(&photo, image_path)?,
-            Some(&model_name),
-            aux_model_name.as_deref(),
-            request_id,
+            "media_ocr_photo",
+            serde_json::json!({
+                "photoId": photo_id,
+                "image": media_bus::image_input_for_photo(&photo, image_path)?,
+                "modelName": model_name,
+                "auxModelName": aux_model_name,
+            }),
         )
         .await?;
+        Ok(data.get("ocrCount").and_then(|v| v.as_u64()).unwrap_or(0) as usize)
+    }
+
+    pub async fn apply_ocr_results(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        model_name: String,
+        result: media_bus::OcrResult,
+        debug_info: Option<serde_json::Value>,
+    ) -> Result<usize, AppError> {
+        let photo = photos::Entity::find_by_id(photo_id)
+            .one(db)
+            .await?
+            .not_found("Photo not found")?;
+        let mut results = Vec::new();
+        for item in result.items {
+            if item.text.trim().is_empty() {
+                continue;
+            }
+            results.push(OcrResult {
+                text: item.text,
+                x: item.x,
+                y: item.y,
+                w: item.w,
+                h: item.h,
+                angle: item.angle,
+                score: item.score,
+                paragraph_id: item.paragraph_id,
+                char_positions: item.char_positions,
+                positioning_type: item.positioning_type,
+                corners: item.corners,
+            });
+        }
         let count = results.len();
 
         if !results.is_empty() {
