@@ -75,7 +75,6 @@ pub async fn sync_photo(
 
     let db = state.db.clone();
     let sources = state.sources.clone();
-    let storage = state.storage.get().cloned().expect("storage not initialized");
     let state_for_task = state.clone();
     let library_name = library.name.clone();
 

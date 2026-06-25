@@ -6,6 +6,8 @@
 //! 3. 报 sock 给 broker（`data_plane_socket`）
 //! 4. 主 server 把 `/api/apps/photo/<rest>` 全部反代到本 sock 的 `/<rest>`
 
+#![allow(dead_code, unused_imports)]
+
 /// Compile-time embedded app manifest; shared with the library crate via lib.rs.
 const MANIFEST: &str = include_str!("../tokimo-app.toml");
 

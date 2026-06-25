@@ -14,7 +14,6 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::handlers::{ApiResponse, err400};
-use crate::services::source::normalize_source_path;
 
 #[derive(Debug, Serialize, Clone, TS)]
 #[ts(export)]

@@ -15,7 +15,7 @@ use crate::services::geo::reverse_geocode_dispatch;
 use crate::services::ocr::PhotoOcrService;
 use crate::services::preempt;
 
-use super::{ApiResponse, ok, ok_empty, parse_uuid};
+use super::{ApiResponse, ok, parse_uuid};
 
 // ── Stubs ────────────────────────────────────────────────────────────────────
 

@@ -2,10 +2,10 @@ use sea_orm::EntityTrait;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::bus_clients::jobs;
 use crate::db::entities::jobs as job_entity;
 use crate::error::AppError;
-use crate::AppState;
 
 pub async fn create_media_job_and_wait(
     state: &std::sync::Arc<AppState>,

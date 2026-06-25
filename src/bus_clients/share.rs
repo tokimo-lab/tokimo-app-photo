@@ -86,8 +86,7 @@ where
     T: Serialize,
     R: for<'de> Deserialize<'de>,
 {
-    let payload =
-        serde_json::to_vec(request).map_err(|e| AppError::Internal(format!("share.{method} encode: {e}")))?;
+    let payload = serde_json::to_vec(request).map_err(|e| AppError::Internal(format!("share.{method} encode: {e}")))?;
     let response = client
         .invoke("share_registry", method, payload, caller)
         .await

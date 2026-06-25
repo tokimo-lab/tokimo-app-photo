@@ -8,12 +8,12 @@ use tokimo_bus_protocol::{BusError, HttpMethod, MethodDecl};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::bus_clients::media_intelligence as media_bus;
 use crate::db::entities::photos;
 use crate::services::clip::PhotoClipService;
 use crate::services::face::PhotoFaceService;
 use crate::services::ocr::PhotoOcrService;
-use crate::AppState;
 
 fn decl(name: &str, description: &str) -> MethodDecl {
     MethodDecl {

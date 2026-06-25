@@ -3,7 +3,7 @@ use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokimo_bus_auth::TokimoUser;
 
 /// Authenticated user context extracted from request headers.

@@ -7,7 +7,9 @@ use crate::db::entities::{photo_album_user_shares, photo_albums, photo_faces, ph
 use crate::db::pagination::{Page, PageInput};
 use crate::error::AppError;
 use crate::error::OptionExt;
-use crate::models::{FolderInfo, PhotoAlbumOutput, PhotoAlbumSourceInput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget};
+use crate::models::{
+    FolderInfo, PhotoAlbumOutput, PhotoAlbumSourceInput, PhotoDetailOutput, PhotoOutput, PhotoStreamTarget,
+};
 
 #[derive(Debug, serde::Serialize)]
 pub struct TimelineEntry {
@@ -883,7 +885,10 @@ impl PhotoRepo {
         Ok(count > 0)
     }
 
-    pub async fn album_output(db: &DatabaseConnection, album: photo_albums::Model) -> Result<PhotoAlbumOutput, AppError> {
+    pub async fn album_output(
+        db: &DatabaseConnection,
+        album: photo_albums::Model,
+    ) -> Result<PhotoAlbumOutput, AppError> {
         let mut output = PhotoAlbumOutput::from(album.clone());
         if album.album_type != "clip" {
             let query = Self::album_photos_query(&album)?

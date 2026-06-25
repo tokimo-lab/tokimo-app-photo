@@ -8,6 +8,8 @@ use crate::error::AppError;
 
 pub struct JobRepo;
 
+type ChildJobInput<'a> = (&'a str, JsonValue, Option<JsonValue>, Option<Uuid>, Uuid, String);
+
 /// Result of `aggregate_parent_progress`.
 #[derive(Debug)]
 pub struct AggregatedProgress {
@@ -91,15 +93,14 @@ impl JobRepo {
         priority: i32,
     ) -> Result<(jobs::Model, Option<jobs::Model>), AppError> {
         // Check for existing job with same dedupe_key
-        if let Some(ref key) = dedupe_key {
-            if let Some(existing) = jobs::Entity::find()
+        if let Some(ref key) = dedupe_key
+            && let Some(existing) = jobs::Entity::find()
                 .filter(jobs::Column::DedupeKey.eq(key.as_str()))
                 .filter(jobs::Column::Status.is_in(vec!["pending", "running"]))
                 .one(db)
                 .await?
-            {
-                return Ok((existing, None));
-            }
+        {
+            return Ok((existing, None));
         }
 
         let now = Utc::now().fixed_offset();
@@ -170,7 +171,7 @@ impl JobRepo {
     /// Create child jobs in batch. Returns count of inserted jobs.
     pub async fn create_child_jobs_batch<C: ConnectionTrait>(
         db: &C,
-        children: Vec<(&str, JsonValue, Option<JsonValue>, Option<Uuid>, Uuid, String)>,
+        children: Vec<ChildJobInput<'_>>,
         _priority: Option<i32>,
     ) -> Result<u64, AppError> {
         let now = Utc::now().fixed_offset();
@@ -221,12 +222,11 @@ impl JobRepo {
         let mut ids = Vec::new();
         for job in jobs {
             // Check if this job's params contain the app_id
-            if let Some(params) = &job.params {
-                if let Some(lib_id) = params.get("photoLibraryId").and_then(|v| v.as_str()) {
-                    if lib_id == app_id.to_string() {
-                        ids.push(job.id);
-                    }
-                }
+            if let Some(params) = &job.params
+                && let Some(lib_id) = params.get("photoLibraryId").and_then(|v| v.as_str())
+                && lib_id == app_id.to_string()
+            {
+                ids.push(job.id);
             }
         }
 
@@ -287,12 +287,11 @@ impl JobRepo {
 
         let mut ids = Vec::new();
         for job in jobs {
-            if let Some(params) = &job.params {
-                if let Some(pid) = params.get("photoId").and_then(|v| v.as_str()) {
-                    if pid == photo_id.to_string() {
-                        ids.push(job.id);
-                    }
-                }
+            if let Some(params) = &job.params
+                && let Some(pid) = params.get("photoId").and_then(|v| v.as_str())
+                && pid == photo_id.to_string()
+            {
+                ids.push(job.id);
             }
         }
 
@@ -318,7 +317,7 @@ impl JobRepo {
         pending_failure: i32,
     ) -> Result<Option<AggregatedProgress>, AppError> {
         let parent = jobs::Entity::find_by_id(parent_id).one(db).await?;
-        let Some(parent) = parent else { return Ok(None) };
+        let Some(_parent) = parent else { return Ok(None) };
 
         let children = jobs::Entity::find()
             .filter(jobs::Column::ParentJobId.eq(parent_id))
@@ -363,7 +362,7 @@ impl JobRepo {
     }
 
     /// Cancel all jobs for an app_id.
-    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(db: &C, app_id: Uuid) -> Result<u64, AppError> {
+    pub async fn cancel_jobs_by_app_id<C: ConnectionTrait>(db: &C, _app_id: Uuid) -> Result<u64, AppError> {
         let now = Utc::now().fixed_offset();
         let result = jobs::Entity::update_many()
             .col_expr(jobs::Column::Status, Expr::value("cancelled"))
@@ -376,7 +375,7 @@ impl JobRepo {
     }
 
     /// Delete finished jobs for an app_id.
-    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(db: &C, app_id: Uuid) -> Result<u64, AppError> {
+    pub async fn delete_finished_jobs_by_app_id<C: ConnectionTrait>(db: &C, _app_id: Uuid) -> Result<u64, AppError> {
         let result = jobs::Entity::delete_many()
             .filter(jobs::Column::Status.is_in(vec!["completed", "failed", "cancelled"]))
             .exec(db)

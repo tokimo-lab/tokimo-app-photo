@@ -11,6 +11,7 @@ use crate::error::AppError;
 use crate::error::OptionExt;
 
 /// Extensions the `image` crate cannot decode — need `FFmpeg` conversion.
+#[allow(dead_code)]
 pub(crate) const NEEDS_FFMPEG_DECODE: &[&str] = &[
     ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
@@ -113,6 +114,7 @@ impl PhotoOcrService {
 
     /// OCR a single photo using the integrated AI service.
     /// Returns (results, `optional_debug_info`).
+    #[allow(dead_code)]
     async fn ocr_image(
         bus: &tokimo_bus_client::BusClient,
         user_id: Uuid,
@@ -388,6 +390,7 @@ pub struct OcrSearchResult {
 /// Load photo bytes — handles local filesystem and VFS sources.
 /// Automatically converts formats unsupported by the `image` crate (HEIC, AVIF,
 /// RAW, etc.) to JPEG via `FFmpeg` so downstream AI services can decode them.
+#[allow(dead_code)]
 pub(crate) async fn load_photo_bytes(
     db: &DatabaseConnection,
     sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
@@ -406,6 +409,7 @@ pub(crate) async fn load_photo_bytes(
 }
 
 /// Load raw file bytes from local filesystem or VFS.
+#[allow(dead_code)]
 pub(crate) async fn load_raw_bytes(
     db: &DatabaseConnection,
     sources: &std::sync::Arc<crate::services::source::SourceRegistry>,
@@ -449,6 +453,7 @@ pub(crate) async fn load_raw_bytes(
 }
 
 /// Convert image bytes to JPEG using `FFmpeg` FFI (for HEIC, AVIF, RAW, etc.).
+#[allow(dead_code)]
 async fn convert_to_jpeg_via_ffmpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8>, AppError> {
     let fname = filename.to_string();
     let bytes = raw_bytes.to_vec();

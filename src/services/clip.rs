@@ -36,6 +36,7 @@ pub struct PhotoClipService;
 
 impl PhotoClipService {
     /// Embed image bytes → 512-dim CLIP vector via integrated AI service.
+    #[allow(dead_code)]
     async fn embed_image(
         bus: &tokimo_bus_client::BusClient,
         user_id: Uuid,
@@ -154,7 +155,11 @@ impl PhotoClipService {
         Ok(())
     }
 
-    pub async fn apply_clip_embedding(db: &DatabaseConnection, photo_id: Uuid, embedding: Vec<f32>) -> Result<(), AppError> {
+    pub async fn apply_clip_embedding(
+        db: &DatabaseConnection,
+        photo_id: Uuid,
+        embedding: Vec<f32>,
+    ) -> Result<(), AppError> {
         if embedding.len() != 512 {
             return Err(AppError::Internal(format!(
                 "CLIP img returned {} dims, expected 512",
@@ -165,6 +170,7 @@ impl PhotoClipService {
     }
 
     /// Load bytes for a single photo using a pre-resolved base path (no DB lookup).
+    #[allow(dead_code)]
     async fn load_bytes_fast(
         state: &std::sync::Arc<crate::AppState>,
         photo: &photos::Model,
@@ -205,6 +211,7 @@ impl PhotoClipService {
     }
 
     /// If the file is HEIC/AVIF/RAW, decode to small JPEG; otherwise pass through.
+    #[allow(dead_code)]
     async fn maybe_decode_heic(raw_bytes: Vec<u8>, filename: &str) -> Result<Vec<u8>, AppError> {
         let lower = filename.to_lowercase();
         if super::ocr::NEEDS_FFMPEG_DECODE.iter().any(|ext| lower.ends_with(ext)) {
@@ -214,6 +221,7 @@ impl PhotoClipService {
     }
 
     /// Load photo bytes optimised for CLIP (small decode size for HEIC/AVIF).
+    #[allow(dead_code)]
     async fn load_photo_bytes_for_clip(
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
@@ -231,6 +239,7 @@ impl PhotoClipService {
     }
 
     /// Decode HEIC/AVIF/RAW to a small JPEG (512px max) via `FFmpeg` FFI.
+    #[allow(dead_code)]
     async fn convert_to_jpeg_small(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8>, AppError> {
         let fname = filename.to_string();
         let bytes = raw_bytes.to_vec();
@@ -250,6 +259,7 @@ impl PhotoClipService {
     }
 
     /// Pre-load base paths for all `vfs` used by this app's sources.
+    #[allow(dead_code)]
     async fn preload_source_base_paths(
         db: &DatabaseConnection,
         app_id: Uuid,
@@ -316,7 +326,7 @@ impl PhotoClipService {
     pub async fn process_photo_ids(
         db: &DatabaseConnection,
         state: &std::sync::Arc<crate::AppState>,
-        app_id: Uuid,
+        _app_id: Uuid,
         ids: Vec<Uuid>,
         user_id: Uuid,
     ) -> (u32, u32, Vec<String>) {

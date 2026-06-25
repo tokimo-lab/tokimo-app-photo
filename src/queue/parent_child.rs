@@ -225,8 +225,8 @@ pub async fn finalize_child(
                 ctx.app_id,
                 &ctx.library_name,
                 &ctx.task_type,
-                i64::from(a.done),
-                i64::from(a.total_children),
+                a.done,
+                a.total_children,
             )
             .await;
         }
