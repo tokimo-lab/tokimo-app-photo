@@ -13,7 +13,17 @@ export interface AddOnlineMediaBridge {
   onStarted?: () => void;
 }
 
-export type ModalBridge = LibraryEditorBridge | AddOnlineMediaBridge;
+export interface CreateAlbumBridge {
+  kind: "create-album";
+  ctx: AppRuntimeCtx;
+  appId: string;
+  onCreated?: () => void;
+}
+
+export type ModalBridge =
+  | LibraryEditorBridge
+  | AddOnlineMediaBridge
+  | CreateAlbumBridge;
 
 const registry = new Map<string, ModalBridge>();
 let counter = 0;

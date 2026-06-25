@@ -1,81 +1,14 @@
 import { Button, Empty, Spin } from "@tokimo/ui";
+import { useRuntimeCtx, useWindowActions } from "@tokimo/sdk";
 import { Grid3x3, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { PhotoAlbumOutput, PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { thumbUrl } from "../lib/thumb";
+import { registerBridge } from "../modal-bridge";
 import { PhotoLightbox } from "./PhotoLightbox";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { PAGE_SIZE } from "./photo-utils";
-
-// ── Create Album Dialog ──────────────────────────────────────────────────────
-
-function CreateAlbumDialog({
-  onClose,
-  onCreate,
-  isPending,
-}: {
-  onClose: () => void;
-  onCreate: (name: string, description: string) => void;
-  isPending: boolean;
-}) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-border-base bg-surface-raised p-6 shadow-2xl ">
-        <h3 className="mb-4 text-lg font-semibold text-fg-primary">新建相册</h3>
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="album-name"
-              className="mb-1 block text-sm font-medium text-fg-secondary"
-            >
-              名称
-            </label>
-            <input
-              id="album-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-surface-raised px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="输入相册名称"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="album-desc"
-              className="mb-1 block text-sm font-medium text-fg-secondary"
-            >
-              描述（可选）
-            </label>
-            <textarea
-              id="album-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-border-base bg-surface-raised px-3 py-2 text-sm text-fg-primary outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="描述一下这个相册"
-              rows={3}
-            />
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button onClick={onClose} disabled={isPending}>
-            取消
-          </Button>
-          <Button
-            onClick={() => onCreate(name.trim(), description.trim())}
-            disabled={!name.trim() || isPending}
-            loading={isPending}
-          >
-            创建
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Album Detail View ────────────────────────────────────────────────────────
 
@@ -190,15 +123,9 @@ export function PhotoAlbumsView({
   onRefresh: () => void;
   onNavigateToPerson?: (personId: string) => void;
 }) {
-  const [showCreate, setShowCreate] = useState(false);
+  const ctx = useRuntimeCtx();
+  const { openModalWindow } = useWindowActions();
   const [activeAlbum, setActiveAlbum] = useState<PhotoAlbumOutput | null>(null);
-
-  const createMutation = api.photo.createPhotoAlbum.useMutation({
-    onSuccess: () => {
-      setShowCreate(false);
-      onRefresh();
-    },
-  });
 
   const deleteMutation = api.photo.deletePhotoAlbum.useMutation({
     onSuccess: () => {
@@ -207,16 +134,21 @@ export function PhotoAlbumsView({
     },
   });
 
-  const handleCreate = useCallback(
-    (name: string, description: string) => {
-      createMutation.mutate({
-        id: appId,
-        name,
-        description: description || undefined,
-      });
-    },
-    [appId, createMutation.mutate],
-  );
+  const openCreateAlbumWindow = useCallback(() => {
+    const bridgeId = registerBridge({
+      kind: "create-album",
+      ctx,
+      appId,
+      onCreated: onRefresh,
+    });
+    openModalWindow({
+      component: () => import("./CreateAlbumWindow"),
+      title: "新建相册",
+      width: 440,
+      height: 320,
+      metadata: { bridgeId },
+    });
+  }, [appId, ctx, onRefresh, openModalWindow]);
 
   const handleDelete = useCallback(
     (albumId: string) => {
@@ -246,16 +178,23 @@ export function PhotoAlbumsView({
   }
 
   return (
-    <>
-      {/* Create album button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={() => setShowCreate(true)}
-          icon={<Plus className="h-4 w-4" />}
-        >
-          新建相册
-        </Button>
-      </div>
+    <div className="flex flex-col gap-4">
+      {albums.length > 0 && (
+        <div className="flex items-center gap-3 pl-1 pr-14 text-sm">
+          <span className="flex items-center gap-1.5 font-medium text-fg-secondary">
+            <Grid3x3 className="h-3.5 w-3.5" />
+            相册
+          </span>
+          <span className="text-fg-muted">{albums.length} 个相册</span>
+          <Button
+            size="small"
+            onClick={openCreateAlbumWindow}
+            icon={<Plus className="h-4 w-4" />}
+          >
+            新建相册
+          </Button>
+        </div>
+      )}
 
       {/* Albums grid */}
       {albums.length > 0 ? (
@@ -294,17 +233,19 @@ export function PhotoAlbumsView({
           ))}
         </div>
       ) : (
-        <Empty description="暂无相册，点击「新建相册」创建" />
+        <Empty
+          className="min-h-80 py-0"
+          description="暂无相册"
+        >
+          <Button
+            onClick={openCreateAlbumWindow}
+            icon={<Plus className="h-4 w-4" />}
+          >
+            新建相册
+          </Button>
+        </Empty>
       )}
 
-      {/* Create album dialog */}
-      {showCreate && (
-        <CreateAlbumDialog
-          onClose={() => setShowCreate(false)}
-          onCreate={handleCreate}
-          isPending={createMutation.isPending}
-        />
-      )}
-    </>
+    </div>
   );
 }
