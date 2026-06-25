@@ -7,6 +7,7 @@ import {
   zhCN as uiZhCN,
 } from "@tokimo/ui";
 import type { ReactNode } from "react";
+import { usePersonEntityEvents } from "../hooks/usePersonEntityEvents";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,6 +17,11 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function PhotoExtensionEventBridge() {
+  usePersonEntityEvents(true);
+  return null;
+}
 
 export function PhotoExtensionProviders({
   ctx,
@@ -29,7 +35,10 @@ export function PhotoExtensionProviders({
     <RuntimeProvider value={ctx}>
       <QueryClientProvider client={queryClient}>
         <ConfigProvider locale={locale}>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <PhotoExtensionEventBridge />
+            {children}
+          </ToastProvider>
         </ConfigProvider>
       </QueryClientProvider>
     </RuntimeProvider>

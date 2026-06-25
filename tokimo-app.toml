@@ -32,3 +32,7 @@ height       = 800
 schema         = "photo"
 migrations_dir = "migrations"
 driver         = "postgres"
+
+[[events.subscribe]]
+app_id = "person"
+kind   = "person"

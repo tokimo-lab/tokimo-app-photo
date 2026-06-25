@@ -12,6 +12,7 @@ import {
 } from "@tokimo/sdk";
 import { registerBridge } from "../modal-bridge";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
+import { usePersonEntityEvents } from "../hooks/usePersonEntityEvents";
 import PhotoAppPage from "../pages/PhotoAppPage";
 import PhotoMenuBar from "./PhotoMenuBar";
 import PhotoSidebar from "./PhotoSidebar";
@@ -35,6 +36,7 @@ export default function PhotoApp() {
   const { openModalWindow } = useWindowActions();
 
   const activeLibraryId = useMemo(() => parseLibraryId(route), [route]);
+  usePersonEntityEvents(true);
 
   useEffect(() => {
     if (!libraries?.length) return;
