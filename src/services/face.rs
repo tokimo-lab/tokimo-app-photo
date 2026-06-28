@@ -89,7 +89,8 @@ impl PhotoFaceService {
                     .do_nothing()
                     .to_owned(),
             )
-            .exec(db)
+            .try_insert()
+            .exec_without_returning(db)
             .await?;
         Ok(())
     }
@@ -161,6 +162,9 @@ impl PhotoFaceService {
                 f64::from(det.confidence) >= 0.65 && face_size >= 30.0
             })
             .collect();
+        if quality_faces.is_empty() {
+            return Ok(0);
+        }
 
         let image_hash = photo_id.to_string();
         if let (Some(bc), Some(uid)) = (bus_client, user_id) {
