@@ -52,11 +52,7 @@ pub async fn batch_favorite(
     Json(body): Json<BatchFavoriteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let _lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::batch_set_favorite(&state.db, &photo_ids, body.favorite).await?;
     Ok(ok(serde_json::json!({ "updated": count })))
 }
@@ -74,11 +70,7 @@ pub async fn batch_delete(
     Json(body): Json<BatchDeleteBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let deleted = PhotoRepo::batch_delete(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "deleted": deleted })))
 }
@@ -97,11 +89,7 @@ pub async fn batch_hide(
     Json(body): Json<BatchHideBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let _lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::batch_set_hidden(&state.db, &photo_ids, body.hidden).await?;
     Ok(ok(serde_json::json!({ "updated": count })))
 }
@@ -124,9 +112,8 @@ pub async fn update_photo(
 
     let taken_at = match &body.taken_at {
         Some(s) => {
-            let dt = chrono::DateTime::parse_from_rfc3339(s).map_err(|_| {
-                AppError::BadRequest("invalid takenAt format, expected ISO8601".into())
-            })?;
+            let dt = chrono::DateTime::parse_from_rfc3339(s)
+                .map_err(|_| AppError::BadRequest("invalid takenAt format, expected ISO8601".into()))?;
             Some(Some(dt))
         }
         None => None,
@@ -166,11 +153,7 @@ pub async fn trash_photos(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let trashed = PhotoRepo::trash_photos(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "trashed": trashed })))
 }
@@ -182,11 +165,7 @@ pub async fn restore_photos(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let restored = PhotoRepo::restore_photos(&state.db, lib_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "restored": restored })))
 }
@@ -213,18 +192,10 @@ pub async fn permanent_delete(
     Json(body): Json<TrashPhotosBody>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let lib_id = parse_uuid(&id)?;
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let deleted = PhotoRepo::permanent_delete(&state.db, lib_id, &photo_ids).await?;
 
-    let storage = state
-        .storage
-        .get()
-        .cloned()
-        .expect("storage not initialized");
+    let storage = state.storage.get().cloned().expect("storage not initialized");
     let ids = photo_ids.clone();
     tokio::spawn(async move {
         for pid in &ids {
@@ -413,10 +384,7 @@ async fn rescan_remote_photo(
         return;
     };
 
-    let Ok(bytes) = vfs
-        .read_bytes(StdPath::new(path), 0, Some(256 * 1024))
-        .await
-    else {
+    let Ok(bytes) = vfs.read_bytes(StdPath::new(path), 0, Some(256 * 1024)).await else {
         return;
     };
 
@@ -524,10 +492,7 @@ fn detect_live_video_companion_local(abs_path: &str, rel_path: &str) -> Option<S
     None
 }
 
-async fn detect_live_video_companion_remote(
-    vfs: &tokimo_vfs::Vfs,
-    photo_path: &str,
-) -> Option<String> {
+async fn detect_live_video_companion_remote(vfs: &tokimo_vfs::Vfs, photo_path: &str) -> Option<String> {
     let path = StdPath::new(photo_path);
     let stem = path.file_stem()?.to_str()?.to_lowercase();
     let dir = path.parent()?;
@@ -539,9 +504,7 @@ async fn detect_live_video_companion_remote(
         }
         let name_lower = entry.name.to_lowercase();
         let entry_ext = name_lower.rsplit('.').next().unwrap_or("");
-        let entry_stem = name_lower
-            .strip_suffix(&format!(".{entry_ext}"))
-            .unwrap_or("");
+        let entry_stem = name_lower.strip_suffix(&format!(".{entry_ext}")).unwrap_or("");
         if entry_stem == stem && LIVE_VIDEO_EXTENSIONS.contains(&entry_ext) {
             return Some(entry.path);
         }

@@ -86,10 +86,7 @@ impl IntoResponse for AppError {
             Self::Gone(msg) => (StatusCode::GONE, msg.clone()),
             Self::Database(err) => {
                 tracing::error!("database error: {err}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal database error".to_string(),
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal database error".to_string())
             }
         };
         (

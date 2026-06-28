@@ -89,12 +89,10 @@ pub async fn refresh_exif(
         .await
         .map_err(|e| AppError::Internal(format!("read photo bytes: {e}")))?;
     let partial = bytes.clone();
-    let exif_result = tokio::task::spawn_blocking(move || {
-        tokimo_package_image::extract_exif_from_bytes(&partial)
-    })
-    .await
-    .ok()
-    .flatten();
+    let exif_result = tokio::task::spawn_blocking(move || tokimo_package_image::extract_exif_from_bytes(&partial))
+        .await
+        .ok()
+        .flatten();
     let mut got_dims = false;
     if let Some(ref exif) = exif_result {
         got_dims = exif.width.is_some() && exif.height.is_some();
@@ -102,10 +100,8 @@ pub async fn refresh_exif(
     }
     if !got_dims {
         let dim_bytes = bytes.clone();
-        if let Ok(Some((w, h))) = tokio::task::spawn_blocking(move || {
-            tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)
-        })
-        .await
+        if let Ok(Some((w, h))) =
+            tokio::task::spawn_blocking(move || tokimo_package_image::get_image_dimensions_from_bytes(&dim_bytes)).await
         {
             let now = chrono::Utc::now().fixed_offset();
             photos::ActiveModel {
@@ -180,9 +176,7 @@ async fn apply_exif_update(
     if let Some(v) = exif.gps_altitude {
         active.gps_altitude = Set(Some(v));
     }
-    active.exif_data = Set(Some(
-        serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
-    ));
+    active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
     active.updated_at = Set(Some(now));
     active.update(db).await?;
     Ok(())
@@ -243,9 +237,7 @@ pub async fn update_photo_geo_settings(
     Ok(ok(serde_json::to_value(body).unwrap()))
 }
 
-pub async fn test_photo_geo_connection(
-    State(state): State<Arc<AppState>>,
-) -> Json<ApiResponse<serde_json::Value>> {
+pub async fn test_photo_geo_connection(State(state): State<Arc<AppState>>) -> Json<ApiResponse<serde_json::Value>> {
     use crate::config::PhotoGeoSettings;
     use crate::db::repos::system_config_repo::SystemConfigRepo;
     let settings: PhotoGeoSettings = match SystemConfigRepo::get(&state.db).await {
@@ -270,11 +262,7 @@ pub async fn test_photo_geo_connection(
                     .into_iter()
                     .flatten()
                     .collect();
-                    if parts.is_empty() {
-                        None
-                    } else {
-                        Some(parts.join(""))
-                    }
+                    if parts.is_empty() { None } else { Some(parts.join("")) }
                 })
                 .unwrap_or_else(|| "OK".to_string());
             serde_json::json!({ "name": "serverApi", "success": true, "detail": addr })
@@ -286,20 +274,12 @@ pub async fn test_photo_geo_connection(
     results.push(api_result);
     match settings.provider.as_str() {
         "amap" => {
-            if let Some(js_key) = settings
-                .amap_js_api_key
-                .as_deref()
-                .filter(|k| !k.is_empty())
-            {
+            if let Some(js_key) = settings.amap_js_api_key.as_deref().filter(|k| !k.is_empty()) {
                 results.push(test_amap_js_key(&http, js_key).await);
             }
         }
         "tianditu" => {
-            if let Some(bk) = settings
-                .tianditu_browser_key
-                .as_deref()
-                .filter(|k| !k.is_empty())
-            {
+            if let Some(bk) = settings.tianditu_browser_key.as_deref().filter(|k| !k.is_empty()) {
                 results.push(test_tianditu_browser_key(&http, bk).await);
             }
         }
@@ -542,8 +522,7 @@ pub async fn clear_ocr_results(
     Query(q): Query<ClearOcrQuery>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let app_id = parse_uuid(&id)?;
-    let deleted =
-        PhotoRepo::clear_ocr_results_for_app(&state.db, app_id, q.model.as_deref()).await?;
+    let deleted = PhotoRepo::clear_ocr_results_for_app(&state.db, app_id, q.model.as_deref()).await?;
     Ok(ok(serde_json::json!({ "deletedCount": deleted })))
 }
 

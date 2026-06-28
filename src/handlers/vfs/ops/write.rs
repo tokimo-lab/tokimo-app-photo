@@ -131,12 +131,7 @@ pub async fn put_vfs_file(
     let path = normalize_source_path(&body.path).map_err(err400)?;
     let vfs = state.sources.ensure_vfs(&source_id).await.map_err(err404)?;
     let data = body.content.into_bytes();
-    debug!(
-        "put file source={} path={} bytes={}",
-        source_id,
-        path,
-        data.len()
-    );
+    debug!("put file source={} path={} bytes={}", source_id, path, data.len());
     vfs.put(std::path::Path::new(&path), data)
         .await
         .map(|()| ok_empty())

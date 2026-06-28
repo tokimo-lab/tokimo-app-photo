@@ -206,12 +206,7 @@ pub async fn similar_photos(
                  AND 1 - (v.vec <=> $1::vector) > 0.5
                ORDER BY v.vec <=> $1::vector
                LIMIT $4",
-            [
-                vec_str.into(),
-                app_id.into(),
-                photo_id.into(),
-                i64::from(limit).into(),
-            ],
+            [vec_str.into(), app_id.into(), photo_id.into(), i64::from(limit).into()],
         ))
         .await?;
 
@@ -273,9 +268,7 @@ pub struct PhotoClipTagOption {
 }
 
 /// GET /api/apps/photo/{id}/photos/clip-tags
-pub async fn clip_tag_options(
-    Path(_id): Path<String>,
-) -> Result<Json<ApiResponse<Vec<PhotoClipTagOption>>>, AppError> {
+pub async fn clip_tag_options(Path(_id): Path<String>) -> Result<Json<ApiResponse<Vec<PhotoClipTagOption>>>, AppError> {
     let options = tokimo_media_intelligence::clip_categories::CATEGORIES
         .iter()
         .flat_map(|category| {
@@ -354,8 +347,5 @@ pub async fn photo_tags(
         })
         .collect();
 
-    Ok(ok(PhotoTagsResponse {
-        indexed: true,
-        tags,
-    }))
+    Ok(ok(PhotoTagsResponse { indexed: true, tags }))
 }

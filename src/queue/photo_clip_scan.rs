@@ -29,9 +29,7 @@ pub async fn handle(
         user_id,
         "photo_clip",
         "photo_clip",
-        async move |app_uuid| {
-            PhotoClipService::list_pending_photo_ids(db, &state_owned, app_uuid).await
-        },
+        async move |app_uuid| PhotoClipService::list_pending_photo_ids(db, &state_owned, app_uuid).await,
     )
     .await
 }

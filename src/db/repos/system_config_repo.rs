@@ -16,20 +16,16 @@ pub struct SystemConfigRepo;
 
 impl SystemConfigRepo {
     pub async fn get<T: SystemConfigSection>(db: &impl ConnectionTrait) -> Result<T, AppError> {
-        let row =
-            system_config::Entity::find_by_id((T::SCOPE.to_string(), T::SCOPE_ID.to_string()))
-                .one(db)
-                .await?;
+        let row = system_config::Entity::find_by_id((T::SCOPE.to_string(), T::SCOPE_ID.to_string()))
+            .one(db)
+            .await?;
         match row {
             Some(m) => Ok(serde_json::from_value(m.value)?),
             None => Ok(T::default_value()),
         }
     }
 
-    pub async fn set<T: SystemConfigSection>(
-        db: &impl ConnectionTrait,
-        value: &T,
-    ) -> Result<(), AppError> {
+    pub async fn set<T: SystemConfigSection>(db: &impl ConnectionTrait, value: &T) -> Result<(), AppError> {
         let now = Utc::now().fixed_offset();
         let json_value = serde_json::to_value(value)?;
         let model = system_config::ActiveModel {
@@ -40,15 +36,9 @@ impl SystemConfigRepo {
         };
         system_config::Entity::insert(model)
             .on_conflict(
-                sea_orm::sea_query::OnConflict::columns([
-                    system_config::Column::Scope,
-                    system_config::Column::ScopeId,
-                ])
-                .update_columns([
-                    system_config::Column::Value,
-                    system_config::Column::UpdatedAt,
-                ])
-                .to_owned(),
+                sea_orm::sea_query::OnConflict::columns([system_config::Column::Scope, system_config::Column::ScopeId])
+                    .update_columns([system_config::Column::Value, system_config::Column::UpdatedAt])
+                    .to_owned(),
             )
             .exec(db)
             .await?;

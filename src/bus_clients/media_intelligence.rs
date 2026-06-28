@@ -164,11 +164,7 @@ pub fn image_input_for_photo(photo: &photos::Model, path: &str) -> Result<ImageI
     })
 }
 
-pub async fn ocr_image(
-    client: &BusClient,
-    caller: CallerCtx,
-    request: OcrImageRequest,
-) -> Result<OcrResult, AppError> {
+pub async fn ocr_image(client: &BusClient, caller: CallerCtx, request: OcrImageRequest) -> Result<OcrResult, AppError> {
     invoke_json(client, "ocr_image", caller, &request).await
 }
 
@@ -204,19 +200,13 @@ pub async fn classify_vector(
     invoke_json(client, "classify_vector", caller, &request).await
 }
 
-pub async fn cancel(
-    client: &BusClient,
-    caller: CallerCtx,
-    request_id: String,
-) -> Result<(), AppError> {
-    let _: serde_json::Value =
-        invoke_json(client, "cancel", caller, &CancelRequest { request_id }).await?;
+pub async fn cancel(client: &BusClient, caller: CallerCtx, request_id: String) -> Result<(), AppError> {
+    let _: serde_json::Value = invoke_json(client, "cancel", caller, &CancelRequest { request_id }).await?;
     Ok(())
 }
 
 fn decode_json<T: for<'de> Deserialize<'de>>(method: &str, bytes: Vec<u8>) -> Result<T, AppError> {
-    serde_json::from_slice(&bytes)
-        .map_err(|e| AppError::Internal(format!("media_intelligence.{method} decode: {e}")))
+    serde_json::from_slice(&bytes).map_err(|e| AppError::Internal(format!("media_intelligence.{method} decode: {e}")))
 }
 
 async fn invoke_json<TReq, TResp>(

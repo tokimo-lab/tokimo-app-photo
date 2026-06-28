@@ -29,9 +29,7 @@ pub async fn list_photo_albums(
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
-    let albums =
-        PhotoRepo::list_albums(&state.db, uid, user_id, q.scope.as_deref().unwrap_or("all"))
-            .await?;
+    let albums = PhotoRepo::list_albums(&state.db, uid, user_id, q.scope.as_deref().unwrap_or("all")).await?;
     Ok(ok(serde_json::to_value(albums).unwrap()))
 }
 
@@ -79,9 +77,7 @@ pub async fn delete_album(
     let uid = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, uid, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can delete this album".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can delete this album".into()));
     }
     PhotoRepo::delete_album(&state.db, uid).await?;
     Ok(ok(serde_json::json!({ "success": true })))
@@ -103,15 +99,9 @@ pub async fn add_photos_to_album(
     let album_id = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can edit this album".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can edit this album".into()));
     }
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::add_photos_to_album(&state.db, album_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "photoCount": count })))
 }
@@ -126,15 +116,9 @@ pub async fn remove_photos_from_album(
     let album_id = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can edit this album".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can edit this album".into()));
     }
-    let photo_ids: Vec<Uuid> = body
-        .photo_ids
-        .iter()
-        .map(|s| parse_uuid(s))
-        .collect::<Result<_, _>>()?;
+    let photo_ids: Vec<Uuid> = body.photo_ids.iter().map(|s| parse_uuid(s)).collect::<Result<_, _>>()?;
     let count = PhotoRepo::remove_photos_from_album(&state.db, album_id, &photo_ids).await?;
     Ok(ok(serde_json::json!({ "photoCount": count })))
 }
@@ -156,9 +140,7 @@ pub async fn list_album_photos(
     let album_id = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_view_album(&state.db, album_id, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Album is not shared with this user".into(),
-        ));
+        return Err(AppError::Forbidden("Album is not shared with this user".into()));
     }
     let page_input = PageInput {
         page: q.page.unwrap_or(1),
@@ -216,9 +198,7 @@ pub async fn get_album_share(
     let album_id = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can manage sharing".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can manage sharing".into()));
     }
     let users = PhotoRepo::list_album_user_shares(&state.db, album_id)
         .await?
@@ -252,9 +232,7 @@ pub async fn patch_album_share_link(
     let album_id = parse_uuid(&id)?;
     let user_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, user_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can manage sharing".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can manage sharing".into()));
     }
     let album = PhotoRepo::get_album(&state.db, album_id).await?;
     let client = state
@@ -269,9 +247,7 @@ pub async fn patch_album_share_link(
             resource_type: "photo_album".to_string(),
             resource_id: album_id,
             resource_name: output.name,
-            cover_image: output
-                .cover_photo_id
-                .map(|id| format!("/api/thumb/photo/{id}")),
+            cover_image: output.cover_photo_id.map(|id| format!("/api/thumb/photo/{id}")),
             enabled: body.enabled,
         },
     )
@@ -301,9 +277,7 @@ pub async fn put_album_user_share(
     let album_id = parse_uuid(&id)?;
     let owner_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, owner_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can manage sharing".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can manage sharing".into()));
     }
     let target_user_id = parse_uuid(&body.user_id)?;
     PhotoRepo::upsert_album_user_share(&state.db, album_id, target_user_id, owner_id).await?;
@@ -318,9 +292,7 @@ pub async fn delete_album_user_share(
     let album_id = parse_uuid(&id)?;
     let owner_id = parse_uuid(&auth.user_id)?;
     if !PhotoRepo::can_manage_album(&state.db, album_id, owner_id).await? {
-        return Err(AppError::Forbidden(
-            "Only album owner can manage sharing".into(),
-        ));
+        return Err(AppError::Forbidden("Only album owner can manage sharing".into()));
     }
     let target_user_id = parse_uuid(&user_id)?;
     PhotoRepo::delete_album_user_share(&state.db, album_id, target_user_id).await?;
@@ -335,9 +307,7 @@ pub async fn public_album_by_token(
     let Some(client) = state.bus_client.get() else {
         return AppError::Internal("share registry is not connected".into()).into_response();
     };
-    let link = match share::resolve_public(client, share::photo_caller(None), &token, "photo_album")
-        .await
-    {
+    let link = match share::resolve_public(client, share::photo_caller(None), &token, "photo_album").await {
         Ok(link) => link,
         Err(e) => return e.into_response(),
     };
@@ -359,8 +329,7 @@ pub async fn public_album_by_token(
         let Some(owner_user_id) = album.owner_user_id else {
             return AppError::Forbidden("clip album share has no owner".into()).into_response();
         };
-        match PhotoClipService::search(&state.db, &state, album.app_id, query, owner_user_id).await
-        {
+        match PhotoClipService::search(&state.db, &state, album.app_id, query, owner_user_id).await {
             Ok(results) => clip_results_to_page(results, &page_input),
             Err(e) => return e.into_response(),
         }
@@ -397,9 +366,7 @@ pub async fn public_album_photo_image(
     let Some(client) = state.bus_client.get() else {
         return AppError::Internal("share registry is not connected".into()).into_response();
     };
-    let link = match share::resolve_public(client, share::photo_caller(None), &token, "photo_album")
-        .await
-    {
+    let link = match share::resolve_public(client, share::photo_caller(None), &token, "photo_album").await {
         Ok(link) => link,
         Err(e) => return e.into_response(),
     };
@@ -418,18 +385,9 @@ pub async fn public_album_photo_image(
         match album.source_ref.as_deref() {
             Some(query) => {
                 let Some(owner_user_id) = album.owner_user_id else {
-                    return AppError::Forbidden("clip album share has no owner".into())
-                        .into_response();
+                    return AppError::Forbidden("clip album share has no owner".into()).into_response();
                 };
-                match PhotoClipService::search(
-                    &state.db,
-                    &state,
-                    album.app_id,
-                    query,
-                    owner_user_id,
-                )
-                .await
-                {
+                match PhotoClipService::search(&state.db, &state, album.app_id, query, owner_user_id).await {
                     Ok(results) => results.iter().any(|item| item.photo_id == photo_id),
                     Err(e) => return e.into_response(),
                 }
@@ -445,19 +403,13 @@ pub async fn public_album_photo_image(
     if !allowed {
         return AppError::Forbidden("photo is not in shared album".into()).into_response();
     }
-    crate::handlers::stream::serve_photo_image(State(state), Path(photo_id), Query(q), request)
-        .await
+    crate::handlers::stream::serve_photo_image(State(state), Path(photo_id), Query(q), request).await
 }
 
-fn clip_results_to_page(
-    results: Vec<ClipSearchResult>,
-    page: &PageInput,
-) -> crate::db::pagination::Page<PhotoOutput> {
+fn clip_results_to_page(results: Vec<ClipSearchResult>, page: &PageInput) -> crate::db::pagination::Page<PhotoOutput> {
     let total = results.len() as i64;
     let start = ((page.page.saturating_sub(1)) * page.page_size) as usize;
-    let end = start
-        .saturating_add(page.page_size as usize)
-        .min(results.len());
+    let end = start.saturating_add(page.page_size as usize).min(results.len());
     let items = results
         .into_iter()
         .skip(start)

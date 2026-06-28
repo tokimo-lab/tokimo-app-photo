@@ -365,14 +365,8 @@ fn parse_apple_double_label(data: &[u8]) -> Option<u8> {
         if base + 12 > data.len() {
             break;
         }
-        let entry_id =
-            u32::from_be_bytes([data[base], data[base + 1], data[base + 2], data[base + 3]]);
-        let entry_off = u32::from_be_bytes([
-            data[base + 4],
-            data[base + 5],
-            data[base + 6],
-            data[base + 7],
-        ]) as usize;
+        let entry_id = u32::from_be_bytes([data[base], data[base + 1], data[base + 2], data[base + 3]]);
+        let entry_off = u32::from_be_bytes([data[base + 4], data[base + 5], data[base + 6], data[base + 7]]) as usize;
         if entry_id == ENTRY_ID_FINDER_INFO {
             let flags_off = entry_off + 8;
             if flags_off + 2 > data.len() {
@@ -408,9 +402,7 @@ async fn collect_labels_from_vfs(vfs: &Arc<Vfs>, dir_path: &str) -> HashMap<Stri
             continue;
         }
         let ad_path = StdPath::new(dir_path).join(&entry.name);
-        if let Ok(data) = vfs
-            .read_bytes(ad_path.as_ref(), 0, Some(APPLE_DOUBLE_READ_LIMIT))
-            .await
+        if let Ok(data) = vfs.read_bytes(ad_path.as_ref(), 0, Some(APPLE_DOUBLE_READ_LIMIT)).await
             && let Some(label) = parse_apple_double_label(&data)
         {
             labels.insert(target_name.to_string(), label);
@@ -495,10 +487,7 @@ pub async fn read_vfs_dir_meta(
     debug!("read dir-meta source={} path={}", source_id, path);
 
     let ds_path = StdPath::new(&path).join(DS_STORE_FILE);
-    let mut meta = match vfs
-        .read_bytes(ds_path.as_ref(), 0, Some(MAX_DS_STORE_SIZE))
-        .await
-    {
+    let mut meta = match vfs.read_bytes(ds_path.as_ref(), 0, Some(MAX_DS_STORE_SIZE)).await {
         Ok(data) => parse_ds_store(&data),
         Err(_) => empty_meta(),
     };

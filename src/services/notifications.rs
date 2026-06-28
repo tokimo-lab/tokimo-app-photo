@@ -85,12 +85,7 @@ impl NotificationCenter {
         let bytes = serde_json::to_vec(&payload)?;
 
         client
-            .invoke(
-                "notification_center",
-                "notify",
-                bytes,
-                client.auto_caller(APP_ID),
-            )
+            .invoke("notification_center", "notify", bytes, client.auto_caller(APP_ID))
             .await
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
         Ok(())
@@ -279,9 +274,7 @@ pub async fn notify_processing_progress(
     }
     let label = task_label(task_type);
     let pct = if total > 0 {
-        ((processed as f64 / total as f64) * 100.0)
-            .round()
-            .clamp(0.0, 100.0) as i32
+        ((processed as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as i32
     } else {
         0
     };
@@ -400,10 +393,7 @@ pub async fn resync_inflight_progress(state: &Arc<AppState>) {
             if total == 0 {
                 continue;
             }
-            let done = data
-                .get("done")
-                .and_then(serde_json::Value::as_i64)
-                .unwrap_or(0);
+            let done = data.get("done").and_then(serde_json::Value::as_i64).unwrap_or(0);
             let app_id = parent
                 .params
                 .as_ref()

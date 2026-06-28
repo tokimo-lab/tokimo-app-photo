@@ -79,10 +79,7 @@ impl SystemConfigSection for PhotoAiSettings {
 impl PhotoAiSettings {
     /// Resolve effective AI settings for a specific app.
     /// Per-app flags override globals; missing keys fall back to global.
-    pub async fn for_app(
-        db: &sea_orm::DatabaseConnection,
-        app_id: uuid::Uuid,
-    ) -> Result<Self, crate::error::AppError> {
+    pub async fn for_app(db: &sea_orm::DatabaseConnection, app_id: uuid::Uuid) -> Result<Self, crate::error::AppError> {
         use crate::db::repos::system_config_repo::SystemConfigRepo;
         let global: Self = SystemConfigRepo::get(db).await?;
 

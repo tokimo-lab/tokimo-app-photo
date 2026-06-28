@@ -27,16 +27,10 @@ fn decl(name: &str, description: &str) -> MethodDecl {
 }
 
 fn caller_user_id(caller: &tokimo_bus_protocol::CallerCtx) -> Option<Uuid> {
-    caller
-        .user_id
-        .as_deref()
-        .and_then(|s| Uuid::parse_str(s).ok())
+    caller.user_id.as_deref().and_then(|s| Uuid::parse_str(s).ok())
 }
 
-fn require_os_caller(
-    caller: &tokimo_bus_protocol::CallerCtx,
-    method: &str,
-) -> Result<(), BusError> {
+fn require_os_caller(caller: &tokimo_bus_protocol::CallerCtx, method: &str) -> Result<(), BusError> {
     if caller.caller_app_id.as_deref() == Some("os") {
         return Ok(());
     }
@@ -47,8 +41,7 @@ fn require_os_caller(
 }
 
 fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
-    let v: JsonValue = serde_json::from_slice(raw)
-        .map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
+    let v: JsonValue = serde_json::from_slice(raw).map_err(|e| BusError::BadRequest(format!("json decode: {e}")))?;
     let job = v
         .get("job")
         .ok_or_else(|| BusError::BadRequest("missing 'job' field".into()))?;
@@ -56,9 +49,7 @@ fn decode_request(raw: &[u8]) -> Result<(Uuid, JsonValue), BusError> {
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| BusError::BadRequest("missing 'job.id'".into()))
-        .and_then(|s| {
-            Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}")))
-        })?;
+        .and_then(|s| Uuid::parse_str(s).map_err(|e| BusError::BadRequest(format!("job.id UUID: {e}"))))?;
     let params = job.get("params").cloned().unwrap_or(JsonValue::Null);
     Ok((job_id, params))
 }

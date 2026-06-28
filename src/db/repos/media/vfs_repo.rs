@@ -19,12 +19,8 @@ impl VfsRepo {
             .collect())
     }
 
-    pub async fn fetch_by_id(
-        db: &impl ConnectionTrait,
-        id: &str,
-    ) -> Result<Option<VfsRecord>, AppError> {
-        let uuid =
-            uuid::Uuid::parse_str(id).map_err(|_| AppError::BadRequest("invalid vfs id".into()))?;
+    pub async fn fetch_by_id(db: &impl ConnectionTrait, id: &str) -> Result<Option<VfsRecord>, AppError> {
+        let uuid = uuid::Uuid::parse_str(id).map_err(|_| AppError::BadRequest("invalid vfs id".into()))?;
         let model = vfs::Entity::find_by_id(uuid).one(db).await?;
         Ok(model.map(|m| VfsRecord {
             id: m.id.to_string(),
@@ -33,13 +29,8 @@ impl VfsRepo {
         }))
     }
 
-    pub async fn patch_config(
-        db: &impl ConnectionTrait,
-        id: &str,
-        patch: serde_json::Value,
-    ) -> Result<(), AppError> {
-        let uuid =
-            uuid::Uuid::parse_str(id).map_err(|_| AppError::BadRequest("invalid vfs id".into()))?;
+    pub async fn patch_config(db: &impl ConnectionTrait, id: &str, patch: serde_json::Value) -> Result<(), AppError> {
+        let uuid = uuid::Uuid::parse_str(id).map_err(|_| AppError::BadRequest("invalid vfs id".into()))?;
         let existing = vfs::Entity::find_by_id(uuid)
             .one(db)
             .await?

@@ -8,15 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    #[sea_orm(
-        column_type = "Text",
-        unique_key = "photo_geo_cache_lat_key_lon_key_key"
-    )]
+    #[sea_orm(column_type = "Text", unique_key = "photo_geo_cache_lat_key_lon_key_key")]
     pub lat_key: String,
-    #[sea_orm(
-        column_type = "Text",
-        unique_key = "photo_geo_cache_lat_key_lon_key_key"
-    )]
+    #[sea_orm(column_type = "Text", unique_key = "photo_geo_cache_lat_key_lon_key_key")]
     pub lon_key: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub province: Option<String>,

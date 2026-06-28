@@ -20,26 +20,11 @@ fn coord_cache_key(val: f64) -> String {
 /// Check whether the selected provider has its required key configured.
 fn provider_has_key(settings: &PhotoGeoSettings) -> bool {
     match settings.provider.as_str() {
-        "amap" => settings
-            .amap_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "qqmap" => settings
-            .qqmap_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "tianditu" => settings
-            .tianditu_server_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "mapbox" => settings
-            .mapbox_access_token
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
-        "maptiler" => settings
-            .maptiler_api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty()),
+        "amap" => settings.amap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "qqmap" => settings.qqmap_api_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "tianditu" => settings.tianditu_server_key.as_ref().is_some_and(|k| !k.is_empty()),
+        "mapbox" => settings.mapbox_access_token.as_ref().is_some_and(|k| !k.is_empty()),
+        "maptiler" => settings.maptiler_api_key.as_ref().is_some_and(|k| !k.is_empty()),
         _ => false,
     }
 }
@@ -161,12 +146,9 @@ impl PhotoGeoService {
         };
         photo_geo_cache::Entity::insert(cache_model)
             .on_conflict(
-                OnConflict::columns([
-                    photo_geo_cache::Column::LatKey,
-                    photo_geo_cache::Column::LonKey,
-                ])
-                .do_nothing()
-                .to_owned(),
+                OnConflict::columns([photo_geo_cache::Column::LatKey, photo_geo_cache::Column::LonKey])
+                    .do_nothing()
+                    .to_owned(),
             )
             .exec(db)
             .await
@@ -176,11 +158,7 @@ impl PhotoGeoService {
     }
 
     /// Batch reverse-geocode all photos in an app that have GPS but no geo data.
-    pub async fn reverse_geocode_app(
-        db: &DatabaseConnection,
-        http: &Client,
-        app_id: Uuid,
-    ) -> Result<u32, AppError> {
+    pub async fn reverse_geocode_app(db: &DatabaseConnection, http: &Client, app_id: Uuid) -> Result<u32, AppError> {
         let pending = Self::list_pending_photo_ids(db, app_id).await?;
         if pending.is_empty() {
             return Ok(0);
@@ -193,10 +171,7 @@ impl PhotoGeoService {
     }
 
     /// List photo IDs missing geo data (have GPS but no province).
-    pub async fn list_pending_photo_ids(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<Uuid>, AppError> {
+    pub async fn list_pending_photo_ids(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<Uuid>, AppError> {
         let settings: PhotoGeoSettings = SystemConfigRepo::get(db).await?;
         if !settings.enabled || !provider_has_key(&settings) {
             return Err(AppError::Internal(
@@ -219,11 +194,7 @@ impl PhotoGeoService {
 
     /// Process explicit photo IDs (used by child batch jobs). Lenient: per-photo
     /// failures don't abort the batch.
-    pub async fn process_photo_ids(
-        db: &DatabaseConnection,
-        http: &Client,
-        ids: Vec<Uuid>,
-    ) -> (u32, u32, Vec<String>) {
+    pub async fn process_photo_ids(db: &DatabaseConnection, http: &Client, ids: Vec<Uuid>) -> (u32, u32, Vec<String>) {
         let mut errors: Vec<String> = Vec::new();
         let settings: PhotoGeoSettings = match SystemConfigRepo::get(db).await {
             Ok(s) => s,
@@ -298,10 +269,7 @@ impl PhotoGeoService {
     }
 
     /// Get location stats for an app (grouped by province/city/district).
-    pub async fn location_stats(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-    ) -> Result<Vec<LocationGroup>, AppError> {
+    pub async fn location_stats(db: &DatabaseConnection, app_id: Uuid) -> Result<Vec<LocationGroup>, AppError> {
         use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
         let rows = db

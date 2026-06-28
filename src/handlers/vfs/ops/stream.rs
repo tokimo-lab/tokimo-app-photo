@@ -46,14 +46,7 @@ pub async fn stream_vfs_file(
         Ok(vfs) => vfs,
         Err(err) => return err404::<()>(err).into_response(),
     };
-    stream_driver_file(
-        vfs,
-        path,
-        headers,
-        None,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
+    stream_driver_file(vfs, path, headers, None, tokio_util::sync::CancellationToken::new()).await
 }
 
 pub async fn stop_hls_session(

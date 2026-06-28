@@ -121,10 +121,7 @@ fn spawn_watcher(
         // Step 2: cooperative cancel RPC — ask ORT to terminate at the next
         // safe point.
         if let Err(e) = ai.cancel(request_id.clone()).await {
-            warn!(
-                "[ai-cancel] failed to send /v1/cancel for {}: {}",
-                request_id, e
-            );
+            warn!("[ai-cancel] failed to send /v1/cancel for {}: {}", request_id, e);
         }
 
         // Step 3: if inference hasn't returned within 5 s, hard-kill the worker.

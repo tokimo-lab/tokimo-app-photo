@@ -18,8 +18,7 @@ const MANIFEST: &str = crate::MANIFEST;
 /// The host app process injects `DATABASE_URL` and has already run all schema migrations.
 /// This function only connects and sets the `search_path` to this app's schema.
 pub async fn init_pool() -> anyhow::Result<DatabaseConnection> {
-    let base_url =
-        std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?;
+    let base_url = std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?;
     let schema = tokimo_bus_cli::manifest::parse_app_schema(MANIFEST)?
         .ok_or_else(|| anyhow::anyhow!("manifest missing [database] schema"))?;
 
@@ -30,9 +29,7 @@ pub async fn init_pool() -> anyhow::Result<DatabaseConnection> {
     );
 
     let mut opts = ConnectOptions::new(url);
-    opts.max_connections(4)
-        .min_connections(1)
-        .sqlx_logging(false);
+    opts.max_connections(4).min_connections(1).sqlx_logging(false);
 
     Ok(Database::connect(opts).await?)
 }

@@ -16,20 +16,17 @@ static RE_NX_NN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[.\s\-])(\d{1,2})x(\d{1,4})(?:[.\s\-]|$)").unwrap());
 
 /// Multi-episode range: E01-E05, E01-05
-static RE_MULTI_EPISODE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)E(\d{1,4})[-–]E?(\d{1,4})").unwrap());
+static RE_MULTI_EPISODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)E(\d{1,4})[-–]E?(\d{1,4})").unwrap());
 
 /// Season only: S01, Season 1, Season.1
 static RE_SEASON_ONLY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:S|Season[\s.]?)(\d{1,2})(?:\D|$)").unwrap());
 
 /// Episode only: E01, EP01, EP.01
-static RE_EPISODE_ONLY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(?:E|EP[\s.]?)(\d{1,4})").unwrap());
+static RE_EPISODE_ONLY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(?:E|EP[\s.]?)(\d{1,4})").unwrap());
 
 /// Year in brackets/separators
-static RE_YEAR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|[\s.\(\[\-])(\d{4})(?:[\s.\)\]\-]|$)").unwrap());
+static RE_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|[\s.\(\[\-])(\d{4})(?:[\s.\)\]\-]|$)").unwrap());
 
 /// CJK season: 第1季, 第一季, 第01季
 static RE_CJK_SEASON: LazyLock<Regex> =
@@ -45,9 +42,8 @@ static RE_CJK_TITLE_CLEAN: LazyLock<Regex> =
 
 /// Strips season/episode suffix from a space-normalized title (fallback path).
 /// e.g. "Ever Night s01 e37" → "Ever Night", "Show S01E02 720p" → "Show"
-static RE_TITLE_SE_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\s+(?:s\d{1,2}(?:[\s.]*e\d{1,4})?|ep?\s*\d{1,4}).*$").unwrap()
-});
+static RE_TITLE_SE_SUFFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\s+(?:s\d{1,2}(?:[\s.]*e\d{1,4})?|ep?\s*\d{1,4}).*$").unwrap());
 
 // ── CJK detection helpers ──
 
@@ -239,13 +235,7 @@ pub fn parse_media_filename(filename: &str, parent_dir: Option<&str>) -> ParsedM
 /// Extract CJK title from brackets or filename start.
 fn extract_cjk_title(name: &str) -> Option<String> {
     // Try brackets first: 【CJK...】 [CJK...] 「CJK...」 （CJK...） (CJK...)
-    let bracket_pairs: &[(char, char)] = &[
-        ('【', '】'),
-        ('[', ']'),
-        ('「', '」'),
-        ('（', '）'),
-        ('(', ')'),
-    ];
+    let bracket_pairs: &[(char, char)] = &[('【', '】'), ('[', ']'), ('「', '」'), ('（', '）'), ('(', ')')];
     for &(open, close) in bracket_pairs {
         if let Some(start) = name.find(open) {
             let after = &name[start + open.len_utf8()..];
@@ -381,11 +371,7 @@ pub fn parse_season_episode(filename: &str) -> Option<(i32, i32)> {
 /// Check whether the filename looks like a Blu-ray disc placeholder.
 /// Aligned with TS: 4-5 digit stems only (not 4+).
 pub fn is_placeholder_disc_stem(filename: &str, parsed_title: &str) -> bool {
-    let ext = filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ext = filename.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     if !matches!(ext.as_str(), "m2ts" | "mts" | "vob") {
         return false;
     }
@@ -416,10 +402,7 @@ pub fn find_stem_poster_filename(dir_entries: &[String], stem: &str) -> Option<S
     for ext in super::constants::POSTER_EXTENSIONS {
         let candidate = format!("{lower_stem}.{ext}");
         // Return the lowercased candidate (aligned with TS which returns the candidate string)
-        if dir_entries
-            .iter()
-            .any(|e| e.to_ascii_lowercase() == candidate)
-        {
+        if dir_entries.iter().any(|e| e.to_ascii_lowercase() == candidate) {
             return Some(candidate);
         }
     }

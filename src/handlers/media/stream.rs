@@ -44,13 +44,11 @@ pub async fn stream_driver_file(
     let total = file_info.size;
     let range = parse_range(headers.get(header::RANGE), total);
 
-    let channel_capacity = if range.status == StatusCode::PARTIAL_CONTENT
-        && range.length <= STREAM_RANGE_BUFFER_LIMIT
-    {
-        range.length.div_ceil(STREAM_RANGE_CHUNK_BYTES).clamp(
-            STREAM_CHANNEL_CAPACITY as u64,
-            STREAM_RANGE_CHANNEL_MAX as u64,
-        ) as usize
+    let channel_capacity = if range.status == StatusCode::PARTIAL_CONTENT && range.length <= STREAM_RANGE_BUFFER_LIMIT {
+        range
+            .length
+            .div_ceil(STREAM_RANGE_CHUNK_BYTES)
+            .clamp(STREAM_CHANNEL_CAPACITY as u64, STREAM_RANGE_CHANNEL_MAX as u64) as usize
     } else {
         STREAM_CHANNEL_CAPACITY
     };
@@ -59,18 +57,12 @@ pub async fn stream_driver_file(
 
     let path_buf = PathBuf::from(&path);
     let range_offset = range.offset;
-    let range_length_opt = if range.open_ended {
-        None
-    } else {
-        Some(range.length)
-    };
+    let range_length_opt = if range.open_ended { None } else { Some(range.length) };
 
     // VFS → vfs_tx
     let cancel_vfs = cancel.clone();
     tokio::spawn(async move {
-        debug!(
-            "stream: vfs-task started path={path_buf:?} offset={range_offset} len={range_length_opt:?}"
-        );
+        debug!("stream: vfs-task started path={path_buf:?} offset={range_offset} len={range_length_opt:?}");
         tokio::select! {
             () = cancel_vfs.cancelled() => {
                 debug!("stream: vfs-task cancelled path={path_buf:?}");
@@ -137,9 +129,7 @@ pub async fn stream_driver_file(
         Body::from_stream(ReceiverStream::new(player_rx).map(Ok::<Bytes, Infallible>))
     } else {
         // No tap / no stats → zero-copy: pipe VFS channel directly to body
-        Body::from_stream(
-            ReceiverStream::new(vfs_rx).map(|chunk| Ok::<Bytes, Infallible>(Bytes::from(chunk))),
-        )
+        Body::from_stream(ReceiverStream::new(vfs_rx).map(|chunk| Ok::<Bytes, Infallible>(Bytes::from(chunk))))
     };
 
     // Extract filename for Content-Disposition

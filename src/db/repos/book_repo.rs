@@ -7,10 +7,7 @@ use crate::error::AppError;
 pub struct BookRepo;
 
 impl BookRepo {
-    pub async fn get_container_by_id(
-        db: &impl ConnectionTrait,
-        id: Uuid,
-    ) -> Result<Option<books::Model>, AppError> {
+    pub async fn get_container_by_id(db: &impl ConnectionTrait, id: Uuid) -> Result<Option<books::Model>, AppError> {
         Ok(books::Entity::find_by_id(id).one(db).await?)
     }
 
@@ -41,10 +38,7 @@ impl BookRepo {
                     .filter_map(|v| {
                         let id = v.get("sourceId").and_then(|s| s.as_str())?;
                         let path = v.get("rootPath").and_then(|s| s.as_str())?;
-                        let is_default = v
-                            .get("isDefaultDownload")
-                            .and_then(|b| b.as_bool())
-                            .unwrap_or(false);
+                        let is_default = v.get("isDefaultDownload").and_then(|b| b.as_bool()).unwrap_or(false);
                         Some((Uuid::parse_str(id).ok()?, path.to_string(), is_default))
                     })
                     .collect()

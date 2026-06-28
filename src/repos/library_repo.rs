@@ -22,9 +22,7 @@ pub struct UpdatePhotoLibraryFields {
 pub struct PhotoLibraryRepo;
 
 impl PhotoLibraryRepo {
-    pub async fn list_all(
-        db: &DatabaseConnection,
-    ) -> Result<Vec<photo_libraries::Model>, AppError> {
+    pub async fn list_all(db: &DatabaseConnection) -> Result<Vec<photo_libraries::Model>, AppError> {
         let rows = photo_libraries::Entity::find()
             .order_by_asc(photo_libraries::Column::SortOrder)
             .order_by_asc(photo_libraries::Column::CreatedAt)
@@ -33,10 +31,7 @@ impl PhotoLibraryRepo {
         Ok(rows)
     }
 
-    pub async fn get_by_id(
-        db: &DatabaseConnection,
-        id: Uuid,
-    ) -> Result<Option<photo_libraries::Model>, AppError> {
+    pub async fn get_by_id(db: &DatabaseConnection, id: Uuid) -> Result<Option<photo_libraries::Model>, AppError> {
         Ok(photo_libraries::Entity::find_by_id(id).one(db).await?)
     }
 
@@ -113,10 +108,7 @@ impl PhotoLibraryRepo {
         Ok(result.rows_affected)
     }
 
-    pub async fn reorder(
-        db: &DatabaseConnection,
-        orders: Vec<(Uuid, i32)>,
-    ) -> Result<(), AppError> {
+    pub async fn reorder(db: &DatabaseConnection, orders: Vec<(Uuid, i32)>) -> Result<(), AppError> {
         for (id, sort_order) in orders {
             photo_libraries::Entity::update_many()
                 .filter(photo_libraries::Column::Id.eq(id))

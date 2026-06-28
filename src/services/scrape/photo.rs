@@ -49,21 +49,18 @@ pub async fn handle(
 
     if existing.is_some() {
         debug!("[photo_scrape] Photo already indexed, skipping: {file_path}");
-        return Ok(Some(
-            json!({ "skipped": true, "reason": "already_ingested" }),
-        ));
+        return Ok(Some(json!({ "skipped": true, "reason": "already_ingested" })));
     }
 
     let photo_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
     let mime_type = guess_photo_mime(filename);
 
-    let taken_at_from_filename = tokimo_package_image::extract_date_from_filename(filename)
-        .and_then(|date_str| {
-            NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S")
-                .ok()
-                .map(|ndt| ndt.and_utc().fixed_offset())
-        });
+    let taken_at_from_filename = tokimo_package_image::extract_date_from_filename(filename).and_then(|date_str| {
+        NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S")
+            .ok()
+            .map(|ndt| ndt.and_utc().fixed_offset())
+    });
 
     let model = photos::ActiveModel {
         id: Set(photo_id),
@@ -128,11 +125,7 @@ pub async fn handle(
     }
     info!("[photo_scrape] Created photo: {filename} ({photo_id})");
 
-    let fs = vfs::Entity::find_by_id(source_uuid)
-        .one(db)
-        .await
-        .ok()
-        .flatten();
+    let fs = vfs::Entity::find_by_id(source_uuid).one(db).await.ok().flatten();
     let is_local = fs.as_ref().is_some_and(|f| f.r#type == "local");
 
     if is_local {
@@ -143,16 +136,8 @@ pub async fn handle(
 
     // Live Photo companion
     if is_local {
-        if let Some(fs_model) = vfs::Entity::find_by_id(source_uuid)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-        {
-            let abs_path = crate::handlers::media::utils::resolve_local_path(
-                file_path,
-                fs_model.config.as_ref(),
-            );
+        if let Some(fs_model) = vfs::Entity::find_by_id(source_uuid).one(db).await.ok().flatten() {
+            let abs_path = crate::handlers::media::utils::resolve_local_path(file_path, fs_model.config.as_ref());
             if let Some(live_rel) = detect_live_companion_local(&abs_path, file_path) {
                 let active = photos::ActiveModel {
                     id: Set(photo_id),
@@ -160,9 +145,7 @@ pub async fn handle(
                     ..Default::default()
                 };
                 if let Err(e) = active.update(db).await {
-                    warn!(
-                        "[photo_scrape] failed to update live_video_path (local) for {photo_id}: {e}"
-                    );
+                    warn!("[photo_scrape] failed to update live_video_path (local) for {photo_id}: {e}");
                 }
                 info!("[photo_scrape] Live Photo companion: {live_rel}");
             }
@@ -202,14 +185,11 @@ async fn extract_local(
     let Some(fs_model) = fs else {
         return;
     };
-    let abs_path =
-        crate::handlers::media::utils::resolve_local_path(file_path, fs_model.config.as_ref());
+    let abs_path = crate::handlers::media::utils::resolve_local_path(file_path, fs_model.config.as_ref());
 
     let abs_for_exif = abs_path.clone();
-    let exif_result = named_spawn_blocking("scrape-exif", move || {
-        tokimo_package_image::extract_exif(&abs_for_exif)
-    })
-    .await;
+    let exif_result =
+        named_spawn_blocking("scrape-exif", move || tokimo_package_image::extract_exif(&abs_for_exif)).await;
 
     let mut got_dims = false;
     if let Ok(Some(exif)) = &exif_result {
@@ -297,9 +277,7 @@ async fn extract_remote(
             .is_some_and(|ext| ext.eq_ignore_ascii_case("heif"));
     if is_heic
         && !got_dims
-        && let Ok(full_bytes) = vfs
-            .read_bytes(std::path::Path::new(file_path), 0, None)
-            .await
+        && let Ok(full_bytes) = vfs.read_bytes(std::path::Path::new(file_path), 0, None).await
     {
         let tmp_path = format!("/tmp/tokimo_exif_{photo_id}.heic");
         if tokio::fs::write(&tmp_path, &full_bytes).await.is_ok() {
@@ -324,12 +302,7 @@ async fn extract_remote(
 }
 
 /// Apply extracted EXIF data to a photo record.
-async fn apply_exif(
-    db: &DatabaseConnection,
-    photo_id: Uuid,
-    exif: &tokimo_package_image::ExifData,
-    filename: &str,
-) {
+async fn apply_exif(db: &DatabaseConnection, photo_id: Uuid, exif: &tokimo_package_image::ExifData, filename: &str) {
     let mut active = photos::ActiveModel {
         id: Set(photo_id),
         ..Default::default()
@@ -394,9 +367,7 @@ async fn apply_exif(
     }
 
     if !exif.raw_tags.is_empty() {
-        active.exif_data = Set(Some(
-            serde_json::to_value(&exif.raw_tags).unwrap_or_default(),
-        ));
+        active.exif_data = Set(Some(serde_json::to_value(&exif.raw_tags).unwrap_or_default()));
     }
 
     if let Err(e) = active.update(db).await {

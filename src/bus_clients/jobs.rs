@@ -178,11 +178,7 @@ pub fn photo_service_caller() -> CallerCtx {
     photo_caller(None)
 }
 
-pub async fn create(
-    client: &BusClient,
-    caller: CallerCtx,
-    request: CreateJobRequest,
-) -> Result<Job, AppError> {
+pub async fn create(client: &BusClient, caller: CallerCtx, request: CreateJobRequest) -> Result<Job, AppError> {
     let response = invoke_json(client, "create", caller, &request).await?;
     serde_json::from_slice::<JobView>(&response)
         .map_err(|error| AppError::Internal(format!("jobs.create decode: {error}")))
@@ -204,15 +200,10 @@ pub async fn query(
     request: QueryJobsRequest,
 ) -> Result<QueryJobsResponse, AppError> {
     let response = invoke_json(client, "query", caller, &request).await?;
-    serde_json::from_slice(&response)
-        .map_err(|error| AppError::Internal(format!("jobs.query decode: {error}")))
+    serde_json::from_slice(&response).map_err(|error| AppError::Internal(format!("jobs.query decode: {error}")))
 }
 
-pub async fn cancel(
-    client: &BusClient,
-    caller: CallerCtx,
-    request: CancelJobRequest,
-) -> Result<(), AppError> {
+pub async fn cancel(client: &BusClient, caller: CallerCtx, request: CancelJobRequest) -> Result<(), AppError> {
     let _ = invoke_json(client, "cancel", caller, &request).await?;
     Ok(())
 }
@@ -237,9 +228,7 @@ pub async fn batch_children(
         return Ok(Vec::new());
     };
     let jobs = match parsed {
-        BatchChildrenResponse::Jobs(items) | BatchChildrenResponse::Wrapped { jobs: items } => {
-            items
-        }
+        BatchChildrenResponse::Jobs(items) | BatchChildrenResponse::Wrapped { jobs: items } => items,
         BatchChildrenResponse::Inserted { .. } | BatchChildrenResponse::Other(_) => Vec::new(),
     };
     Ok(jobs)
@@ -357,18 +346,8 @@ pub struct PreemptResponse {
 }
 
 /// Bulk-cancel jobs matching the given filter (app_id scoped via caller).
-pub async fn cancel_by_filter(
-    client: &BusClient,
-    caller: CallerCtx,
-    filter: JobFilter,
-) -> Result<u64, AppError> {
-    let response = invoke_json(
-        client,
-        "cancel_by_filter",
-        caller,
-        &CancelByFilterRequest { filter },
-    )
-    .await?;
+pub async fn cancel_by_filter(client: &BusClient, caller: CallerCtx, filter: JobFilter) -> Result<u64, AppError> {
+    let response = invoke_json(client, "cancel_by_filter", caller, &CancelByFilterRequest { filter }).await?;
     let resp: CancelByFilterResponse = serde_json::from_slice(&response)
         .map_err(|e| AppError::Internal(format!("jobs.cancel_by_filter decode: {e}")))?;
     Ok(resp.cancelled)
@@ -388,19 +367,14 @@ pub async fn progress_summary(
         &ProgressSummaryRequest { filter, job_types },
     )
     .await?;
-    serde_json::from_slice(&response)
-        .map_err(|e| AppError::Internal(format!("jobs.progress_summary decode: {e}")))
+    serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.progress_summary decode: {e}")))
 }
 
 /// Delete finished (completed/cancelled/failed) jobs matching the filter.
-pub async fn cleanup(
-    client: &BusClient,
-    caller: CallerCtx,
-    filter: JobFilter,
-) -> Result<u64, AppError> {
+pub async fn cleanup(client: &BusClient, caller: CallerCtx, filter: JobFilter) -> Result<u64, AppError> {
     let response = invoke_json(client, "cleanup", caller, &CleanupRequest { filter }).await?;
-    let resp: CleanupResponse = serde_json::from_slice(&response)
-        .map_err(|e| AppError::Internal(format!("jobs.cleanup decode: {e}")))?;
+    let resp: CleanupResponse =
+        serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.cleanup decode: {e}")))?;
     Ok(resp.deleted)
 }
 
@@ -421,8 +395,8 @@ pub async fn preempt(
         },
     )
     .await?;
-    let resp: PreemptResponse = serde_json::from_slice(&response)
-        .map_err(|e| AppError::Internal(format!("jobs.preempt decode: {e}")))?;
+    let resp: PreemptResponse =
+        serde_json::from_slice(&response).map_err(|e| AppError::Internal(format!("jobs.preempt decode: {e}")))?;
     Ok(resp.cancelled_ids)
 }
 
@@ -432,8 +406,8 @@ async fn invoke_json<T: Serialize>(
     caller: CallerCtx,
     request: &T,
 ) -> Result<Vec<u8>, AppError> {
-    let payload = serde_json::to_vec(request)
-        .map_err(|error| AppError::Internal(format!("jobs.{method} encode: {error}")))?;
+    let payload =
+        serde_json::to_vec(request).map_err(|error| AppError::Internal(format!("jobs.{method} encode: {error}")))?;
     client
         .invoke("jobs", method, payload, caller)
         .await
@@ -444,11 +418,7 @@ async fn invoke_json<T: Serialize>(
 ///
 /// The main server infers `appId` from the bus caller context (broker-stamped),
 /// so the sidecar cannot spoof its identity.
-pub async fn register_handler(
-    client: &BusClient,
-    job_type: &str,
-    method: &str,
-) -> Result<(), AppError> {
+pub async fn register_handler(client: &BusClient, job_type: &str, method: &str) -> Result<(), AppError> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
     struct Req<'a> {

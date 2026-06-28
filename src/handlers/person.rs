@@ -70,13 +70,8 @@ pub async fn list_persons(
     let app_id = parse_uuid(&id)?;
     let uid = parse_user_id(&user_id)?;
     let client = person_client(&state)?;
-    let persons = crate::services::face::PhotoFaceService::list_persons(
-        &state.db,
-        app_id,
-        Some(client),
-        Some(uid),
-    )
-    .await?;
+    let persons =
+        crate::services::face::PhotoFaceService::list_persons(&state.db, app_id, Some(client), Some(uid)).await?;
     Ok(ok(serde_json::to_value(persons).unwrap()))
 }
 
@@ -99,8 +94,7 @@ pub async fn person_photos(
         page: q.page.unwrap_or(1),
         page_size: q.page_size.unwrap_or(80),
     };
-    let result =
-        crate::services::face::PhotoFaceService::photos_by_person(&state.db, pid, &page).await?;
+    let result = crate::services::face::PhotoFaceService::photos_by_person(&state.db, pid, &page).await?;
     Ok(ok(serde_json::to_value(result).unwrap()))
 }
 
@@ -124,10 +118,8 @@ pub async fn merge_persons(
     let target_id = parse_uuid(&body.target_id)?;
     let source_id = parse_uuid(&body.source_id)?;
 
-    crate::services::face::PhotoFaceService::merge_persons(
-        &state.db, app_id, target_id, source_id, client, uid,
-    )
-    .await?;
+    crate::services::face::PhotoFaceService::merge_persons(&state.db, app_id, target_id, source_id, client, uid)
+        .await?;
 
     Ok(ok(serde_json::json!({"success": true})))
 }
@@ -175,10 +167,8 @@ pub async fn assign_face_to_person(
         .map_err(|_| AppError::BadRequest(format!("invalid face id: {face_id}")))?;
     let person_id = parse_uuid(&body.person_id)?;
 
-    crate::services::face::PhotoFaceService::assign_face_to_person(
-        &state.db, photo_id, fid, person_id, client, uid,
-    )
-    .await?;
+    crate::services::face::PhotoFaceService::assign_face_to_person(&state.db, photo_id, fid, person_id, client, uid)
+        .await?;
 
     Ok(ok(serde_json::json!({"success": true})))
 }
@@ -219,12 +209,7 @@ pub async fn get_photo_faces(
     let photo_id = parse_uuid(&id)?;
     let uid = parse_user_id(&user_id)?;
     let client = state.bus_client.get();
-    let faces = crate::services::face::PhotoFaceService::get_photo_faces(
-        &state.db,
-        photo_id,
-        client,
-        Some(uid),
-    )
-    .await?;
+    let faces =
+        crate::services::face::PhotoFaceService::get_photo_faces(&state.db, photo_id, client, Some(uid)).await?;
     Ok(ok(serde_json::to_value(faces).unwrap()))
 }

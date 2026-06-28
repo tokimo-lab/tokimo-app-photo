@@ -46,9 +46,7 @@ impl SourceRegistry {
     }
 
     pub async fn sync_all(&self) -> Result<Vec<ManagedSourceStatus>, String> {
-        let records = VfsRepo::fetch_all(&self.db)
-            .await
-            .map_err(|e| e.to_string())?;
+        let records = VfsRepo::fetch_all(&self.db).await.map_err(|e| e.to_string())?;
         let desired: HashMap<String, VfsRecord> = records
             .into_iter()
             .filter(|record| is_supported_source_type(&record.vfs_type))
@@ -73,10 +71,7 @@ impl SourceRegistry {
         Ok(self.status_all().await)
     }
 
-    pub async fn sync_source(
-        &self,
-        source_id: &str,
-    ) -> Result<Option<ManagedSourceStatus>, String> {
+    pub async fn sync_source(&self, source_id: &str) -> Result<Option<ManagedSourceStatus>, String> {
         let record = VfsRepo::fetch_by_id(&self.db, source_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -98,10 +93,7 @@ impl SourceRegistry {
         let removed = { self.sources.write().await.remove(source_id) };
         if let Some(source) = removed {
             info!("disconnecting source {}", source_id);
-            if !self
-                .is_fingerprint_in_use(&source.fingerprint, Some(source_id))
-                .await
-            {
+            if !self.is_fingerprint_in_use(&source.fingerprint, Some(source_id)).await {
                 match timeout(DROP_DRIVER_TIMEOUT, source.driver.drop_driver()).await {
                     Ok(Ok(())) => {}
                     Ok(Err(err)) => {
@@ -199,35 +191,33 @@ impl SourceRegistry {
             return Ok(());
         }
 
-        let (driver, is_new) = if let Some(shared_driver) = self
-            .find_driver_by_fingerprint(&fingerprint, Some(&record.id))
-            .await
-        {
-            info!("source {} reusing existing connection", record.id);
-            (shared_driver, false)
-        } else {
-            // Build the persister closure before init() so the driver can call
-            // it immediately when credentials rotate (e.g. Baidu refresh_token
-            // on first token exchange, Quark cookie on every response).
-            // This is the equivalent of OpenList's op.MustSaveDriverStorage.
-            let persister = if record.vfs_type == "baidu_netdisk" || record.vfs_type == "quark" {
-                let db = self.db.clone();
-                let record_id = record.id.clone();
-                let p: tokimo_vfs::ConfigPersister = Arc::new(move |patch| {
-                    let db = db.clone();
-                    let id = record_id.clone();
-                    tokio::spawn(async move {
-                        if let Err(err) = VfsRepo::patch_config(&db, &id, patch).await {
-                            warn!("failed to persist config for {}: {}", id, err);
-                        }
-                    });
-                });
-                Some(p)
+        let (driver, is_new) =
+            if let Some(shared_driver) = self.find_driver_by_fingerprint(&fingerprint, Some(&record.id)).await {
+                info!("source {} reusing existing connection", record.id);
+                (shared_driver, false)
             } else {
-                None
+                // Build the persister closure before init() so the driver can call
+                // it immediately when credentials rotate (e.g. Baidu refresh_token
+                // on first token exchange, Quark cookie on every response).
+                // This is the equivalent of OpenList's op.MustSaveDriverStorage.
+                let persister = if record.vfs_type == "baidu_netdisk" || record.vfs_type == "quark" {
+                    let db = self.db.clone();
+                    let record_id = record.id.clone();
+                    let p: tokimo_vfs::ConfigPersister = Arc::new(move |patch| {
+                        let db = db.clone();
+                        let id = record_id.clone();
+                        tokio::spawn(async move {
+                            if let Err(err) = VfsRepo::patch_config(&db, &id, patch).await {
+                                warn!("failed to persist config for {}: {}", id, err);
+                            }
+                        });
+                    });
+                    Some(p)
+                } else {
+                    None
+                };
+                (build_vfs_driver(&record, persister).await?, true)
             };
-            (build_vfs_driver(&record, persister).await?, true)
-        };
 
         // Persist one-shot credentials (e.g. QR-code login cookie) that were
         // resolved during init() but not covered by the persister callback.
@@ -245,18 +235,11 @@ impl SourceRegistry {
             driver,
         };
 
-        let previous = {
-            self.sources
-                .write()
-                .await
-                .insert(record.id.clone(), managed.clone())
-        };
+        let previous = { self.sources.write().await.insert(record.id.clone(), managed.clone()) };
 
         if let Some(old) = previous
             && old.fingerprint != fingerprint
-            && !self
-                .is_fingerprint_in_use(&old.fingerprint, Some(&record.id))
-                .await
+            && !self.is_fingerprint_in_use(&old.fingerprint, Some(&record.id)).await
         {
             match timeout(DROP_DRIVER_TIMEOUT, old.driver.drop_driver()).await {
                 Ok(Ok(())) => {}
@@ -293,18 +276,10 @@ impl SourceRegistry {
             .map(|(_, managed)| Arc::clone(&managed.driver))
     }
 
-    async fn is_fingerprint_in_use(
-        &self,
-        fingerprint: &str,
-        exclude_source_id: Option<&str>,
-    ) -> bool {
-        self.sources
-            .read()
-            .await
-            .iter()
-            .any(|(source_id, managed)| {
-                exclude_source_id != Some(source_id.as_str()) && managed.fingerprint == fingerprint
-            })
+    async fn is_fingerprint_in_use(&self, fingerprint: &str, exclude_source_id: Option<&str>) -> bool {
+        self.sources.read().await.iter().any(|(source_id, managed)| {
+            exclude_source_id != Some(source_id.as_str()) && managed.fingerprint == fingerprint
+        })
     }
 }
 

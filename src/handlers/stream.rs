@@ -32,15 +32,12 @@ const REMOTE_FS_SOURCE_TYPES: [&str; 10] = [
 
 /// Extensions that browsers cannot decode natively.
 const BROWSER_INCOMPATIBLE_EXTS: &[&str] = &[
-    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2",
-    ".pef", ".srw", ".raf",
+    ".heic", ".heif", ".avif", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2", ".pef", ".srw", ".raf",
 ];
 
 fn needs_server_decode(path: &str) -> bool {
     let lower = path.to_lowercase();
-    BROWSER_INCOMPATIBLE_EXTS
-        .iter()
-        .any(|ext| lower.ends_with(ext))
+    BROWSER_INCOMPATIBLE_EXTS.iter().any(|ext| lower.ends_with(ext))
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,10 +106,7 @@ pub async fn serve_live_video(
 }
 
 /// Load the raw bytes of a photo from local filesystem or remote VFS.
-async fn load_photo_bytes(
-    state: &Arc<AppState>,
-    target: &crate::models::PhotoStreamTarget,
-) -> Result<Vec<u8>, String> {
+async fn load_photo_bytes(state: &Arc<AppState>, target: &crate::models::PhotoStreamTarget) -> Result<Vec<u8>, String> {
     if target.source_type.as_deref().is_some_and(|t| t == "local") {
         let abs_path = resolve_local_path(&target.path, target.source_config.as_ref());
         return tokio::fs::read(&abs_path)
@@ -153,30 +147,13 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
     let mut cmd = tokio::process::Command::new(&ffmpeg_bin);
     cmd.args(["-i", &tmp_str]);
     if is_heic {
-        cmd.args([
-            "-filter_complex",
-            "[0:g:0]scale=-1:-1[out]",
-            "-map",
-            "[out]",
-        ]);
+        cmd.args(["-filter_complex", "[0:g:0]scale=-1:-1[out]", "-map", "[out]"]);
     } else {
         cmd.args(["-vframes", "1"]);
     }
-    cmd.args([
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "-q:v",
-        "2",
-        "pipe:1",
-    ]);
+    cmd.args(["-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "2", "pipe:1"]);
 
-    let result = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await;
+    let result = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
 
     let _ = tokio::fs::remove_file(&tmp_path).await;
 
@@ -198,10 +175,7 @@ async fn convert_heic_to_jpeg(raw_bytes: &[u8], filename: &str) -> Result<Vec<u8
 }
 
 /// Serve a browser-incompatible photo by converting to JPEG via FFmpeg.
-async fn serve_raw_as_jpeg(
-    state: Arc<AppState>,
-    target: &crate::models::PhotoStreamTarget,
-) -> Response {
+async fn serve_raw_as_jpeg(state: Arc<AppState>, target: &crate::models::PhotoStreamTarget) -> Response {
     let cache_key = format!("photo-jpeg-cache/{}.jpeg", {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -231,11 +205,7 @@ async fn serve_raw_as_jpeg(
         Err(e) => return err500::<()>(format!("image conversion failed: {e}")).into_response(),
     };
 
-    let storage = state
-        .storage
-        .get()
-        .cloned()
-        .expect("storage not initialized");
+    let storage = state.storage.get().cloned().expect("storage not initialized");
     let key = cache_key.clone();
     let buf = jpeg_bytes.clone();
     tokio::spawn(async move {

@@ -14,8 +14,8 @@ use crate::repos::{PhotoLibraryRepo, UpdatePhotoLibraryFields};
 use crate::services::source::normalize_source_path;
 
 use super::{
-    CreatePhotoLibraryInput, PhotoLibraryReorderInput, UpdatePhotoLibraryInput, parse_uuid,
-    sources_to_json, to_photo_library_output, to_photo_library_outputs,
+    CreatePhotoLibraryInput, PhotoLibraryReorderInput, UpdatePhotoLibraryInput, parse_uuid, sources_to_json,
+    to_photo_library_output, to_photo_library_outputs,
 };
 
 /// GET /api/apps/photo
@@ -59,10 +59,7 @@ pub async fn create_photo_library(
         sources: None,
     };
 
-    if update_fields.avatar.is_some()
-        || update_fields.description.is_some()
-        || update_fields.scrape_enabled.is_some()
-    {
+    if update_fields.avatar.is_some() || update_fields.description.is_some() || update_fields.scrape_enabled.is_some() {
         needs_update = true;
     }
 
@@ -149,12 +146,7 @@ pub async fn reorder_photo_libraries(
     let orders: Vec<(Uuid, i32)> = body
         .orders
         .into_iter()
-        .filter_map(|item| {
-            item.id
-                .parse::<Uuid>()
-                .ok()
-                .map(|uid| (uid, item.sort_order))
-        })
+        .filter_map(|item| item.id.parse::<Uuid>().ok().map(|uid| (uid, item.sort_order)))
         .collect();
     PhotoLibraryRepo::reorder(&state.db, orders).await?;
     Ok(ok_empty())

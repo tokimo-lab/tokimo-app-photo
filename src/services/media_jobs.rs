@@ -26,14 +26,8 @@ pub async fn create_media_job_and_wait(
 
     loop {
         tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-        let Some(model) = job_entity::Entity::find_by_id(job.id)
-            .one(&state.db)
-            .await?
-        else {
-            return Err(AppError::Internal(format!(
-                "media job {} disappeared",
-                job.id
-            )));
+        let Some(model) = job_entity::Entity::find_by_id(job.id).one(&state.db).await? else {
+            return Err(AppError::Internal(format!("media job {} disappeared", job.id)));
         };
         match model.status.as_str() {
             "completed" => return Ok(model.data),

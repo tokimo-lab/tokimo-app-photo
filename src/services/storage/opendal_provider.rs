@@ -28,12 +28,7 @@ impl OpendalStorageProvider {
 
 #[async_trait::async_trait]
 impl StorageProvider for OpendalStorageProvider {
-    async fn upload(
-        &self,
-        key: &str,
-        body: Bytes,
-        options: Option<UploadOptions>,
-    ) -> Result<(), String> {
+    async fn upload(&self, key: &str, body: Bytes, options: Option<UploadOptions>) -> Result<(), String> {
         let content_type = options
             .and_then(|o| o.content_type)
             .unwrap_or_else(|| "application/octet-stream".to_string());
@@ -47,19 +42,12 @@ impl StorageProvider for OpendalStorageProvider {
     }
 
     async fn download(&self, key: &str) -> Result<Bytes, String> {
-        let buf = self
-            .op
-            .read(key)
-            .await
-            .map_err(|e| format!("Download failed: {e}"))?;
+        let buf = self.op.read(key).await.map_err(|e| format!("Download failed: {e}"))?;
         Ok(buf.to_bytes())
     }
 
     async fn delete(&self, key: &str) -> Result<(), String> {
-        self.op
-            .delete(key)
-            .await
-            .map_err(|e| format!("Delete failed: {e}"))
+        self.op.delete(key).await.map_err(|e| format!("Delete failed: {e}"))
     }
 
     async fn exists(&self, key: &str) -> Result<bool, String> {
