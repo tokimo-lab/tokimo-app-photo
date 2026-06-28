@@ -7,8 +7,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::AppState;
+use crate::bus_clients::jobs;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::user::AuthUser;
+use crate::queue::JobPriority;
 use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 use crate::services::clip::PhotoClipService;
 use crate::services::geo::reverse_geocode_dispatch;
@@ -360,14 +362,18 @@ pub async fn ocr_scan(
         .await?
         .not_found(format!("photo library {id} not found"))?;
     preempt::preempt_scan_for(&state, app_id, "photo_ocr_scan").await?;
-    crate::db::repos::job_repo::JobRepo::create_job(
-        &state.db,
+    let client = state
+        .bus_client
+        .get()
+        .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
+    let mut request = jobs::CreateJobRequest::new(
         "photo_ocr_scan",
         serde_json::json!({ "photoLibraryId": app_id.to_string() }),
-        None,
-        Some(user_id),
-    )
-    .await?;
+    );
+    request.task_type = Some("photo_ocr".to_string());
+    request.dedupe_key = Some(format!("photo:{app_id}:photo_ocr_scan"));
+    request.priority = Some(JobPriority::UserAction.as_i32());
+    jobs::enqueue_with_dedupe(client, jobs::photo_caller(Some(user_id)), request).await?;
     Ok(ok(serde_json::json!({"status": "started"})))
 }
 
@@ -385,14 +391,18 @@ pub async fn clip_embed(
         .await?
         .not_found(format!("photo library {id} not found"))?;
     preempt::preempt_scan_for(&state, app_id, "photo_clip_scan").await?;
-    crate::db::repos::job_repo::JobRepo::create_job(
-        &state.db,
+    let client = state
+        .bus_client
+        .get()
+        .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
+    let mut request = jobs::CreateJobRequest::new(
         "photo_clip_scan",
         serde_json::json!({ "photoLibraryId": app_id.to_string() }),
-        None,
-        Some(user_id),
-    )
-    .await?;
+    );
+    request.task_type = Some("photo_clip".to_string());
+    request.dedupe_key = Some(format!("photo:{app_id}:photo_clip_scan"));
+    request.priority = Some(JobPriority::UserAction.as_i32());
+    jobs::enqueue_with_dedupe(client, jobs::photo_caller(Some(user_id)), request).await?;
     Ok(ok(serde_json::json!({"status": "started"})))
 }
 

@@ -188,6 +188,16 @@ pub async fn create(
         .map_err(|error| AppError::Internal(format!("jobs.create decode: {error}")))
 }
 
+pub async fn enqueue_with_dedupe(
+    client: &BusClient,
+    caller: CallerCtx,
+    request: CreateJobRequest,
+) -> Result<Job, AppError> {
+    let response = invoke_json(client, "enqueue_with_dedupe", caller, &request).await?;
+    serde_json::from_slice::<JobView>(&response)
+        .map_err(|error| AppError::Internal(format!("jobs.enqueue_with_dedupe decode: {error}")))
+}
+
 pub async fn query(
     client: &BusClient,
     caller: CallerCtx,

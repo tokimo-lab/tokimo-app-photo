@@ -11,6 +11,7 @@ use crate::bus_clients::jobs;
 use crate::db::pagination::PageInput;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::{ApiResponse, ok};
+use crate::queue::JobPriority;
 use crate::repos::{PhotoLibraryRepo, PhotoRepo};
 
 use super::parse_uuid;
@@ -31,13 +32,17 @@ pub async fn reverse_geocode(
         .bus_client
         .get()
         .ok_or_else(|| AppError::Internal("BusClient not yet bound".into()))?;
-    jobs::create(
+    let mut request = jobs::CreateJobRequest::new(
+        "photo_geocode_scan",
+        serde_json::json!({ "photoLibraryId": app_id.to_string() }),
+    );
+    request.task_type = Some("photo_reverse_geocode".to_string());
+    request.dedupe_key = Some(format!("photo:{app_id}:photo_geocode_scan"));
+    request.priority = Some(JobPriority::UserAction.as_i32());
+    jobs::enqueue_with_dedupe(
         client,
         client.auto_caller("photo"),
-        jobs::CreateJobRequest::new(
-            "photo_geocode_scan",
-            serde_json::json!({ "photoLibraryId": app_id.to_string() }),
-        ),
+        request,
     )
     .await?;
     Ok(ok(serde_json::json!({"status": "started"})))
