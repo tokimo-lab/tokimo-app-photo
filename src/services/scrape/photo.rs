@@ -32,6 +32,7 @@ pub async fn handle(
     file_path: &str,
     file_size: i64,
     file_created_at: Option<DateTime<FixedOffset>>,
+    checksum: Option<String>,
     user_id: Option<Uuid>,
 ) -> Result<Option<JsonValue>, BoxError> {
     let filename = file_path.rsplit('/').next().unwrap_or(file_path);
@@ -40,20 +41,6 @@ pub async fn handle(
         return Ok(Some(json!({ "skipped": true, "reason": "not_a_photo" })));
     }
 
-    // Idempotency
-    let existing = photos::Entity::find()
-        .filter(photos::Column::SourceId.eq(source_uuid))
-        .filter(photos::Column::Path.eq(file_path))
-        .filter(photos::Column::AppId.eq(app_uuid))
-        .one(db)
-        .await?;
-
-    if existing.is_some() {
-        debug!("[photo_scrape] Photo already indexed, skipping: {file_path}");
-        return Ok(Some(json!({ "skipped": true, "reason": "already_ingested" })));
-    }
-
-    let photo_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
     let mime_type = guess_photo_mime(filename);
 
@@ -65,54 +52,101 @@ pub async fn handle(
         })
         .or(file_created_at);
 
-    let model = photos::ActiveModel {
-        id: Set(photo_id),
-        app_id: Set(app_uuid),
-        source_id: Set(Some(source_uuid)),
-        filename: Set(filename.to_string()),
-        path: Set(file_path.to_string()),
-        title: Set(None),
-        description: Set(None),
-        width: Set(None),
-        height: Set(None),
-        file_size: Set(if file_size > 0 { Some(file_size) } else { None }),
-        mime_type: Set(mime_type),
-        taken_at: Set(taken_at),
-        camera_make: Set(None),
-        camera_model: Set(None),
-        lens_model: Set(None),
-        focal_length: Set(None),
-        aperture: Set(None),
-        shutter_speed: Set(None),
-        iso: Set(None),
-        orientation: Set(None),
-        exif_data: Set(None),
-        gps_latitude: Set(None),
-        gps_longitude: Set(None),
-        gps_altitude: Set(None),
-        location_name: Set(None),
-        geo_province: Set(None),
-        geo_city: Set(None),
-        geo_district: Set(None),
-        geo_township: Set(None),
-        geo_adcode: Set(None),
-        geo_address: Set(None),
-        thumbnail_path: Set(None),
-        is_favorite: Set(false),
-        is_hidden: Set(false),
-        photo_album_id: Set(None),
-        color_dominant: Set(None),
-        live_video_path: Set(None),
-        ocr_scanned_at: Set(None),
-        ocr_debug_info: Set(None),
-        scanned_at: Set(Some(now)),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        deleted_at: Set(None),
-        checksum: Set(None),
+    // Idempotency
+    let existing = photos::Entity::find()
+        .filter(photos::Column::SourceId.eq(source_uuid))
+        .filter(photos::Column::Path.eq(file_path))
+        .filter(photos::Column::AppId.eq(app_uuid))
+        .one(db)
+        .await?;
+
+    let (photo_id, operation) = if let Some(existing) = existing {
+        let Some(next_checksum) = checksum.as_deref() else {
+            debug!("[photo_scrape] Photo already indexed, skipping: {file_path}");
+            return Ok(Some(json!({ "skipped": true, "reason": "already_ingested" })));
+        };
+
+        if existing.checksum.as_deref() == Some(next_checksum) {
+            debug!("[photo_scrape] Photo already indexed, skipping: {file_path}");
+            return Ok(Some(json!({ "skipped": true, "reason": "already_ingested" })));
+        }
+
+        let photo_id = existing.id;
+        let active = photos::ActiveModel {
+            id: Set(photo_id),
+            file_size: Set(if file_size > 0 { Some(file_size) } else { None }),
+            mime_type: Set(mime_type),
+            taken_at: if existing.taken_at.is_none() {
+                Set(taken_at)
+            } else {
+                NotSet
+            },
+            scanned_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            checksum: Set(Some(next_checksum.to_string())),
+            ..Default::default()
+        };
+        active.update(db).await?;
+
+        if existing.checksum.is_none() {
+            debug!("[photo_scrape] Backfilled checksum for indexed photo, skipping extraction: {file_path}");
+            return Ok(Some(json!({ "skipped": true, "reason": "checksum_backfilled" })));
+        }
+
+        (photo_id, "updated")
+    } else {
+        let photo_id = Uuid::new_v4();
+        let model = photos::ActiveModel {
+            id: Set(photo_id),
+            app_id: Set(app_uuid),
+            source_id: Set(Some(source_uuid)),
+            filename: Set(filename.to_string()),
+            path: Set(file_path.to_string()),
+            title: Set(None),
+            description: Set(None),
+            width: Set(None),
+            height: Set(None),
+            file_size: Set(if file_size > 0 { Some(file_size) } else { None }),
+            mime_type: Set(mime_type),
+            taken_at: Set(taken_at),
+            camera_make: Set(None),
+            camera_model: Set(None),
+            lens_model: Set(None),
+            focal_length: Set(None),
+            aperture: Set(None),
+            shutter_speed: Set(None),
+            iso: Set(None),
+            orientation: Set(None),
+            exif_data: Set(None),
+            gps_latitude: Set(None),
+            gps_longitude: Set(None),
+            gps_altitude: Set(None),
+            location_name: Set(None),
+            geo_province: Set(None),
+            geo_city: Set(None),
+            geo_district: Set(None),
+            geo_township: Set(None),
+            geo_adcode: Set(None),
+            geo_address: Set(None),
+            thumbnail_path: Set(None),
+            is_favorite: Set(false),
+            is_hidden: Set(false),
+            photo_album_id: Set(None),
+            color_dominant: Set(None),
+            live_video_path: Set(None),
+            ocr_scanned_at: Set(None),
+            ocr_debug_info: Set(None),
+            scanned_at: Set(Some(now)),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            deleted_at: Set(None),
+            checksum: Set(checksum),
+        };
+
+        photos::Entity::insert(model).exec(db).await?;
+        (photo_id, "created")
     };
 
-    photos::Entity::insert(model).exec(db).await?;
     if let Some(user_id) = user_id {
         let _ = state.event_tx.send(AppEvent::AppEntityEvent {
             user_id,
@@ -122,11 +156,11 @@ pub async fn handle(
             payload: json!({
                 "id": photo_id.to_string(),
                 "libraryId": app_uuid.to_string(),
-                "operation": "created"
+                "operation": operation
             }),
         });
     }
-    info!("[photo_scrape] Created photo: {filename} ({photo_id})");
+    info!("[photo_scrape] {operation} photo: {filename} ({photo_id})");
 
     let fs = vfs::Entity::find_by_id(source_uuid).one(db).await.ok().flatten();
     let is_local = fs.as_ref().is_some_and(|f| f.r#type == "local");

@@ -67,6 +67,12 @@ pub struct SyncResult {
     pub total_jobs: u64,
 }
 
+#[derive(Debug, Clone)]
+struct ExistingPhotoState {
+    id: Uuid,
+    checksum: Option<String>,
+}
+
 pub struct AppSyncService;
 
 impl AppSyncService {
@@ -420,12 +426,17 @@ impl AppSyncService {
 
             let checksum = format!("{}:{}", file.file_size, file.mtime);
 
-            // Skip if already exists with matching checksum
-            if let Some(existing_checksum) = existing_photos.get(&file.file_path)
-                && existing_checksum.as_deref() == Some(&checksum)
-            {
-                skipped += 1;
-                continue;
+            if let Some(existing) = existing_photos.get(&file.file_path) {
+                if existing.checksum.as_deref() == Some(&checksum) {
+                    skipped += 1;
+                    continue;
+                }
+
+                if existing.checksum.is_none() {
+                    Self::backfill_photo_checksum(db, existing.id, &checksum).await?;
+                    skipped += 1;
+                    continue;
+                }
             }
 
             jobs_batch.push((
@@ -477,15 +488,16 @@ impl AppSyncService {
     }
 
     /// Load existing photo paths and checksums for a source.
-    /// Returns a map of `path -> checksum`.
+    /// Returns a map of `path -> existing photo state`.
     async fn load_existing_paths(
         db: &DatabaseConnection,
         library_id: Uuid,
         source_id: Uuid,
-    ) -> Result<HashMap<String, Option<String>>, AppError> {
+    ) -> Result<HashMap<String, ExistingPhotoState>, AppError> {
         #[derive(DerivePartialModel)]
         #[sea_orm(entity = "photos::Entity")]
         struct PhotoPath {
+            pub id: Uuid,
             pub path: String,
             pub checksum: Option<String>,
         }
@@ -498,7 +510,30 @@ impl AppSyncService {
             .all(db)
             .await?;
 
-        Ok(rows.into_iter().map(|r| (r.path, r.checksum)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.path,
+                    ExistingPhotoState {
+                        id: r.id,
+                        checksum: r.checksum,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    async fn backfill_photo_checksum(db: &DatabaseConnection, photo_id: Uuid, checksum: &str) -> Result<(), AppError> {
+        let now = Utc::now().fixed_offset();
+        let active = photos::ActiveModel {
+            id: Set(photo_id),
+            checksum: Set(Some(checksum.to_string())),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+        active.update(db).await?;
+        Ok(())
     }
 
     /// Create photo_scrape jobs via bus.

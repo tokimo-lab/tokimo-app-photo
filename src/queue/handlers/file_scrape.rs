@@ -33,6 +33,11 @@ pub async fn handle(
         .and_then(JsonValue::as_i64)
         .and_then(|ts| chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0))
         .map(|dt| dt.fixed_offset());
+    let checksum = params
+        .get("checksum")
+        .and_then(JsonValue::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let source_id = params
         .get("sourceId")
         .and_then(|v| v.as_str())
@@ -61,6 +66,7 @@ pub async fn handle(
         file_path,
         file_size,
         file_created_at,
+        checksum,
         user_id,
     )
     .await?;
