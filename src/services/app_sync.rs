@@ -22,10 +22,10 @@ use tokimo_bus_client::BusClient;
 
 use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
 use crate::bus_clients::person as person_bus;
+use crate::config::PhotoAiSettings;
 use crate::db::entities::{
     photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
-use crate::config::PhotoAiSettings;
 use crate::error::{AppError, OptionExt};
 use crate::handlers::vfs::ops::{PHOTO_EXTENSIONS, VideoFileInfo, walk_files_streaming};
 use crate::queue::JobPriority;
@@ -120,12 +120,7 @@ impl AppSyncService {
     /// imported. This restores the monorepo auto-processing contract while
     /// keeping inference in the OS media services and the existing photo
     /// parent/child scan workers.
-    pub async fn enqueue_photo_ai_jobs(
-        db: &DatabaseConnection,
-        client: &BusClient,
-        library_id: Uuid,
-        user_id: Uuid,
-    ) {
+    pub async fn enqueue_photo_ai_jobs(db: &DatabaseConnection, client: &BusClient, library_id: Uuid, user_id: Uuid) {
         let settings = match PhotoAiSettings::for_app(db, library_id).await {
             Ok(settings) => settings,
             Err(err) => {
@@ -152,15 +147,15 @@ impl AppSyncService {
             .unwrap_or(true);
 
         let scan_jobs = [
-            ("photo_face_scan", "photo_face_detect", "autoFace", settings.face_enabled),
+            (
+                "photo_face_scan",
+                "photo_face_detect",
+                "autoFace",
+                settings.face_enabled,
+            ),
             ("photo_ocr_scan", "photo_ocr", "autoOcr", settings.ocr_enabled),
             ("photo_clip_scan", "photo_clip", "autoClip", settings.clip_enabled),
-            (
-                "photo_geocode_scan",
-                "photo_reverse_geocode",
-                "autoGeo",
-                auto_geo,
-            ),
+            ("photo_geocode_scan", "photo_reverse_geocode", "autoGeo", auto_geo),
         ];
 
         for (job_type, task_type, setting_key, enabled) in scan_jobs {
@@ -169,10 +164,7 @@ impl AppSyncService {
                 continue;
             }
 
-            let mut request = CreateJobRequest::new(
-                job_type,
-                json!({ "photoLibraryId": library_id.to_string() }),
-            );
+            let mut request = CreateJobRequest::new(job_type, json!({ "photoLibraryId": library_id.to_string() }));
             request.task_type = Some(task_type.to_string());
             request.dedupe_key = Some(format!("photo:{library_id}:{job_type}"));
             request.priority = Some(JobPriority::Background.as_i32());

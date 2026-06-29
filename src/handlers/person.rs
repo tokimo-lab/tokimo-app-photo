@@ -52,12 +52,7 @@ pub async fn face_detect(
     request.task_type = Some("photo_face_detect".to_string());
     request.dedupe_key = Some(format!("photo:{app_id}:photo_face_scan"));
     request.priority = Some(JobPriority::UserAction.as_i32());
-    jobs::enqueue_with_dedupe(
-        client,
-        client.auto_caller("photo"),
-        request,
-    )
-    .await?;
+    jobs::enqueue_with_dedupe(client, client.auto_caller("photo"), request).await?;
     Ok(ok(serde_json::json!({"status": "started"})))
 }
 
