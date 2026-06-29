@@ -81,8 +81,25 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
     let ctx_apply_face = ctx.clone();
     let ctx_apply_clip = ctx.clone();
     let ctx_apply_gps = ctx.clone();
+    let ctx_library_sync = ctx.clone();
 
     builder
+        .method(decl(
+            "dispatch_photo_library_sync",
+            "Run a photo library sync job",
+        ))
+        .on_invoke("dispatch_photo_library_sync", move |req| {
+            let ctx = ctx_library_sync.clone();
+            async move {
+                let (job_id, params) = decode_request(&req.payload)?;
+                let user_id = caller_user_id(&req.caller);
+                let cancel = CancellationToken::new();
+                crate::queue::photo_library_sync::handle(&ctx.db, &ctx, job_id, &params, user_id, &cancel)
+                    .await
+                    .map(|r| serde_json::to_vec(&r).unwrap_or_else(|_| b"{}".to_vec()))
+                    .map_err(|e| BusError::Internal(e.to_string()))
+            }
+        })
         .method(decl(
             "dispatch_file_scrape",
             "Run a file_scrape job on behalf of the main worker",
@@ -452,6 +469,7 @@ pub fn register(builder: BusClientBuilder, ctx: Arc<AppState>) -> BusClientBuild
             serde_json::to_vec(&serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),
                 "methods": [
+                    "dispatch_photo_library_sync",
                     "dispatch_file_scrape",
                     "dispatch_person_sync_delete_source",
                     "dispatch_person_sync_register_faces",

@@ -145,6 +145,7 @@ async fn run_server() -> anyhow::Result<()> {
     info!("photo: registered with broker");
 
     // Register job type handlers with main server
+    bus_clients::jobs::register_handler(&client, "photo_library_sync", "dispatch_photo_library_sync").await?;
     bus_clients::jobs::register_handler(&client, "file_scrape", "dispatch_file_scrape").await?;
     bus_clients::jobs::register_handler(
         &client,

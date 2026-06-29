@@ -10,6 +10,7 @@ pub mod photo_face;
 pub mod photo_face_scan;
 pub mod photo_geocode;
 pub mod photo_geocode_scan;
+pub mod photo_library_sync;
 pub mod photo_ocr;
 pub mod photo_ocr_scan;
 

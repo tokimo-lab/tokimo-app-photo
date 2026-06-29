@@ -86,6 +86,7 @@ pub struct VideoFileInfo {
     pub created: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct WalkProgress {
     pub visited_dirs: usize,
     pub found_videos: usize,

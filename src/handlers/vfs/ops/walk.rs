@@ -13,6 +13,7 @@ use std::{
 };
 use tokimo_vfs::Vfs;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 use crate::AppState;
@@ -156,6 +157,19 @@ pub async fn walk_files_streaming(
     extensions: &'static [&'static str],
     tx: mpsc::Sender<VideoFileInfo>,
 ) -> Result<WalkStats, String> {
+    walk_files_streaming_with_progress(vfs, root_path, source_id, extensions, tx, None, None).await
+}
+
+/// Walk files with optional progress snapshots and cooperative cancellation.
+pub async fn walk_files_streaming_with_progress(
+    vfs: Arc<Vfs>,
+    root_path: &str,
+    source_id: &str,
+    extensions: &'static [&'static str],
+    tx: mpsc::Sender<VideoFileInfo>,
+    progress_tx: Option<mpsc::Sender<WalkProgress>>,
+    cancel: Option<CancellationToken>,
+) -> Result<WalkStats, String> {
     let mut progress = WalkProgress {
         visited_dirs: 0,
         found_videos: 0,
@@ -175,6 +189,10 @@ pub async fn walk_files_streaming(
     }
 
     while !in_flight.is_empty() {
+        if cancel.as_ref().is_some_and(CancellationToken::is_cancelled) {
+            return Err("job cancelled".into());
+        }
+
         let join_result = in_flight.next().await.unwrap();
         let list_result = join_result.map_err(|e| e.to_string())??;
 
@@ -186,6 +204,9 @@ pub async fn walk_files_streaming(
                 progress.visited_dirs, progress.found_videos, list_result.dir_path
             );
             last_log = Instant::now();
+            if let Some(tx) = progress_tx.as_ref() {
+                let _ = tx.send(progress).await;
+            }
         }
 
         for child_dir in list_result.child_dirs {
@@ -214,6 +235,9 @@ pub async fn walk_files_streaming(
         "walk complete source={source_id} dirs={} files={}",
         progress.visited_dirs, progress.found_videos
     );
+    if let Some(tx) = progress_tx.as_ref() {
+        let _ = tx.send(progress).await;
+    }
 
     Ok(WalkStats {
         visited_dirs: progress.visited_dirs,

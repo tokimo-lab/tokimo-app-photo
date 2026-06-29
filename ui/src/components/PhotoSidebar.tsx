@@ -1,4 +1,4 @@
-import { AppSidebar, CircularProgress, Tooltip } from "@tokimo/ui";
+import { AppSidebar, CircularProgress, Spin, Tooltip } from "@tokimo/ui";
 import { PanelLeft, PanelLeftClose, Plus, Settings } from "lucide-react";
 import type { PhotoLibraryOutput } from "../generated/rust-api";
 import { getAvatarColor, getAvatarIcon } from "../shared/avatar-utils";
@@ -21,7 +21,10 @@ export default function PhotoSidebar({
   collapsed?: boolean;
   onCreateClick: () => void;
   onSettingsClick: () => void;
-  syncProgress?: Record<string, { isActive: boolean; pct: number }>;
+  syncProgress?: Record<
+    string,
+    { isActive: boolean; pct: number; indeterminate?: boolean }
+  >;
   onToggleCollapse?: () => void;
   /** When true, the settings (⚙) button shows a highlighted state. */
   settingsActive?: boolean;
@@ -46,19 +49,29 @@ export default function PhotoSidebar({
                 color={getAvatarColor(lib.avatar)}
                 size={24}
               />
-              <CircularProgress
-                value={sp.pct}
-                size={32}
-                strokeWidth={2}
-                showText={false}
-                className="absolute left-0 top-0"
-              />
+              {sp.indeterminate ? (
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-bg-base/70">
+                  <Spin size="small" />
+                </span>
+              ) : (
+                <CircularProgress
+                  value={sp.pct}
+                  size={32}
+                  strokeWidth={2}
+                  showText={false}
+                  className="absolute left-0 top-0"
+                />
+              )}
             </span>
           ) : undefined,
           label: lib.name,
           extra: (() => {
             if (sp?.isActive) {
-              return <CircularProgress value={sp.pct} size={24} />;
+              return sp.indeterminate ? (
+                <Spin size="small" />
+              ) : (
+                <CircularProgress value={sp.pct} size={24} />
+              );
             }
             if (collapsed) return undefined;
             return lib.itemCount > 0 ? (

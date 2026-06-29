@@ -8,29 +8,34 @@
 //!   4. Create `photo_scrape` jobs for new/changed photos via bus
 //!   5. Clean up photos that no longer exist on disk
 
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sea_orm::*;
 use serde_json::json;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use tokimo_bus_client::BusClient;
 
-use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
+use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter, QueryJobsRequest};
 use crate::bus_clients::person as person_bus;
 use crate::config::PhotoAiSettings;
 use crate::db::entities::{
     photo_albums, photo_clip_vectors, photo_faces, photo_ocr_results, photo_persons, photos, vfs,
 };
 use crate::error::{AppError, OptionExt};
-use crate::handlers::vfs::ops::{PHOTO_EXTENSIONS, VideoFileInfo, walk_files_streaming};
+use crate::handlers::vfs::ops::{PHOTO_EXTENSIONS, VideoFileInfo, WalkProgress, walk_files_streaming_with_progress};
 use crate::queue::JobPriority;
 use crate::repos::PhotoLibraryRepo;
 use crate::services::source::SourceRegistry;
+
+pub const PHOTO_LIBRARY_SYNC_JOB_TYPE: &str = "photo_library_sync";
 
 /// Convert an absolute host path to a VFS-relative path.
 fn to_vfs_path(root_path: &str, source: &vfs::Model) -> String {
@@ -65,12 +70,104 @@ fn photo_library_filter(library_id: Uuid, status: Option<&str>) -> JobFilter {
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {
     pub total_jobs: u64,
+    pub scanned_files: u64,
+    pub skipped_files: u64,
+    pub queued_jobs: u64,
+    pub backfilled_checksums: u64,
+    pub visited_dirs: u64,
 }
 
 #[derive(Debug, Clone)]
 struct ExistingPhotoState {
     id: Uuid,
     checksum: Option<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SourceSyncResult {
+    total_jobs: u64,
+    scanned_files: u64,
+    skipped_files: u64,
+    queued_jobs: u64,
+    backfilled_checksums: u64,
+    visited_dirs: u64,
+}
+
+#[derive(Clone)]
+pub struct SyncJobContext {
+    pub job_id: Uuid,
+    pub user_id: Uuid,
+    pub client: Arc<BusClient>,
+    pub cancel: CancellationToken,
+}
+
+#[derive(Debug, Clone)]
+struct SyncProgressSnapshot {
+    phase: &'static str,
+    source_path: Option<String>,
+    source_index: usize,
+    source_total: usize,
+    visited_dirs: u64,
+    scanned_files: u64,
+    skipped_files: u64,
+    queued_jobs: u64,
+    backfilled_checksums: u64,
+}
+
+impl SyncJobContext {
+    async fn check_cancelled(&self) -> Result<(), AppError> {
+        if self.cancel.is_cancelled() {
+            return Err(AppError::Gone("job cancelled".into()));
+        }
+
+        let response = jobs_client::query(
+            &self.client,
+            jobs_client::photo_caller(Some(self.user_id)),
+            QueryJobsRequest {
+                id: Some(self.job_id),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+        if response
+            .items
+            .first()
+            .is_some_and(|job| matches!(job.status.as_str(), "cancelled" | "suspended"))
+        {
+            self.cancel.cancel();
+            return Err(AppError::Gone("job cancelled".into()));
+        }
+
+        Ok(())
+    }
+
+    async fn update_sync_progress(&self, library_id: Uuid, snapshot: SyncProgressSnapshot) -> Result<(), AppError> {
+        self.check_cancelled().await?;
+
+        let data = json!({
+            "phase": snapshot.phase,
+            "photoLibraryId": library_id.to_string(),
+            "sourcePath": snapshot.source_path,
+            "sourceIndex": snapshot.source_index,
+            "sourceTotal": snapshot.source_total,
+            "visitedDirs": snapshot.visited_dirs,
+            "scannedFiles": snapshot.scanned_files,
+            "skippedFiles": snapshot.skipped_files,
+            "queuedJobs": snapshot.queued_jobs,
+            "backfilledChecksums": snapshot.backfilled_checksums,
+        });
+
+        jobs_client::update_progress(
+            &self.client,
+            jobs_client::photo_caller(Some(self.user_id)),
+            self.job_id,
+            0,
+            Some(data),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 pub struct AppSyncService;
@@ -87,6 +184,7 @@ impl AppSyncService {
         library_id: Uuid,
         clear_data: bool,
         user_id: Uuid,
+        sync_job: Option<&SyncJobContext>,
     ) -> Result<SyncResult, AppError> {
         let library = PhotoLibraryRepo::get_by_id(db, library_id)
             .await?
@@ -94,7 +192,7 @@ impl AppSyncService {
 
         info!("Starting photo sync for \"{}\" (id={})", library.name, library_id);
 
-        let result = Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id).await;
+        let result = Self::do_photo_sync(db, sources, bus_client, &library, clear_data, user_id, sync_job).await;
 
         match &result {
             Ok(sync_result) => {
@@ -113,8 +211,13 @@ impl AppSyncService {
             }
             Err(err) => {
                 error!("Photo sync failed for \"{}\": {}", library.name, err);
-                if let Err(e) = PhotoLibraryRepo::update_sync_status(db, library_id, "failed", None).await {
-                    warn!("photo sync {library_id}: failed to mark sync_status=failed: {e}");
+                let status = if matches!(err, AppError::Gone(_)) {
+                    "idle"
+                } else {
+                    "failed"
+                };
+                if let Err(e) = PhotoLibraryRepo::update_sync_status(db, library_id, status, None).await {
+                    warn!("photo sync {library_id}: failed to mark sync_status={status}: {e}");
                 }
             }
         }
@@ -193,6 +296,7 @@ impl AppSyncService {
         library: &crate::db::entities::photo_libraries::Model,
         clear_data: bool,
         user_id: Uuid,
+        sync_job: Option<&SyncJobContext>,
     ) -> Result<SyncResult, AppError> {
         let library_id = library.id;
 
@@ -201,6 +305,23 @@ impl AppSyncService {
             .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
 
         if clear_data {
+            if let Some(job) = sync_job {
+                job.update_sync_progress(
+                    library_id,
+                    SyncProgressSnapshot {
+                        phase: "clearing",
+                        source_path: None,
+                        source_index: 0,
+                        source_total: 0,
+                        visited_dirs: 0,
+                        scanned_files: 0,
+                        skipped_files: 0,
+                        queued_jobs: 0,
+                        backfilled_checksums: 0,
+                    },
+                )
+                .await?;
+            }
             Self::clear_library_data_with_person_sync(db, client, library_id, user_id).await?;
         }
 
@@ -211,22 +332,71 @@ impl AppSyncService {
         let source_tuples = PhotoLibraryRepo::parse_sources(&library.sources);
         if source_tuples.is_empty() {
             info!("  No sources configured for photo library, skipping");
-            return Ok(SyncResult { total_jobs: 0 });
+            return Ok(SyncResult {
+                total_jobs: 0,
+                scanned_files: 0,
+                skipped_files: 0,
+                queued_jobs: 0,
+                backfilled_checksums: 0,
+                visited_dirs: 0,
+            });
         }
 
-        let mut total_jobs = 0u64;
+        let mut result = SyncResult {
+            total_jobs: 0,
+            scanned_files: 0,
+            skipped_files: 0,
+            queued_jobs: 0,
+            backfilled_checksums: 0,
+            visited_dirs: 0,
+        };
 
-        for (source_id, root_path, _is_default) in &source_tuples {
+        for (index, (source_id, root_path, _is_default)) in source_tuples.iter().enumerate() {
             let source = vfs::Entity::find_by_id(*source_id)
                 .one(db)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("source {source_id} not found")))?;
 
-            let jobs = Self::sync_fs_source(db, sources, bus_client, library_id, &source, root_path, user_id).await?;
-            total_jobs += jobs;
+            let source_result = Self::sync_fs_source(
+                db,
+                sources,
+                bus_client,
+                library_id,
+                &source,
+                root_path,
+                user_id,
+                sync_job,
+                index + 1,
+                source_tuples.len(),
+            )
+            .await?;
+            result.total_jobs += source_result.total_jobs;
+            result.scanned_files += source_result.scanned_files;
+            result.skipped_files += source_result.skipped_files;
+            result.queued_jobs += source_result.queued_jobs;
+            result.backfilled_checksums += source_result.backfilled_checksums;
+            result.visited_dirs += source_result.visited_dirs;
         }
 
-        Ok(SyncResult { total_jobs })
+        if let Some(job) = sync_job {
+            job.update_sync_progress(
+                library_id,
+                SyncProgressSnapshot {
+                    phase: "completed",
+                    source_path: None,
+                    source_index: source_tuples.len(),
+                    source_total: source_tuples.len(),
+                    visited_dirs: result.visited_dirs,
+                    scanned_files: result.scanned_files,
+                    skipped_files: result.skipped_files,
+                    queued_jobs: result.queued_jobs,
+                    backfilled_checksums: result.backfilled_checksums,
+                },
+            )
+            .await?;
+        }
+
+        Ok(result)
     }
 
     /// Clear all photo data for a library, including derived tables.
@@ -376,7 +546,10 @@ impl AppSyncService {
         source: &vfs::Model,
         root_path: &str,
         user_id: Uuid,
-    ) -> Result<u64, AppError> {
+        sync_job: Option<&SyncJobContext>,
+        source_index: usize,
+        source_total: usize,
+    ) -> Result<SourceSyncResult, AppError> {
         let source_type = &source.r#type;
         let is_local = source_type == "local";
         let is_remote = Self::is_remote_fs_type(source_type);
@@ -386,7 +559,7 @@ impl AppSyncService {
                 "Unsupported source type \"{}\" for source \"{}\", skipping",
                 source_type, source.name
             );
-            return Ok(0);
+            return Ok(SourceSyncResult::default());
         }
 
         // Get VFS handle
@@ -403,12 +576,22 @@ impl AppSyncService {
 
         // Spawn concurrent walk as a background task
         let (tx, mut rx) = mpsc::channel::<VideoFileInfo>(256);
+        let (progress_tx, mut progress_rx) = mpsc::channel::<WalkProgress>(16);
         let walk_root = vfs_root.clone();
         let walk_source_id = source_id_str.clone();
-        let walk_handle =
-            tokio::spawn(
-                async move { walk_files_streaming(vfs, &walk_root, &walk_source_id, &PHOTO_EXTENSIONS, tx).await },
-            );
+        let cancel = sync_job.map(|job| job.cancel.clone());
+        let walk_handle = tokio::spawn(async move {
+            walk_files_streaming_with_progress(
+                vfs,
+                &walk_root,
+                &walk_source_id,
+                &PHOTO_EXTENSIONS,
+                tx,
+                Some(progress_tx),
+                cancel,
+            )
+            .await
+        });
 
         // Pre-load existing photo paths for this source to detect new vs changed
         let existing_photos = Self::load_existing_paths(db, library_id, source.id).await?;
@@ -416,53 +599,118 @@ impl AppSyncService {
         let mut jobs_batch: Vec<(serde_json::Value, Option<Uuid>)> = Vec::new();
         let mut total_jobs = 0u64;
         let mut skipped = 0u64;
+        let mut backfilled = 0u64;
+        let mut scanned_files = 0u64;
+        let mut visited_dirs = 0u64;
+        let mut last_progress_emit = Instant::now()
+            .checked_sub(Duration::from_secs(5))
+            .unwrap_or_else(Instant::now);
 
         let client = bus_client
             .get()
             .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
 
-        while let Some(file) = rx.recv().await {
-            seen_paths.insert(file.file_path.clone());
+        if let Some(job) = sync_job {
+            job.update_sync_progress(
+                library_id,
+                SyncProgressSnapshot {
+                    phase: "walking",
+                    source_path: Some(root_path.to_string()),
+                    source_index,
+                    source_total,
+                    visited_dirs,
+                    scanned_files,
+                    skipped_files: skipped,
+                    queued_jobs: total_jobs,
+                    backfilled_checksums: backfilled,
+                },
+            )
+            .await?;
+        }
 
-            let checksum = format!("{}:{}", file.file_size, file.mtime);
+        let mut files_open = true;
+        let mut progress_open = true;
 
-            if let Some(existing) = existing_photos.get(&file.file_path) {
-                if existing.checksum.as_deref() == Some(&checksum) {
-                    skipped += 1;
-                    continue;
+        while files_open || progress_open {
+            tokio::select! {
+                maybe_file = rx.recv(), if files_open => {
+                    let Some(file) = maybe_file else {
+                        files_open = false;
+                        continue;
+                    };
+                    scanned_files += 1;
+                    Self::handle_discovered_file(
+                        db,
+                        library_id,
+                        source.id,
+                        user_id,
+                        &existing_photos,
+                        &mut seen_paths,
+                        &mut jobs_batch,
+                        &mut skipped,
+                        &mut backfilled,
+                        file,
+                    )
+                    .await?;
+
+                    if jobs_batch.len() >= Self::JOB_BATCH_FLUSH_SIZE {
+                        let inserted = Self::create_scrape_jobs(client, library_id, std::mem::take(&mut jobs_batch)).await?;
+                        total_jobs += inserted;
+                    }
                 }
-
-                if existing.checksum.is_none() {
-                    Self::backfill_photo_checksum(db, existing.id, &checksum).await?;
-                    skipped += 1;
-                    continue;
+                maybe_progress = progress_rx.recv(), if progress_open => {
+                    let Some(progress) = maybe_progress else {
+                        progress_open = false;
+                        continue;
+                    };
+                    visited_dirs = progress.visited_dirs as u64;
+                    scanned_files = cmp::max(scanned_files, progress.found_videos as u64);
                 }
             }
 
-            jobs_batch.push((
-                json!({
-                    "filePath": file.file_path,
-                    "dirPath": file.dir_path,
-                    "fileSize": file.file_size,
-                    "fileCreatedAt": file.created,
-                    "checksum": checksum,
-                    "sourceId": source.id.to_string(),
-                    "libType": "photo",
-                    "photoId": library_id.to_string(),
-                    "photoLibraryId": library_id.to_string(),
-                }),
-                Some(user_id),
-            ));
-
-            // Flush batch periodically
-            if jobs_batch.len() >= Self::JOB_BATCH_FLUSH_SIZE {
-                total_jobs += Self::create_scrape_jobs(client, library_id, std::mem::take(&mut jobs_batch)).await?;
+            if let Some(job) = sync_job
+                && last_progress_emit.elapsed() >= Duration::from_secs(2)
+            {
+                job.update_sync_progress(
+                    library_id,
+                    SyncProgressSnapshot {
+                        phase: "walking",
+                        source_path: Some(root_path.to_string()),
+                        source_index,
+                        source_total,
+                        visited_dirs,
+                        scanned_files,
+                        skipped_files: skipped,
+                        queued_jobs: total_jobs + jobs_batch.len() as u64,
+                        backfilled_checksums: backfilled,
+                    },
+                )
+                .await?;
+                last_progress_emit = Instant::now();
             }
         }
 
         // Flush remaining jobs
         if !jobs_batch.is_empty() {
             total_jobs += Self::create_scrape_jobs(client, library_id, jobs_batch).await?;
+        }
+
+        if let Some(job) = sync_job {
+            job.update_sync_progress(
+                library_id,
+                SyncProgressSnapshot {
+                    phase: "enqueueing",
+                    source_path: Some(root_path.to_string()),
+                    source_index,
+                    source_total,
+                    visited_dirs,
+                    scanned_files,
+                    skipped_files: skipped,
+                    queued_jobs: total_jobs,
+                    backfilled_checksums: backfilled,
+                },
+            )
+            .await?;
         }
 
         // Wait for walk to complete
@@ -476,6 +724,9 @@ impl AppSyncService {
                 ))
             })?;
 
+        visited_dirs = walk_stats.visited_dirs as u64;
+        scanned_files = cmp::max(scanned_files, walk_stats.found_videos as u64);
+
         info!(
             "[{}({})] Walk done: {} dirs, {} files found, {} unchanged (skipped), {} jobs queued under \"{}\"",
             source.name, source_type, walk_stats.visited_dirs, walk_stats.found_videos, skipped, total_jobs, vfs_root
@@ -484,7 +735,61 @@ impl AppSyncService {
         // Cleanup missing photos
         Self::cleanup_missing_photos(db, library_id, source.id, &vfs_root, &seen_paths).await?;
 
-        Ok(total_jobs)
+        Ok(SourceSyncResult {
+            total_jobs,
+            scanned_files,
+            skipped_files: skipped,
+            queued_jobs: total_jobs,
+            backfilled_checksums: backfilled,
+            visited_dirs,
+        })
+    }
+
+    async fn handle_discovered_file(
+        db: &DatabaseConnection,
+        library_id: Uuid,
+        source_id: Uuid,
+        user_id: Uuid,
+        existing_photos: &HashMap<String, ExistingPhotoState>,
+        seen_paths: &mut HashSet<String>,
+        jobs_batch: &mut Vec<(serde_json::Value, Option<Uuid>)>,
+        skipped: &mut u64,
+        backfilled: &mut u64,
+        file: VideoFileInfo,
+    ) -> Result<(), AppError> {
+        seen_paths.insert(file.file_path.clone());
+
+        let checksum = format!("{}:{}", file.file_size, file.mtime);
+
+        if let Some(existing) = existing_photos.get(&file.file_path) {
+            if existing.checksum.as_deref() == Some(&checksum) {
+                *skipped += 1;
+                return Ok(());
+            }
+
+            if existing.checksum.is_none() {
+                Self::backfill_photo_checksum(db, existing.id, &checksum).await?;
+                *skipped += 1;
+                *backfilled += 1;
+                return Ok(());
+            }
+        }
+
+        jobs_batch.push((
+            json!({
+                "filePath": file.file_path,
+                "dirPath": file.dir_path,
+                "fileSize": file.file_size,
+                "fileCreatedAt": file.created,
+                "checksum": checksum,
+                "sourceId": source_id.to_string(),
+                "libType": "photo",
+                "photoId": library_id.to_string(),
+                "photoLibraryId": library_id.to_string(),
+            }),
+            Some(user_id),
+        ));
+        Ok(())
     }
 
     /// Load existing photo paths and checksums for a source.

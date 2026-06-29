@@ -2,18 +2,19 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::bus_clients::jobs::{self as jobs_client, CreateJobRequest, JobFilter};
 use crate::error::AppError;
 use crate::error::OptionExt;
 use crate::handlers::user::AuthUser;
 use crate::handlers::{ApiResponse, ok};
+use crate::queue::JobPriority;
 use crate::repos::PhotoLibraryRepo;
-use crate::services::app_sync::AppSyncService;
-use crate::services::notifications as photo_notify;
+use crate::services::app_sync::PHOTO_LIBRARY_SYNC_JOB_TYPE;
 
 // ── DTOs ──
 
@@ -23,9 +24,20 @@ pub struct PhotoSyncInput {
     pub clear_data: Option<bool>,
 }
 
+fn sync_job_filter(library_id: Uuid) -> JobFilter {
+    let mut params_match = HashMap::new();
+    params_match.insert("photoLibraryId".to_string(), library_id.to_string());
+    JobFilter {
+        status: None,
+        job_type: Some(PHOTO_LIBRARY_SYNC_JOB_TYPE.to_string()),
+        params_match: Some(params_match),
+        parents_only: Some(true),
+    }
+}
+
 /// POST /api/apps/photo/{id}/sync
 ///
-/// Triggers an async photo library sync.
+/// Enqueues a photo library sync job.
 pub async fn sync_photo(
     State(state): State<Arc<AppState>>,
     AuthUser(auth): AuthUser,
@@ -51,46 +63,45 @@ pub async fn sync_photo(
         .parse()
         .map_err(|_| AppError::Unauthorized("invalid auth user id".into()))?;
 
+    let bus_client = state
+        .bus_client
+        .get()
+        .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
+
     if clear_data {
-        let bus_client = state
-            .bus_client
-            .get()
-            .ok_or_else(|| AppError::Internal("bus client not initialized".into()))?;
-        AppSyncService::clear_library_data_with_person_sync(&state.db, bus_client, uid, user_id).await?;
+        let _ = jobs_client::preempt(
+            bus_client,
+            jobs_client::photo_caller(Some(user_id)),
+            sync_job_filter(uid),
+            "被新的资料库同步覆盖",
+        )
+        .await?;
     }
 
+    let mut request = CreateJobRequest::new(
+        PHOTO_LIBRARY_SYNC_JOB_TYPE,
+        serde_json::json!({
+            "photoLibraryId": uid.to_string(),
+            "clearData": clear_data,
+        }),
+    )
+    .with_data(Some(serde_json::json!({
+        "phase": "pending",
+        "photoLibraryId": uid.to_string(),
+        "scannedFiles": 0,
+        "skippedFiles": 0,
+        "queuedJobs": 0,
+        "backfilledChecksums": 0,
+        "visitedDirs": 0,
+    })));
+    request.dedupe_key = Some(format!("photo:{uid}:{PHOTO_LIBRARY_SYNC_JOB_TYPE}"));
+    request.priority = Some(JobPriority::UserAction.as_i32());
+
+    let job = jobs_client::enqueue_with_dedupe(bus_client, jobs_client::photo_caller(Some(user_id)), request).await?;
     PhotoLibraryRepo::update_sync_status(&state.db, uid, "syncing", None).await?;
 
-    // Preempt any still-active same-library scans of the 4 kinds this
-    // sync-all endpoint will re-dispatch, so the previous attempt's jobs
-    // don't intermix with the new run.
-    for task_type in [
-        "photo_ocr_scan",
-        "photo_clip_scan",
-        "photo_face_scan",
-        "photo_geocode_scan",
-    ] {
-        crate::services::preempt::preempt_scan_for(&state, uid, task_type).await?;
-    }
-
-    let db = state.db.clone();
-    let sources = state.sources.clone();
-    let state_for_task = state.clone();
-    let library_name = library.name.clone();
-
-    tokio::spawn(async move {
-        match AppSyncService::execute_photo_sync(&db, &sources, &state.bus_client, uid, false, user_id).await {
-            Ok(result) => {
-                info!("photo sync completed, {} jobs dispatched", result.total_jobs);
-                photo_notify::notify_sync_completed(&state_for_task, user_id, uid, &library_name, result.total_jobs)
-                    .await;
-            }
-            Err(e) => {
-                error!("photo sync failed: {e}");
-                photo_notify::notify_sync_failed(&state_for_task, user_id, uid, &library_name, &e.to_string()).await;
-            }
-        }
-    });
-
-    Ok(ok(serde_json::json!({ "success": true })))
+    Ok(ok(serde_json::json!({
+        "success": true,
+        "jobId": job.id,
+    })))
 }

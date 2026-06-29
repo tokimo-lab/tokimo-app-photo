@@ -15,9 +15,12 @@ pub use probe::probe_vfs_file;
 pub use stream::{read_vfs_file, stop_hls_session, stream_vfs_file};
 pub use types::{
     AUDIO_EXTENSIONS, BOOK_EXTENSIONS, BrowseBatchRequest, BrowseDirectoryResponse, BrowseEntry, PHOTO_EXTENSIONS,
-    PathQuery, SourceStatEntry, StatEntriesRequest, VideoFileInfo, WalkVideoFilesRequest,
+    PathQuery, SourceStatEntry, StatEntriesRequest, VideoFileInfo, WalkProgress, WalkVideoFilesRequest,
 };
-pub use walk::{walk_files_streaming, walk_vfs_video_files, walk_video_files, walk_video_files_streaming};
+pub use walk::{
+    walk_files_streaming, walk_files_streaming_with_progress, walk_vfs_video_files, walk_video_files,
+    walk_video_files_streaming,
+};
 pub use write::{
     copy_vfs_path, delete_vfs_dir, delete_vfs_file, mkdir_vfs, move_vfs_path, put_vfs_file, rename_vfs_path,
     upload_vfs_file,

@@ -10,16 +10,18 @@ import {
 } from "@tokimo/sdk";
 
 const PHOTO_SCAN_JOB_TYPES = [
+  "photo_library_sync",
   "file_scrape",
   "photo_ocr_scan",
   "photo_clip_scan",
   "photo_face_scan",
   "photo_geocode_scan",
-] as const;
+];
 
 export interface PhotoLibraryProgressState {
   isActive: boolean;
   pct: number;
+  indeterminate?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +64,11 @@ function getJobStatus(event: ShellJobEvent) {
   return stringField(job, "status");
 }
 
+function getJobType(event: ShellJobEvent) {
+  const job = getJobRecord(event);
+  return stringField(job, "type");
+}
+
 function getJobProgress(event: ShellJobEvent) {
   const job = getJobRecord(event);
   const data = isRecord(job?.data) ? job.data : null;
@@ -82,6 +89,9 @@ export function useLibraryItemProgress(
   const queryClient = useQueryClient();
   const [activeIds, setActiveIds] = useState<Set<string>>(new Set());
   const [progressMap, setProgressMap] = useState<Record<string, number>>({});
+  const [indeterminateMap, setIndeterminateMap] = useState<
+    Record<string, boolean>
+  >({});
 
   const librariesRef = useRef<Set<string>>(new Set());
   const pendingByLibRef = useRef(new Map<string, Set<string>>());
@@ -145,6 +155,8 @@ export function useLibraryItemProgress(
       const job = getJobRecord(event);
       const jobId = stringField(job, "id");
       const status = getJobStatus(event);
+      const jobType = getJobType(event);
+      const isLibrarySync = jobType === "photo_library_sync";
 
       if (
         status === "completed" ||
@@ -168,11 +180,17 @@ export function useLibraryItemProgress(
         }
         setProgressMap((prev) => {
           const next = { ...prev };
-          if (status === "completed") {
+          if (status === "completed" && !isLibrarySync) {
             next[libraryId] = 100;
           } else {
             delete next[libraryId];
           }
+          return next;
+        });
+        setIndeterminateMap((prev) => {
+          if (!prev[libraryId]) return prev;
+          const next = { ...prev };
+          delete next[libraryId];
           return next;
         });
         setActiveIds((prev) => {
@@ -194,10 +212,26 @@ export function useLibraryItemProgress(
         }
       }
 
-      setProgressMap((prev) => ({
-        ...prev,
-        [libraryId]: getJobProgress(event),
-      }));
+      if (isLibrarySync) {
+        setIndeterminateMap((prev) => ({ ...prev, [libraryId]: true }));
+        setProgressMap((prev) => {
+          if (!(libraryId in prev)) return prev;
+          const next = { ...prev };
+          delete next[libraryId];
+          return next;
+        });
+      } else {
+        setIndeterminateMap((prev) => {
+          if (!prev[libraryId]) return prev;
+          const next = { ...prev };
+          delete next[libraryId];
+          return next;
+        });
+        setProgressMap((prev) => ({
+          ...prev,
+          [libraryId]: getJobProgress(event),
+        }));
+      }
       setActiveIds((prev) => {
         if (prev.has(libraryId)) return prev;
         const next = new Set(prev);
@@ -225,7 +259,11 @@ export function useLibraryItemProgress(
 
   const result: Record<string, PhotoLibraryProgressState> = {};
   for (const id of activeIds) {
-    result[id] = { isActive: true, pct: progressMap[id] ?? 0 };
+    result[id] = {
+      isActive: true,
+      pct: progressMap[id] ?? 0,
+      indeterminate: indeterminateMap[id] ?? false,
+    };
   }
   return result;
 }
