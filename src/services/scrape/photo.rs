@@ -4,7 +4,7 @@
 //! Inserts the photo record, extracts EXIF (local or remote), detects Live Photo
 //! companions, then returns without touching NFO / TMDB / artwork discovery.
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, FixedOffset, NaiveDateTime};
 use sea_orm::*;
 use serde_json::{Value as JsonValue, json};
 use std::sync::Arc;
@@ -31,6 +31,7 @@ pub async fn handle(
     source_uuid: Uuid,
     file_path: &str,
     file_size: i64,
+    file_created_at: Option<DateTime<FixedOffset>>,
     user_id: Option<Uuid>,
 ) -> Result<Option<JsonValue>, BoxError> {
     let filename = file_path.rsplit('/').next().unwrap_or(file_path);
@@ -56,11 +57,13 @@ pub async fn handle(
     let now = chrono::Utc::now().fixed_offset();
     let mime_type = guess_photo_mime(filename);
 
-    let taken_at_from_filename = tokimo_package_image::extract_date_from_filename(filename).and_then(|date_str| {
-        NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S")
-            .ok()
-            .map(|ndt| ndt.and_utc().fixed_offset())
-    });
+    let taken_at = tokimo_package_image::extract_date_from_filename(filename)
+        .and_then(|date_str| {
+            NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|ndt| ndt.and_utc().fixed_offset())
+        })
+        .or(file_created_at);
 
     let model = photos::ActiveModel {
         id: Set(photo_id),
@@ -74,7 +77,7 @@ pub async fn handle(
         height: Set(None),
         file_size: Set(if file_size > 0 { Some(file_size) } else { None }),
         mime_type: Set(mime_type),
-        taken_at: Set(taken_at_from_filename),
+        taken_at: Set(taken_at),
         camera_make: Set(None),
         camera_model: Set(None),
         lens_model: Set(None),

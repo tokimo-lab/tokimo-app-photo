@@ -337,9 +337,15 @@ async fn rescan_local_photo(
                 warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }
         } else {
-            let abs_for_mtime = abs_path.clone();
-            if let Ok(Some(date_str)) = named_spawn_blocking("photo-mtime", move || {
-                tokimo_package_image::file_mtime_as_date(&abs_for_mtime)
+            let abs_for_created = abs_path.clone();
+            if let Ok(Some(date_str)) = named_spawn_blocking("photo-created-time", move || {
+                std::fs::metadata(&abs_for_created)
+                    .ok()
+                    .and_then(|metadata| metadata.created().ok())
+                    .map(|created| {
+                        let dt: chrono::DateTime<chrono::Utc> = created.into();
+                        dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                    })
             })
             .await
                 && let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await
@@ -445,17 +451,16 @@ async fn rescan_remote_photo(
         }
     }
 
-    if !got_date && !is_heic {
+    if !got_date {
         let filename = path.rsplit('/').next().unwrap_or(path);
         if let Some(date_str) = tokimo_package_image::extract_date_from_filename(filename) {
             if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
                 warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }
-        } else if let Ok(vfs2) = sources.ensure_vfs(&source_id_str).await
-            && let Ok(info) = vfs2.stat(StdPath::new(path)).await
-            && let Some(modified) = info.modified
+        } else if let Ok(info) = vfs.stat(StdPath::new(path)).await
+            && let Some(created) = info.created
         {
-            let date_str = modified.format("%Y-%m-%d %H:%M:%S").to_string();
+            let date_str = created.format("%Y-%m-%d %H:%M:%S").to_string();
             if let Err(e) = PhotoRepo::update_taken_at(db, photo_id, &date_str).await {
                 warn!("photo batch: failed to persist taken_at for photo {photo_id}: {e}");
             }

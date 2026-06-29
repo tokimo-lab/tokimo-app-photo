@@ -287,6 +287,7 @@ async fn list_single_dir(vfs: &Vfs, dir: &StdPath) -> Result<ListResult, String>
                 dir_path: normalize_source_path(&dir.to_string_lossy()).map_err(|err| err.clone())?,
                 file_size: entry.size,
                 mtime: entry.modified.map_or(0, |dt| dt.timestamp()),
+                created: entry.created.map(|dt| dt.timestamp()),
             });
         }
     }
@@ -328,6 +329,7 @@ async fn list_single_dir_ext(vfs: &Vfs, dir: &StdPath, extensions: &[&str]) -> R
                 dir_path: normalize_source_path(&dir.to_string_lossy()).map_err(|err| err.clone())?,
                 file_size: entry.size,
                 mtime: entry.modified.map_or(0, |dt| dt.timestamp()),
+                created: entry.created.map(|dt| dt.timestamp()),
             });
         }
     }
@@ -369,5 +371,6 @@ async fn pick_bdmv_main_file(vfs: &Vfs, bdmv_parent_dir: &StdPath) -> Result<Opt
             .unwrap_or_else(|_| bdmv_parent_dir.to_string_lossy().into_owned()),
         file_size: entry.size,
         mtime: entry.modified.map_or(0, |dt| dt.timestamp()),
+        created: entry.created.map(|dt| dt.timestamp()),
     }))
 }

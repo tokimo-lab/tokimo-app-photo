@@ -94,9 +94,21 @@ pub async fn refresh_exif(
         .ok()
         .flatten();
     let mut got_dims = false;
+    let mut got_date = false;
     if let Some(ref exif) = exif_result {
         got_dims = exif.width.is_some() && exif.height.is_some();
+        got_date = exif.taken_at.is_some();
         apply_exif_update(&state.db, photo_id, exif).await?;
+    }
+    if !got_date {
+        let filename = photo.path.rsplit('/').next().unwrap_or(&photo.path);
+        if let Some(date_str) = tokimo_package_image::extract_date_from_filename(filename) {
+            apply_taken_at_update(&state.db, photo_id, &date_str).await?;
+        } else if let Ok(info) = vfs.stat(fp).await
+            && let Some(created) = info.created
+        {
+            apply_taken_at_update(&state.db, photo_id, &created.format("%Y-%m-%d %H:%M:%S").to_string()).await?;
+        }
     }
     if !got_dims {
         let dim_bytes = bytes.clone();
@@ -116,6 +128,27 @@ pub async fn refresh_exif(
         }
     }
     Ok(ok(serde_json::json!({ "status": "ok" })))
+}
+
+async fn apply_taken_at_update(
+    db: &sea_orm::DatabaseConnection,
+    photo_id: uuid::Uuid,
+    date_str: &str,
+) -> Result<(), AppError> {
+    use crate::db::entities::photos;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+        photos::ActiveModel {
+            id: Set(photo_id),
+            taken_at: Set(Some(naive.and_utc().fixed_offset())),
+            updated_at: Set(Some(chrono::Utc::now().fixed_offset())),
+            ..Default::default()
+        }
+        .update(db)
+        .await?;
+    }
+    Ok(())
 }
 
 async fn apply_exif_update(

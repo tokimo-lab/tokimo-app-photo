@@ -255,6 +255,7 @@ impl Reader for StorageProviderDriver {
                         },
                         size: 0,
                         is_dir: true,
+                        created: None,
                         modified: None,
                     });
                 }
@@ -270,6 +271,7 @@ impl Reader for StorageProviderDriver {
                     },
                     size: obj.size,
                     is_dir: false,
+                    created: None,
                     modified: None,
                 });
             }
@@ -293,6 +295,7 @@ impl Reader for StorageProviderDriver {
                 },
                 size,
                 is_dir: false,
+                created: None,
                 modified: None,
             });
         }
@@ -311,6 +314,7 @@ impl Reader for StorageProviderDriver {
                 path: "/".to_string(),
                 size: 0,
                 is_dir: true,
+                created: None,
                 modified: None,
             });
         }
@@ -334,6 +338,7 @@ impl Reader for StorageProviderDriver {
                 path: display,
                 size: 0,
                 is_dir: true,
+                created: None,
                 modified: None,
             });
         }
@@ -346,6 +351,7 @@ impl Reader for StorageProviderDriver {
                 path: display,
                 size: obj.size,
                 is_dir: false,
+                created: None,
                 modified: None,
             });
         }
@@ -364,6 +370,7 @@ impl Reader for StorageProviderDriver {
                 path: display,
                 size,
                 is_dir: false,
+                created: None,
                 modified: None,
             });
         }

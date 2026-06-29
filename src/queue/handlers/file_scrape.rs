@@ -28,6 +28,11 @@ pub async fn handle(
         .and_then(|v| v.as_str())
         .ok_or("Missing filePath")?;
     let file_size = params.get("fileSize").and_then(JsonValue::as_i64).unwrap_or(0);
+    let file_created_at = params
+        .get("fileCreatedAt")
+        .and_then(JsonValue::as_i64)
+        .and_then(|ts| chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0))
+        .map(|dt| dt.fixed_offset());
     let source_id = params
         .get("sourceId")
         .and_then(|v| v.as_str())
@@ -55,6 +60,7 @@ pub async fn handle(
         source_uuid,
         file_path,
         file_size,
+        file_created_at,
         user_id,
     )
     .await?;

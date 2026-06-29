@@ -42,8 +42,8 @@ tokimo-package-image      = { git = "https://github.com/tokimo-lab/tokimo-packag
 tokimo-package-ffmpeg     = { git = "https://github.com/tokimo-lab/tokimo-package-ffmpeg.git", rev = "b3bb5c8c" }
 tokimo-package-utils      = { git = "https://github.com/tokimo-lab/tokimo-package-utils.git", rev = "b1edb7b9" }
 tokimo-package-client-api = { git = "https://github.com/tokimo-lab/tokimo-package-client-api.git", rev = "07283bb0" }
-tokimo-vfs-core           = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "3c37bcd9" }
-tokimo-vfs                = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "3c37bcd9" }
+tokimo-vfs-core           = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "c13c5d3" }
+tokimo-vfs                = { git = "https://github.com/tokimo-lab/tokimo-package-vfs.git", rev = "c13c5d3" }
 tokimo-package-hls        = { git = "https://github.com/tokimo-lab/tokimo-package-hls.git", rev = "e5792253" }
 
 # ── External crates ──

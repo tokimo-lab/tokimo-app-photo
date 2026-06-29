@@ -433,6 +433,7 @@ impl AppSyncService {
                     "filePath": file.file_path,
                     "dirPath": file.dir_path,
                     "fileSize": file.file_size,
+                    "fileCreatedAt": file.created,
                     "checksum": checksum,
                     "sourceId": source.id.to_string(),
                     "libType": "photo",

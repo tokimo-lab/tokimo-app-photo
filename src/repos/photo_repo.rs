@@ -769,7 +769,7 @@ impl PhotoRepo {
         Ok(())
     }
 
-    /// Update only the `taken_at` field (from filename date or mtime).
+    /// Update only the `taken_at` field (from filename date or file creation time).
     /// `date_str` must be `"YYYY-MM-DD HH:MM:SS"`.
     pub async fn update_taken_at(db: &DatabaseConnection, photo_id: Uuid, date_str: &str) -> Result<(), AppError> {
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {

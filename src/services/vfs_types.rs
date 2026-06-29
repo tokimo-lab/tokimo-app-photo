@@ -82,6 +82,8 @@ pub struct VideoFileInfo {
     pub file_size: u64,
     #[ts(type = "number")]
     pub mtime: i64,
+    #[ts(type = "number | null")]
+    pub created: Option<i64>,
 }
 
 pub struct WalkProgress {
