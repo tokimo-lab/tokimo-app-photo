@@ -4,6 +4,7 @@ import { api } from "../generated/rust-api";
 import type { PhotoLibraryOutput } from "../generated/rust-types";
 import {
   type AppEntityEvent as AppEntityEventData,
+  type ShellJobEvent,
   useAppEntityEvents,
   useJobEvents,
 } from "@tokimo/sdk";
@@ -35,33 +36,43 @@ function numberField(record: Record<string, unknown> | null, key: string) {
   return typeof value === "number" ? value : null;
 }
 
-function extractPhotoLibraryId(job: {
-  appId: string | null;
-  params: Record<string, unknown>;
-  data?: Record<string, unknown> | null;
-}) {
+function getJobRecord(event: ShellJobEvent): Record<string, unknown> | null {
+  if (isRecord(event.job)) return event.job;
+  if (!isRecord(event.data)) return null;
+  const nestedJob = event.data.job;
+  return isRecord(nestedJob) ? nestedJob : event.data;
+}
+
+function extractPhotoLibraryId(event: ShellJobEvent) {
+  const job = getJobRecord(event);
+  if (!job) return null;
+  const params = isRecord(job.params) ? job.params : null;
   const data = isRecord(job.data) ? job.data : null;
   return (
-    job.appId ??
-    stringField(job.params, "photoLibraryId") ??
-    stringField(job.params, "appId") ??
+    stringField(params, "photoLibraryId") ??
+    stringField(params, "appId") ??
     stringField(data, "photoLibraryId") ??
-    stringField(data, "appId")
+    stringField(data, "appId") ??
+    stringField(job, "photoLibraryId")
   );
 }
 
-function getJobProgress(job: {
-  progress: number;
-  data?: Record<string, unknown> | null;
-}) {
-  const data = isRecord(job.data) ? job.data : null;
+function getJobStatus(event: ShellJobEvent) {
+  const job = getJobRecord(event);
+  return stringField(job, "status");
+}
+
+function getJobProgress(event: ShellJobEvent) {
+  const job = getJobRecord(event);
+  const data = isRecord(job?.data) ? job.data : null;
   const rich = isRecord(data?.progress) ? data.progress : null;
   const current = numberField(rich, "current");
   const total = numberField(rich, "total");
+  const progress = numberField(job, "progress") ?? 0;
   const pct =
     current !== null && total !== null && total > 0
       ? Math.round((current / total) * 100)
-      : job.progress;
+      : progress;
   return Math.max(0, Math.min(100, pct));
 }
 
@@ -74,8 +85,6 @@ export function useLibraryItemProgress(
 
   const librariesRef = useRef<Set<string>>(new Set());
   const pendingByLibRef = useRef(new Map<string, Set<string>>());
-  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const throttlePendingRef = useRef(false);
   const entityRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -105,21 +114,6 @@ export function useLibraryItemProgress(
     api.photo.list.invalidate(queryClient);
   }, [queryClient]);
 
-  const throttledRefresh = useCallback(() => {
-    if (throttleTimerRef.current) {
-      throttlePendingRef.current = true;
-      return;
-    }
-    refreshContent();
-    throttleTimerRef.current = setTimeout(() => {
-      throttleTimerRef.current = null;
-      if (throttlePendingRef.current) {
-        throttlePendingRef.current = false;
-        refreshContent();
-      }
-    }, 500);
-  }, [refreshContent]);
-
   const scheduleEntityRefresh = useCallback(() => {
     if (entityRefreshTimerRef.current) return;
     entityRefreshTimerRef.current = setTimeout(() => {
@@ -127,20 +121,6 @@ export function useLibraryItemProgress(
       refreshContent();
     }, 800);
   }, [refreshContent]);
-
-  const clearLibraryProgress = useCallback((libraryId: string) => {
-    setActiveIds((prev) => {
-      const next = new Set(prev);
-      next.delete(libraryId);
-      return next.size === prev.size ? prev : next;
-    });
-    setProgressMap((prev) => {
-      if (!(libraryId in prev)) return prev;
-      const next = { ...prev };
-      delete next[libraryId];
-      return next;
-    });
-  }, []);
 
   const handleEntityEvent = useCallback(
     (event: AppEntityEventData) => {
@@ -159,43 +139,64 @@ export function useLibraryItemProgress(
     enabled: (libraries ?? []).length > 0,
     onEvent: (event) => {
       if (event.type !== "job_update") return;
-      const libraryId = extractPhotoLibraryId(event.job);
+      const libraryId = extractPhotoLibraryId(event);
       if (!libraryId || !librariesRef.current.has(libraryId)) return;
 
-      const jobId = event.job.id;
-      const status = event.job.status;
+      const job = getJobRecord(event);
+      const jobId = stringField(job, "id");
+      const status = getJobStatus(event);
 
-      if (status === "completed" || status === "failed") {
-        throttledRefresh();
-        if (jobId) {
+      if (
+        status === "completed" ||
+        status === "failed" ||
+        status === "cancelled"
+      ) {
+        if (!jobId) {
+          refreshContent();
+        } else {
           const pendingJobs = pendingByLibRef.current.get(libraryId);
           if (pendingJobs) {
             const wasNonEmpty = pendingJobs.size > 0;
             pendingJobs.delete(jobId);
-            if (wasNonEmpty && pendingJobs.size > 0) return;
-            pendingByLibRef.current.delete(libraryId);
+            if (wasNonEmpty && pendingJobs.size === 0) {
+              refreshContent();
+              pendingByLibRef.current.delete(libraryId);
+            }
+          } else {
+            refreshContent();
           }
         }
-        clearLibraryProgress(libraryId);
+        setProgressMap((prev) => {
+          const next = { ...prev };
+          if (status === "completed") {
+            next[libraryId] = 100;
+          } else {
+            delete next[libraryId];
+          }
+          return next;
+        });
+        setActiveIds((prev) => {
+          const next = new Set(prev);
+          next.delete(libraryId);
+          return next.size === prev.size ? prev : next;
+        });
         return;
       }
 
-      if (
-        status === "pending" ||
-        status === "running" ||
-        status === "waiting"
-      ) {
-        let pendingJobs = pendingByLibRef.current.get(libraryId);
-        if (!pendingJobs) {
-          pendingJobs = new Set();
-          pendingByLibRef.current.set(libraryId, pendingJobs);
+      if (status === "pending" || status === "running" || status === "waiting") {
+        if (jobId) {
+          let pendingJobs = pendingByLibRef.current.get(libraryId);
+          if (!pendingJobs) {
+            pendingJobs = new Set();
+            pendingByLibRef.current.set(libraryId, pendingJobs);
+          }
+          pendingJobs.add(jobId);
         }
-        pendingJobs.add(jobId);
       }
 
       setProgressMap((prev) => ({
         ...prev,
-        [libraryId]: getJobProgress(event.job),
+        [libraryId]: getJobProgress(event),
       }));
       setActiveIds((prev) => {
         if (prev.has(libraryId)) return prev;
@@ -218,10 +219,6 @@ export function useLibraryItemProgress(
       if (entityRefreshTimerRef.current) {
         clearTimeout(entityRefreshTimerRef.current);
         entityRefreshTimerRef.current = null;
-      }
-      if (throttleTimerRef.current) {
-        clearTimeout(throttleTimerRef.current);
-        throttleTimerRef.current = null;
       }
     };
   }, []);
