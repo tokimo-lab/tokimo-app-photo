@@ -1,5 +1,7 @@
 import { rustUrl } from "./rust-api-runtime";
 
+const THUMB_CACHE_VERSION = "20260629-heic-grid-v2";
+
 /**
  * Entity types supported by the unified thumbnail endpoint.
  *
@@ -32,7 +34,9 @@ export function thumbUrl(
   w: number,
   h = 0,
 ): string {
-  return rustUrl(`/api/thumb/${type}/${id}?w=${w}&h=${h}`);
+  return rustUrl(
+    `/api/thumb/${type}/${id}?w=${w}&h=${h}&v=${THUMB_CACHE_VERSION}`,
+  );
 }
 
 /**
