@@ -12,12 +12,12 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::queue::cancellation::{JobCancel, check_cancel};
-use crate::services::ocr::PhotoOcrService;
+use crate::services::media_jobs::{self, MediaJobOutcome};
 
 pub async fn handle(
-    db: &DatabaseConnection,
+    _db: &DatabaseConnection,
     state: &Arc<AppState>,
-    _job_id: Uuid,
+    job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
@@ -30,6 +30,11 @@ pub async fn handle(
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
     let uid = user_id.ok_or("photo_ocr_single requires user id")?;
-    let count = PhotoOcrService::ocr_photo(db, state, photo_uuid, uid).await?;
-    Ok(Some(json!({ "ocrCount": count })))
+    match media_jobs::ocr_photo_job(state, job_id, photo_uuid, uid).await? {
+        MediaJobOutcome::Waiting(data) => Ok(Some(data)),
+        MediaJobOutcome::Completed(data) => {
+            let count = data.get("ocrCount").and_then(|value| value.as_u64()).unwrap_or(0);
+            Ok(Some(json!({ "ocrCount": count })))
+        }
+    }
 }

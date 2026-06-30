@@ -8,12 +8,12 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 use crate::queue::parent_child;
-use crate::services::clip::PhotoClipService;
+use crate::services::media_jobs::{self, MediaJobOutcome};
 
 pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
-    _job_id: Uuid,
+    job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
@@ -22,15 +22,19 @@ pub async fn handle(
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
     let uid = user_id.ok_or("photo_clip requires user id")?;
-    let (success, failures, errors) =
-        PhotoClipService::process_photo_ids(db, state, ctx.app_id, vec![ctx.photo_id], uid).await;
-    let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
-    if failures > 0 {
-        let msg = errors
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "photo_clip failed".to_string());
-        return Err(msg.into());
+    match media_jobs::embed_photo_job(state, job_id, ctx.photo_id, uid).await {
+        Ok(MediaJobOutcome::Waiting(data)) => Ok(Some(data)),
+        Ok(MediaJobOutcome::Completed(_)) => {
+            parent_child::finalize_child(db, state, user_id, &ctx, 1, 0).await?;
+            Ok(Some(serde_json::json!({
+                "parentJobId": ctx.parent_job_id.to_string(),
+                "taskType": ctx.task_type,
+                "processed": 1,
+            })))
+        }
+        Err(error) => {
+            parent_child::finalize_child(db, state, user_id, &ctx, 0, 1).await?;
+            Err(error.into())
+        }
     }
-    Ok(out)
 }

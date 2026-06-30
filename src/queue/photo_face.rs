@@ -8,12 +8,12 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::queue::cancellation::{JobCancel, check_cancel};
 use crate::queue::parent_child;
-use crate::services::face::PhotoFaceService;
+use crate::services::media_jobs::{self, MediaJobOutcome};
 
 pub async fn handle(
     db: &DatabaseConnection,
     state: &Arc<AppState>,
-    _job_id: Uuid,
+    job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
@@ -21,16 +21,22 @@ pub async fn handle(
     check_cancel(cancel)?;
     let ctx = parent_child::parse_child_params(params)?;
     check_cancel(cancel)?;
-    let bus = state.bus_client.get();
-    let (success, failures, errors) =
-        PhotoFaceService::process_photo_ids(db, state, vec![ctx.photo_id], bus, user_id).await;
-    let out = parent_child::finalize_child(db, state, user_id, &ctx, success, failures).await?;
-    if failures > 0 {
-        let msg = errors
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "photo_face failed".to_string());
-        return Err(msg.into());
+    let uid = user_id.ok_or("photo_face requires user id")?;
+    match media_jobs::detect_faces_for_photo_job(state, job_id, ctx.photo_id, uid).await {
+        Ok(MediaJobOutcome::Waiting(data)) => Ok(Some(data)),
+        Ok(MediaJobOutcome::Completed(data)) => {
+            let count = data.get("faceCount").and_then(|value| value.as_u64()).unwrap_or(0);
+            parent_child::finalize_child(db, state, user_id, &ctx, 1, 0).await?;
+            Ok(Some(serde_json::json!({
+                "parentJobId": ctx.parent_job_id.to_string(),
+                "taskType": ctx.task_type,
+                "processed": 1,
+                "faceCount": count,
+            })))
+        }
+        Err(error) => {
+            parent_child::finalize_child(db, state, user_id, &ctx, 0, 1).await?;
+            Err(error.into())
+        }
     }
-    Ok(out)
 }

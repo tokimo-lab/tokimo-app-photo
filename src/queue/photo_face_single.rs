@@ -7,12 +7,12 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::queue::cancellation::{JobCancel, check_cancel};
-use crate::services::face::PhotoFaceService;
+use crate::services::media_jobs::{self, MediaJobOutcome};
 
 pub async fn handle(
-    db: &DatabaseConnection,
+    _db: &DatabaseConnection,
     state: &Arc<AppState>,
-    _job_id: Uuid,
+    job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
@@ -24,7 +24,12 @@ pub async fn handle(
         .ok_or("Missing photoId in params")?;
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
-    let bus = state.bus_client.get();
-    let count = PhotoFaceService::detect_faces(db, state, photo_uuid, bus, user_id).await?;
-    Ok(Some(json!({ "faceCount": count })))
+    let uid = user_id.ok_or("photo_face_single requires user id")?;
+    match media_jobs::detect_faces_for_photo_job(state, job_id, photo_uuid, uid).await? {
+        MediaJobOutcome::Waiting(data) => Ok(Some(data)),
+        MediaJobOutcome::Completed(data) => {
+            let count = data.get("faceCount").and_then(|value| value.as_u64()).unwrap_or(0);
+            Ok(Some(json!({ "faceCount": count })))
+        }
+    }
 }

@@ -7,12 +7,12 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::queue::cancellation::{JobCancel, check_cancel};
-use crate::services::clip::PhotoClipService;
+use crate::services::media_jobs::{self, MediaJobOutcome};
 
 pub async fn handle(
-    db: &DatabaseConnection,
+    _db: &DatabaseConnection,
     state: &Arc<AppState>,
-    _job_id: Uuid,
+    job_id: Uuid,
     params: &JsonValue,
     user_id: Option<Uuid>,
     cancel: &JobCancel,
@@ -25,6 +25,8 @@ pub async fn handle(
     let photo_uuid = Uuid::parse_str(photo_id)?;
     check_cancel(cancel)?;
     let uid = user_id.ok_or("photo_clip_single requires user id")?;
-    PhotoClipService::embed_photo(db, state, photo_uuid, uid).await?;
-    Ok(Some(json!({ "status": "ok" })))
+    match media_jobs::embed_photo_job(state, job_id, photo_uuid, uid).await? {
+        MediaJobOutcome::Waiting(data) => Ok(Some(data)),
+        MediaJobOutcome::Completed(_) => Ok(Some(json!({ "status": "ok" }))),
+    }
 }
