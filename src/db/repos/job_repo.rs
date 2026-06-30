@@ -316,50 +316,66 @@ impl JobRepo {
         pending_success: i32,
         pending_failure: i32,
     ) -> Result<Option<AggregatedProgress>, AppError> {
-        let parent = jobs::Entity::find_by_id(parent_id).one(db).await?;
-        let Some(_parent) = parent else {
+        let sql = r"
+WITH agg AS (
+  SELECT
+    COUNT(*) FILTER (WHERE status = 'completed')::int + $2::int AS s,
+    COUNT(*) FILTER (WHERE status = 'failed')::int + $3::int AS f
+  FROM jobs
+  WHERE parent_job_id = $1::uuid
+)
+UPDATE jobs
+SET
+  progress = LEAST(100, ((agg.s + agg.f) * 100 / GREATEST(1, (data->>'totalChildren')::int))),
+  data = jsonb_set(jsonb_set(jsonb_set(data,
+            '{done}', to_jsonb(agg.s + agg.f)),
+            '{successes}', to_jsonb(agg.s)),
+            '{failures}', to_jsonb(agg.f)),
+  status = CASE
+    WHEN (agg.s + agg.f) >= (data->>'totalChildren')::int THEN
+      CASE
+        WHEN agg.f = 0 THEN 'completed'
+        WHEN agg.s = 0 THEN 'failed'
+        ELSE 'partially_completed'
+      END
+    ELSE status
+  END,
+  completed_at = CASE WHEN (agg.s + agg.f) >= (data->>'totalChildren')::int THEN NOW() ELSE completed_at END,
+  updated_at = NOW()
+FROM agg
+WHERE id = $1::uuid AND data ? 'totalChildren'
+RETURNING
+  (data->>'totalChildren')::int AS total,
+  (agg.s + agg.f) AS done,
+  agg.s AS successes,
+  agg.f AS failures,
+  status
+";
+        let stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            [
+                parent_id.to_string().into(),
+                pending_success.into(),
+                pending_failure.into(),
+            ],
+        );
+        let Some(row) = db.query_one_raw(stmt).await? else {
             return Ok(None);
         };
 
-        let children = jobs::Entity::find()
-            .filter(jobs::Column::ParentJobId.eq(parent_id))
-            .all(db)
-            .await?;
-
-        let total_children = children.len() as i64;
-        let done = children
-            .iter()
-            .filter(|j| j.status != "pending" && j.status != "running")
-            .count() as i64;
-        let successes = children.iter().filter(|j| j.status == "completed").count() as i32 + pending_success;
-        let failures = children.iter().filter(|j| j.status == "failed").count() as i32 + pending_failure;
-        let completed = done >= total_children;
-
-        // Update parent progress
-        let progress = if total_children > 0 {
-            ((done * 100) / total_children) as i32
-        } else {
-            0
-        };
-        let now = Utc::now().fixed_offset();
-        let mut update = jobs::ActiveModel {
-            id: Set(parent_id),
-            progress: Set(progress),
-            updated_at: Set(now),
-            ..Default::default()
-        };
-        if completed {
-            update.status = Set("completed".to_string());
-            update.completed_at = Set(Some(now));
-        }
-        jobs::Entity::update(update).exec(db).await?;
+        let total_children: i32 = row.try_get_by_index(0)?;
+        let done: i32 = row.try_get_by_index(1)?;
+        let successes: i32 = row.try_get_by_index(2)?;
+        let failures: i32 = row.try_get_by_index(3)?;
+        let status: String = row.try_get_by_index(4)?;
 
         Ok(Some(AggregatedProgress {
-            total_children,
-            done,
+            total_children: i64::from(total_children),
+            done: i64::from(done),
             successes,
             failures,
-            completed,
+            completed: matches!(status.as_str(), "completed" | "partially_completed" | "failed"),
         }))
     }
 
