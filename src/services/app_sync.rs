@@ -93,6 +93,31 @@ struct SourceSyncResult {
     visited_dirs: u64,
 }
 
+struct SourceSyncContext<'a> {
+    db: &'a DatabaseConnection,
+    sources: &'a SourceRegistry,
+    bus_client: &'a Arc<OnceLock<Arc<BusClient>>>,
+    library_id: Uuid,
+    source: &'a vfs::Model,
+    root_path: &'a str,
+    user_id: Uuid,
+    sync_job: Option<&'a SyncJobContext>,
+    source_index: usize,
+    source_total: usize,
+}
+
+struct DiscoveredFileContext<'a> {
+    db: &'a DatabaseConnection,
+    library_id: Uuid,
+    source_id: Uuid,
+    user_id: Uuid,
+    existing_photos: &'a HashMap<String, ExistingPhotoState>,
+    seen_paths: &'a mut HashSet<String>,
+    jobs_batch: &'a mut Vec<(serde_json::Value, Option<Uuid>)>,
+    skipped: &'a mut u64,
+    backfilled: &'a mut u64,
+}
+
 #[derive(Clone)]
 pub struct SyncJobContext {
     pub job_id: Uuid,
@@ -357,18 +382,18 @@ impl AppSyncService {
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("source {source_id} not found")))?;
 
-            let source_result = Self::sync_fs_source(
+            let source_result = Self::sync_fs_source(SourceSyncContext {
                 db,
                 sources,
                 bus_client,
                 library_id,
-                &source,
+                source: &source,
                 root_path,
                 user_id,
                 sync_job,
-                index + 1,
-                source_tuples.len(),
-            )
+                source_index: index + 1,
+                source_total: source_tuples.len(),
+            })
             .await?;
             result.total_jobs += source_result.total_jobs;
             result.scanned_files += source_result.scanned_files;
@@ -538,18 +563,20 @@ impl AppSyncService {
     const JOB_BATCH_FLUSH_SIZE: usize = 50;
 
     /// Walk a single VFS source, check DB for existing photos, create scrape jobs.
-    async fn sync_fs_source(
-        db: &DatabaseConnection,
-        sources: &SourceRegistry,
-        bus_client: &Arc<OnceLock<Arc<BusClient>>>,
-        library_id: Uuid,
-        source: &vfs::Model,
-        root_path: &str,
-        user_id: Uuid,
-        sync_job: Option<&SyncJobContext>,
-        source_index: usize,
-        source_total: usize,
-    ) -> Result<SourceSyncResult, AppError> {
+    async fn sync_fs_source(ctx: SourceSyncContext<'_>) -> Result<SourceSyncResult, AppError> {
+        let SourceSyncContext {
+            db,
+            sources,
+            bus_client,
+            library_id,
+            source,
+            root_path,
+            user_id,
+            sync_job,
+            source_index,
+            source_total,
+        } = ctx;
+
         let source_type = &source.r#type;
         let is_local = source_type == "local";
         let is_remote = Self::is_remote_fs_type(source_type);
@@ -640,15 +667,17 @@ impl AppSyncService {
                     };
                     scanned_files += 1;
                     Self::handle_discovered_file(
-                        db,
-                        library_id,
-                        source.id,
-                        user_id,
-                        &existing_photos,
-                        &mut seen_paths,
-                        &mut jobs_batch,
-                        &mut skipped,
-                        &mut backfilled,
+                        &mut DiscoveredFileContext {
+                            db,
+                            library_id,
+                            source_id: source.id,
+                            user_id,
+                            existing_photos: &existing_photos,
+                            seen_paths: &mut seen_paths,
+                            jobs_batch: &mut jobs_batch,
+                            skipped: &mut skipped,
+                            backfilled: &mut backfilled,
+                        },
                         file,
                     )
                     .await?;
@@ -745,49 +774,38 @@ impl AppSyncService {
         })
     }
 
-    async fn handle_discovered_file(
-        db: &DatabaseConnection,
-        library_id: Uuid,
-        source_id: Uuid,
-        user_id: Uuid,
-        existing_photos: &HashMap<String, ExistingPhotoState>,
-        seen_paths: &mut HashSet<String>,
-        jobs_batch: &mut Vec<(serde_json::Value, Option<Uuid>)>,
-        skipped: &mut u64,
-        backfilled: &mut u64,
-        file: VideoFileInfo,
-    ) -> Result<(), AppError> {
-        seen_paths.insert(file.file_path.clone());
+    async fn handle_discovered_file(ctx: &mut DiscoveredFileContext<'_>, file: VideoFileInfo) -> Result<(), AppError> {
+        ctx.seen_paths.insert(file.file_path.clone());
 
         let checksum = format!("{}:{}", file.file_size, file.mtime);
 
-        if let Some(existing) = existing_photos.get(&file.file_path) {
+        if let Some(existing) = ctx.existing_photos.get(&file.file_path) {
             if existing.checksum.as_deref() == Some(&checksum) {
-                *skipped += 1;
+                *ctx.skipped += 1;
                 return Ok(());
             }
 
             if existing.checksum.is_none() {
-                Self::backfill_photo_checksum(db, existing.id, &checksum).await?;
-                *skipped += 1;
-                *backfilled += 1;
+                Self::backfill_photo_checksum(ctx.db, existing.id, &checksum).await?;
+                *ctx.skipped += 1;
+                *ctx.backfilled += 1;
                 return Ok(());
             }
         }
 
-        jobs_batch.push((
+        ctx.jobs_batch.push((
             json!({
                 "filePath": file.file_path,
                 "dirPath": file.dir_path,
                 "fileSize": file.file_size,
                 "fileCreatedAt": file.created,
                 "checksum": checksum,
-                "sourceId": source_id.to_string(),
+                "sourceId": ctx.source_id.to_string(),
                 "libType": "photo",
-                "photoId": library_id.to_string(),
-                "photoLibraryId": library_id.to_string(),
+                "photoId": ctx.library_id.to_string(),
+                "photoLibraryId": ctx.library_id.to_string(),
             }),
-            Some(user_id),
+            Some(ctx.user_id),
         ));
         Ok(())
     }
