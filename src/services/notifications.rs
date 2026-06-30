@@ -38,6 +38,7 @@ pub struct Notification {
     pub action: Option<serde_json::Value>,
     pub dedupe_key: Option<String>,
     pub progress: Option<i32>,
+    pub show_toast: Option<bool>,
     pub template_context: Option<serde_json::Value>,
 }
 
@@ -81,6 +82,7 @@ impl NotificationCenter {
             "action": notification.action,
             "dedupe_key": notification.dedupe_key,
             "progress": notification.progress,
+            "show_toast": notification.show_toast,
         });
         let bytes = serde_json::to_vec(&payload)?;
 
@@ -180,6 +182,7 @@ pub async fn notify_sync_completed(
         action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        show_toast: None,
         template_context: None,
     };
     if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
@@ -205,6 +208,7 @@ pub async fn notify_sync_failed(
         action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        show_toast: None,
         template_context: None,
     };
     if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
@@ -287,6 +291,7 @@ pub async fn notify_processing_progress(
         action: Some(open_photo_action(library_id)),
         dedupe_key: Some(key.clone()),
         progress: Some(pct),
+        show_toast: Some(false),
         template_context: None,
     };
     if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
@@ -318,6 +323,7 @@ pub async fn notify_processing_completed(
         // Different dedupe_key from progress so user keeps a completion record.
         dedupe_key: Some(format!("photo:done:{library_id}:{task_type}")),
         progress: Some(100),
+        show_toast: None,
         template_context: None,
     };
     if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
@@ -345,6 +351,7 @@ pub async fn notify_processing_failed(
         action: Some(open_photo_action(library_id)),
         dedupe_key: None,
         progress: None,
+        show_toast: None,
         template_context: None,
     };
     if let Err(e) = NotificationCenter::notify(state, user_id, notification).await {
