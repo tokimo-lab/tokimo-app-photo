@@ -20,10 +20,18 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::db::repos::job_repo::JobRepo;
+use crate::queue::JobPriority;
 use crate::repos::PhotoLibraryRepo;
 use crate::services::notifications as photo_notify;
 
 type DynErr = Box<dyn std::error::Error + Send + Sync>;
+
+fn child_priority(child_job_type: &str) -> Option<i32> {
+    match child_job_type {
+        "photo_ocr" | "photo_face" | "photo_clip" | "photo_geocode" => Some(JobPriority::Background.as_i32()),
+        _ => None,
+    }
+}
 
 /// Build the parent data JSON returned to the worker. Includes the magic
 /// `_phase: "waiting"` key so the worker calls `mark_waiting`.
@@ -131,7 +139,7 @@ where
             )
         })
         .collect();
-    let inserted = JobRepo::create_child_jobs_batch(db, children, None).await?;
+    let inserted = JobRepo::create_child_jobs_batch(db, children, child_priority(child_job_type)).await?;
     info!("[{task_type}_scan] enqueued {inserted} child jobs (one per photo)");
 
     // Fire an immediate 0/total progress notification so the user sees the

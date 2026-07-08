@@ -9,6 +9,7 @@ use crate::config::PhotoAiSettings;
 use crate::db::entities::{jobs as job_entity, photos};
 use crate::error::AppError;
 use crate::error::OptionExt;
+use crate::queue::JobPriority;
 
 pub enum MediaJobOutcome {
     Completed(JsonValue),
@@ -23,6 +24,15 @@ impl MediaJobOutcome {
             "waitChildJobType": child_job_type,
             "waitReason": "media_job",
         })
+    }
+}
+
+fn media_job_priority(job_type: &str) -> Option<i32> {
+    match job_type {
+        "media_ocr_photo" | "media_detect_faces_photo" | "media_embed_image_photo" | "media_extract_gps_photo" => {
+            Some(JobPriority::Background.as_i32())
+        }
+        _ => None,
     }
 }
 
@@ -80,6 +90,7 @@ pub async fn create_media_job_or_wait(
     let mut request = jobs::CreateJobRequest::new(job_type, params);
     request.parent_job_id = Some(parent_job_id);
     request.task_type = Some(job_type.to_string());
+    request.priority = media_job_priority(job_type);
     let job = jobs::create(client, jobs::photo_caller(Some(user_id)), request).await?;
     Ok(MediaJobOutcome::Waiting(MediaJobOutcome::waiting_data(
         job.id, job_type,
