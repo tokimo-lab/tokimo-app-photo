@@ -18,7 +18,7 @@ import PhotoMenuBar from "./PhotoMenuBar";
 import PhotoSidebar from "./PhotoSidebar";
 
 function parseLibraryId(route: string): string | null {
-  const match = route.match(/^\/library\/([^/]+)/);
+  const match = route.match(/^\/library\/([^/?#]+)/);
   return match?.[1] ?? null;
 }
 

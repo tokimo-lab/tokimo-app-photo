@@ -52,6 +52,14 @@ export default defineApp({
     category: "app",
   },
   translations: {},
+  standalone: {
+    createWindow: (route) => ({ type: "photo", route }),
+    getRoute: (window) => {
+      if (window.type !== "photo") return null;
+      if (window.route && window.route !== "/") return window.route;
+      return window.appId ? `/library/${window.appId}` : "/";
+    },
+  },
   mount(container, ctx): Dispose {
     void ensureWasmLoaded().catch((err) => {
       console.error("[photo-app] failed to preload WASM:", err);
