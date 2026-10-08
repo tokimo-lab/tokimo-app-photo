@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { thumbUrl } from "../lib/thumb";
-import { useComponentPreference } from "@tokimo/sdk";
+import { useComponentPreference, useStandaloneDocumentScroll } from "@tokimo/sdk";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import {
   ANIM_DURATION,
@@ -48,6 +48,15 @@ export function PhotoLightbox({
   onNavigateToPerson?: (personId: string) => void;
   animSourceSelector?: string;
 }) {
+  const documentScroll = useStandaloneDocumentScroll();
+  useEffect(() => {
+    if (!documentScroll) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [documentScroll]);
   const idx = allPhotos.findIndex((p) => p.id === photo.id);
   const hasPrev = idx > 0;
   const hasNext = idx < allPhotos.length - 1;

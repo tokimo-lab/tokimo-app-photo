@@ -24,6 +24,7 @@ import { PhotoTimeline } from "../components/PhotoTimeline";
 import type { PhotoOutput } from "../generated/rust-api";
 import {
   useToast,
+  useStandaloneDocumentScroll,
   useWindowActions,
   useWindowNav,
   useWindows,
@@ -68,6 +69,7 @@ export default function PhotoAppPage({
   const id = photoLibraryId ?? (metadata.appId as string | undefined);
   const initialDate = metadata.initialDate as string | undefined;
   const message = useToast();
+  const documentScroll = useStandaloneDocumentScroll();
   const rootRef = useRef<HTMLDivElement>(null);
   const [windowContent, setWindowContent] = useState<HTMLElement | null>(null);
 
@@ -275,9 +277,10 @@ export default function PhotoAppPage({
   return (
     <div
       ref={rootRef}
-      className={`relative flex flex-col gap-3 lg:gap-4${tab === "locations" ? " h-full min-h-0" : ""}`}
+      className={`relative flex flex-col gap-3 lg:gap-4${tab === "locations" ? (documentScroll ? " h-[calc(100dvh-8rem)] min-h-0" : " h-full min-h-0") : ""}`}
     >
       <PillTabBar
+        sticky={!documentScroll}
         tabs={tabs}
         activeTab={tab}
         onTabChange={setTab}

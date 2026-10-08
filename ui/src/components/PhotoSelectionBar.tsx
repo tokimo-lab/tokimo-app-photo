@@ -1,3 +1,4 @@
+import { useStandaloneDocumentScroll } from "@tokimo/sdk";
 import { Button } from "@tokimo/ui";
 import { EyeOff, Heart, HeartOff, ImagePlus, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -21,10 +22,11 @@ export function PhotoSelectionBar({
   onTrash: () => void;
   onClear: () => void;
 }) {
+  const documentScroll = useStandaloneDocumentScroll();
   if (count === 0) return null;
 
   const bar = (
-    <div className="pointer-events-none absolute inset-x-0 bottom-6 z-50 flex justify-center">
+    <div className={`pointer-events-none inset-x-0 z-50 flex justify-center ${documentScroll ? "fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))]" : "absolute bottom-6"}`}>
       <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-border-base bg-surface-overlay px-5 py-3 shadow-2xl backdrop-blur-lg">
         <span className="text-sm font-medium text-fg-secondary">
           已选择 <strong className="text-orange-500">{count}</strong> 张

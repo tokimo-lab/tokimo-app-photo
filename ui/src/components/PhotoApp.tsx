@@ -7,6 +7,7 @@ import { useContainerWidth } from "../shared/hooks/use-container-width";
 import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
 import {
   useRuntimeCtx,
+  useStandaloneDocumentScroll,
   useWindowActions,
   useWindowNav,
 } from "@tokimo/sdk";
@@ -23,6 +24,7 @@ function parseLibraryId(route: string): string | null {
 }
 
 export default function PhotoApp() {
+  const documentScroll = useStandaloneDocumentScroll();
   const { t } = useTranslation();
   const { route, replace } = useWindowNav();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
@@ -112,7 +114,10 @@ export default function PhotoApp() {
   }
 
   return (
-    <div ref={containerRef} className="relative flex h-full">
+    <div
+      ref={containerRef}
+      className={`relative flex ${documentScroll ? "min-h-dvh flex-col" : "h-full"}`}
+    >
       <PhotoSidebar
         libraries={libraries}
         activeId={activeLibraryId}
@@ -129,7 +134,9 @@ export default function PhotoApp() {
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
       />
-      <div className="app-safe-area relative min-w-0 flex-1 overflow-auto bg-surface-base">
+      <div
+        className={`app-safe-area relative min-w-0 flex-1 bg-surface-base ${documentScroll ? "overflow-visible" : "overflow-auto"}`}
+      >
         {activeLibraryId && (
           <PhotoMenuBar>
             <PhotoAppPage

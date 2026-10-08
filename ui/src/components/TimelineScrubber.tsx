@@ -1,6 +1,6 @@
+import { useStandaloneDocumentScroll, useWindowContainer } from "@tokimo/sdk";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useWindowContainer } from "@tokimo/sdk";
 import { api } from "../generated/rust-api";
 import { useTimelineLayout } from "./timeline-layout";
 
@@ -36,6 +36,7 @@ export function TimelineScrubber({
   currentVisibleDate: string | null;
   scrollToDate: (datePrefix: string, smooth: boolean) => void;
 }) {
+  const documentScroll = useStandaloneDocumentScroll();
   const trackRef = useRef<HTMLDivElement>(null);
   const shellPortalTarget = useWindowContainer();
   const [domPortalTarget, setDomPortalTarget] = useState<HTMLElement | null>(
@@ -189,8 +190,15 @@ export function TimelineScrubber({
       aria-valuemax={100}
       aria-orientation="vertical"
       tabIndex={0}
-      className="absolute right-0 z-30 block w-12 cursor-pointer select-none"
-      style={{ top: "48px", bottom: "8px" }}
+      className={`${documentScroll ? "fixed" : "absolute"} right-0 z-30 block w-12 cursor-pointer select-none`}
+      style={{
+        top: documentScroll
+          ? "calc(48px + env(safe-area-inset-top, 0px))"
+          : "48px",
+        bottom: documentScroll
+          ? "calc(8px + env(safe-area-inset-bottom, 0px))"
+          : "8px",
+      }}
       onMouseDown={onDown}
       onMouseMove={onHover}
       onMouseLeave={onLeave}

@@ -1,4 +1,4 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Spin } from "@tokimo/ui";
 import {
   useCallback,
@@ -13,7 +13,7 @@ import {
   type JustifiedRow,
 } from "../hooks/useJustifiedLayout";
 import type { PhotoOutput } from "../generated/rust-api";
-import { useComponentPreference, useViewer } from "@tokimo/sdk";
+import { useComponentPreference, useViewer, useStandaloneDocumentScroll } from "@tokimo/sdk";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { type DateGroup, groupPhotosByDate } from "./photo-utils";
@@ -62,6 +62,7 @@ export function PhotoTimeline({
   onSeekToDate?: (datePrefix: string) => void;
   targetRowHeight?: number;
 }) {
+  const documentScroll = useStandaloneDocumentScroll();
   const groups = useMemo(() => groupPhotosByDate(photos), [photos]);
   const viewer = useViewer();
   const infoPanelPref = useComponentPreference<{ open?: boolean }>(
@@ -245,7 +246,11 @@ export function PhotoTimeline({
     ) {
       // Prepend detected: list grew AND the first date changed.
       const delta = newHeight - prevHeight;
-      scrollEl.scrollTop += delta;
+      if (documentScroll) {
+        window.scrollBy({ top: delta, behavior: "instant" });
+      } else {
+        scrollEl.scrollTop += delta;
+      }
     }
 
     prevFirstDateRef.current = firstDate;
@@ -255,6 +260,10 @@ export function PhotoTimeline({
   // ── Scroll element (find nearest scrollable ancestor) ────────
   const scrollElRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    if (documentScroll) {
+      scrollElRef.current = document.scrollingElement as HTMLElement | null;
+      return;
+    }
     let el = measureRef.current?.parentElement ?? null;
     while (el) {
       const ov = getComputedStyle(el).overflowY;
@@ -278,7 +287,7 @@ export function PhotoTimeline({
       }
       el = el.parentElement;
     }
-  }, []);
+  }, [documentScroll]);
 
   // ── Virtual scroll ───────────────────────────────────────────
   // `listRef` points at the inner positioning wrapper that contains the
@@ -288,14 +297,46 @@ export function PhotoTimeline({
   // the real list start when shown/hidden.
   const listRef = useRef<HTMLDivElement>(null);
 
-  const virtualizer = useVirtualizer({
+  const [documentListTop, setDocumentListTop] = useState(0);
+  useLayoutEffect(() => {
+    if (!documentScroll || !listRef.current) return;
+    const list = listRef.current;
+    const update = () => {
+      setDocumentListTop(list.getBoundingClientRect().top + window.scrollY);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (measureRef.current?.parentElement) {
+      observer.observe(measureRef.current.parentElement);
+      if (measureRef.current.parentElement.parentElement) {
+        observer.observe(measureRef.current.parentElement.parentElement);
+      }
+    }
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [documentScroll]);
+
+  const options = {
     count: flatItems.length,
-    getScrollElement: () => scrollElRef.current,
-    estimateSize: (i) => itemHeights[i] ?? HEADER_HEIGHT,
+    estimateSize: (i: number) => itemHeights[i] ?? HEADER_HEIGHT,
     overscan: VIRTUALIZER_OVERSCAN,
+  };
+  const elementVirtualizer = useVirtualizer({
+    ...options,
+    enabled: !documentScroll,
+    getScrollElement: () => scrollElRef.current,
     scrollMargin:
       listRef.current?.offsetTop ?? measureRef.current?.offsetTop ?? 0,
   });
+  const documentVirtualizer = useWindowVirtualizer({
+    ...options,
+    enabled: documentScroll,
+    scrollMargin: documentListTop,
+  });
+  const virtualizer = documentScroll ? documentVirtualizer : elementVirtualizer;
 
   // ── Infinite scroll: trigger when near end ──────────────────
   const virtualItems = virtualizer.getVirtualItems();
@@ -326,7 +367,7 @@ export function PhotoTimeline({
   // pushing the seek target downward.
   const userScrolledSinceSeekRef = useRef(false);
   useEffect(() => {
-    const el = scrollElRef.current;
+    const el = documentScroll ? window : scrollElRef.current;
     if (!el) return;
     const onUserScroll = () => {
       userScrolledSinceSeekRef.current = true;
@@ -339,7 +380,7 @@ export function PhotoTimeline({
       el.removeEventListener("touchmove", onUserScroll);
       el.removeEventListener("keydown", onUserScroll);
     };
-  }, []);
+  }, [documentScroll]);
 
   // ── Upward infinite scroll: load newer photos when near top ──
   // Suppressed during pending seek and until the user actively scrolls,
@@ -406,14 +447,17 @@ export function PhotoTimeline({
       if (!scrollEl || !list) return false;
       const offset = dateOffsets.get(exactDate);
       if (offset == null) return false;
-      const margin = list.offsetTop;
+      const margin = documentScroll
+        ? list.getBoundingClientRect().top + window.scrollY
+        : list.offsetTop;
       const padding =
         Number.parseFloat(scrollEl.style.scrollPaddingTop || "0") || 0;
       const top = Math.max(0, margin + offset - padding);
-      scrollEl.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+      const target = documentScroll ? window : scrollEl;
+      target.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
       return true;
     },
-    [dateOffsets],
+    [dateOffsets, documentScroll],
   );
 
   // ── Apply pending seek atomically when new data arrives ─────
@@ -493,7 +537,9 @@ export function PhotoTimeline({
   // first header in virtualItems (which includes overscan items above viewport).
   const currentVisibleDate = useMemo(() => {
     if (virtualItems.length === 0) return null;
-    const scrollTop = scrollElRef.current?.scrollTop ?? 0;
+    const scrollTop = documentScroll
+      ? window.scrollY
+      : (scrollElRef.current?.scrollTop ?? 0);
 
     // Find the last header whose top is at or above the current scroll position.
     // vItem.start is the item's absolute offset from the scroll container top.
@@ -514,7 +560,7 @@ export function PhotoTimeline({
     if (first?.type === "header") return first.group.date;
     if (first?.type === "row") return first.groupDate;
     return null;
-  }, [virtualItems, flatItems]);
+  }, [virtualItems, flatItems, documentScroll]);
 
   return (
     <>

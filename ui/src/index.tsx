@@ -12,6 +12,8 @@ import {
 } from "@tokimo/sdk";
 import {
   ConfigProvider,
+  cssVar,
+  TOKEN,
   ToastProvider,
   enUS as uiEnUS,
   zhCN as uiZhCN,
@@ -53,6 +55,8 @@ export default defineApp({
   },
   translations: {},
   standalone: {
+    layout: "document",
+    background: cssVar(TOKEN.surfaceBase),
     createWindow: (route) => ({ type: "photo", route }),
     getRoute: (window) => {
       if (window.type !== "photo") return null;
