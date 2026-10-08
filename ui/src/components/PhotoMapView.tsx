@@ -355,7 +355,7 @@ export function PhotoMapView({
   ];
 
   return (
-    <div className="relative w-full" style={{ height: "calc(100vh - 120px)" }}>
+    <div className="relative h-full min-h-0 w-full">
       {/* Map container — always mounted so the ref is available for AMap init */}
       <div ref={containerRef} className="h-full w-full" />
 

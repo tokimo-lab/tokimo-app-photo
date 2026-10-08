@@ -189,7 +189,7 @@ export function PhotoLightbox({
 
       {/* Main content */}
       <div
-        className="relative z-10 flex h-full"
+        className="safe-area-viewport z-10 flex"
         style={{
           opacity: contentVisible ? 1 : 0,
           pointerEvents: contentVisible ? "auto" : "none",
@@ -263,7 +263,7 @@ export function PhotoLightbox({
                     ref={image.fullDecoded ? undefined : imgRef}
                     src={thumbSrc}
                     alt={photo.title || photo.filename}
-                    className="max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain"
+                    className="max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain"
                     style={thumbDisplaySize}
                   />
                 )}
@@ -272,7 +272,7 @@ export function PhotoLightbox({
                     ref={image.fullDecoded ? imgRef : undefined}
                     src={image.fullBlobUrl}
                     alt={photo.title || photo.filename}
-                    className={`max-h-[calc(100vh-6rem)] max-w-full select-none pointer-events-none object-contain ${!image.fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
+                    className={`max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain ${!image.fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
                     onLoad={() => image.setFullDecoded(true)}
                   />
                 )}

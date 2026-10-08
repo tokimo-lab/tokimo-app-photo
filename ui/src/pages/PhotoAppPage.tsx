@@ -273,7 +273,10 @@ export default function PhotoAppPage({
   if (!id) return null;
 
   return (
-    <div ref={rootRef} className="relative flex flex-col gap-3 lg:gap-4">
+    <div
+      ref={rootRef}
+      className={`relative flex flex-col gap-3 lg:gap-4${tab === "locations" ? " h-full min-h-0" : ""}`}
+    >
       <PillTabBar
         tabs={tabs}
         activeTab={tab}
@@ -294,7 +297,9 @@ export default function PhotoAppPage({
       />
 
       {/* Scrollable content */}
-      <div className="space-y-3">
+      <div
+        className={`space-y-3${tab === "locations" ? " min-h-0 flex-1" : ""}`}
+      >
         {/* OCR search results banner */}
         {tab === "timeline" &&
           debouncedSearch.length >= 2 &&

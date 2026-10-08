@@ -57,6 +57,23 @@ export function queryElementRect(selector: string): FlyRect | null {
   };
 }
 
+function getLightboxViewport() {
+  const style = getComputedStyle(document.documentElement);
+  const top = Number.parseFloat(style.getPropertyValue("--safe-area-top")) || 0;
+  const right =
+    Number.parseFloat(style.getPropertyValue("--safe-area-right")) || 0;
+  const bottom =
+    Number.parseFloat(style.getPropertyValue("--safe-area-bottom")) || 0;
+  const left =
+    Number.parseFloat(style.getPropertyValue("--safe-area-left")) || 0;
+  return {
+    top,
+    left,
+    width: window.innerWidth - left - right,
+    height: window.innerHeight - top - bottom,
+  };
+}
+
 /** For images smaller than the available area, compute a default zoom (up to 2×)
  *  that fills the viewport without requiring drag/pan. */
 export function computeInitialScale(
@@ -64,8 +81,9 @@ export function computeInitialScale(
   photoHeight: number,
   infoPanelVisible: boolean,
 ): number {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const viewport = getLightboxViewport();
+  const vw = viewport.width;
+  const vh = viewport.height;
   const infoW = infoPanelVisible ? 320 : 0;
   const pad = 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
@@ -81,8 +99,9 @@ export function computeCenterRect(
   photoHeight: number,
   infoPanelVisible: boolean,
 ): FlyRect {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const viewport = getLightboxViewport();
+  const vw = viewport.width;
+  const vh = viewport.height;
   const infoW = infoPanelVisible ? 320 : 0;
   const pad = 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
@@ -108,8 +127,8 @@ export function computeCenterRect(
     }
   }
   return {
-    top: pad + (availH - h) / 2,
-    left: pad + (availW - w) / 2,
+    top: viewport.top + pad + (availH - h) / 2,
+    left: viewport.left + pad + (availW - w) / 2,
     width: w,
     height: h,
   };
@@ -121,8 +140,9 @@ export function computeThumbDisplaySize(
   photoHeight: number,
   showInfo: boolean,
 ): { width: number; height: number } {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const viewport = getLightboxViewport();
+  const vw = viewport.width;
+  const vh = viewport.height;
   const infoW = showInfo ? 320 : 0;
   const pad = 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
