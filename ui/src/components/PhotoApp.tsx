@@ -129,7 +129,7 @@ export default function PhotoApp() {
         syncProgress={syncProgress}
         onToggleCollapse={onToggleCollapse}
       />
-      <div className="relative min-w-0 flex-1 overflow-auto">
+      <div className="app-safe-area relative min-w-0 flex-1 overflow-auto bg-surface-base">
         {activeLibraryId && (
           <PhotoMenuBar>
             <PhotoAppPage
