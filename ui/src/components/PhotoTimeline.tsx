@@ -1,4 +1,9 @@
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
+import {
+  useComponentPreference,
+  useStandaloneDocumentScroll,
+  useViewer,
+} from "@tokimo/sdk";
 import { Spin } from "@tokimo/ui";
 import {
   useCallback,
@@ -8,17 +13,17 @@ import {
   useRef,
   useState,
 } from "react";
+import type { PhotoOutput } from "../generated/rust-api";
 import {
   computeJustifiedRows,
   type JustifiedRow,
 } from "../hooks/useJustifiedLayout";
-import type { PhotoOutput } from "../generated/rust-api";
-import { useComponentPreference, useViewer, useStandaloneDocumentScroll } from "@tokimo/sdk";
+import { thumbUrl } from "../lib/thumb";
 import { DateHeader } from "./DateHeader";
 import { PhotoThumbnail } from "./PhotoThumbnail";
 import { type DateGroup, groupPhotosByDate } from "./photo-utils";
 import { TimelineScrubber } from "./TimelineScrubber";
-import { thumbUrl } from "../lib/thumb";
+import { findTimelineTabBar } from "./timeline-layout";
 
 const PHOTO_GAP = 4;
 const HEADER_HEIGHT = 30;
@@ -289,6 +294,21 @@ export function PhotoTimeline({
     }
   }, [documentScroll]);
 
+  const getScrollPadding = useCallback(() => {
+    if (!documentScroll) {
+      return (
+        Number.parseFloat(scrollElRef.current?.style.scrollPaddingTop || "0") ||
+        0
+      );
+    }
+    const sticky = findTimelineTabBar(measureRef.current);
+    if (!sticky) return 0;
+    const position = getComputedStyle(sticky).position;
+    return position === "sticky" || position === "fixed"
+      ? Math.max(0, sticky.getBoundingClientRect().bottom)
+      : 0;
+  }, [documentScroll]);
+
   // ── Virtual scroll ───────────────────────────────────────────
   // `listRef` points at the inner positioning wrapper that contains the
   // virtual items. Its `offsetTop` is the correct `scrollMargin` for the
@@ -450,14 +470,13 @@ export function PhotoTimeline({
       const margin = documentScroll
         ? list.getBoundingClientRect().top + window.scrollY
         : list.offsetTop;
-      const padding =
-        Number.parseFloat(scrollEl.style.scrollPaddingTop || "0") || 0;
+      const padding = getScrollPadding();
       const top = Math.max(0, margin + offset - padding);
       const target = documentScroll ? window : scrollEl;
       target.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
       return true;
     },
-    [dateOffsets, documentScroll],
+    [dateOffsets, documentScroll, getScrollPadding],
   );
 
   // ── Apply pending seek atomically when new data arrives ─────
@@ -537,9 +556,10 @@ export function PhotoTimeline({
   // first header in virtualItems (which includes overscan items above viewport).
   const currentVisibleDate = useMemo(() => {
     if (virtualItems.length === 0) return null;
-    const scrollTop = documentScroll
-      ? window.scrollY
-      : (scrollElRef.current?.scrollTop ?? 0);
+    const scrollTop =
+      (documentScroll
+        ? window.scrollY
+        : (scrollElRef.current?.scrollTop ?? 0)) + getScrollPadding();
 
     // Find the last header whose top is at or above the current scroll position.
     // vItem.start is the item's absolute offset from the scroll container top.
@@ -560,7 +580,7 @@ export function PhotoTimeline({
     if (first?.type === "header") return first.group.date;
     if (first?.type === "row") return first.groupDate;
     return null;
-  }, [virtualItems, flatItems, documentScroll]);
+  }, [virtualItems, flatItems, documentScroll, getScrollPadding]);
 
   return (
     <>

@@ -55,9 +55,11 @@ function isTabKey(value: unknown): value is TabKey {
 export default function PhotoAppPage({
   photoLibraryId,
   syncing,
+  mobile = false,
 }: {
   photoLibraryId?: string;
   syncing?: boolean;
+  mobile?: boolean;
 }) {
   const nav = useWindowNav();
   const { currentWindowId } = useWindowActions();
@@ -274,30 +276,63 @@ export default function PhotoAppPage({
 
   if (!id) return null;
 
+  const countTag = (
+    <>
+      {tab === "timeline" && similarSourceId
+        ? similarPhotos.length > 0 && <Tag>{similarPhotos.length} 张相似</Tag>
+        : tab === "timeline" && timelineTotal > 0 && <Tag>{timelineTotal} 张</Tag>}
+      {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
+      {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
+    </>
+  );
+
   return (
     <div
       ref={rootRef}
-      className={`relative flex flex-col gap-3 lg:gap-4${tab === "locations" ? (documentScroll ? " h-[calc(100dvh-8rem)] min-h-0" : " h-full min-h-0") : ""}`}
+      className={`relative flex min-w-0 flex-col gap-3 lg:gap-4${tab === "locations" ? (documentScroll ? " h-[calc(100dvh-8rem)] min-h-0" : " h-full min-h-0") : ""}`}
     >
-      <PillTabBar
-        sticky={!documentScroll}
-        tabs={tabs}
-        activeTab={tab}
-        onTabChange={setTab}
-        trailingClassName="right-16"
-        trailing={
-          <>
-            {tab === "timeline" && similarSourceId
-              ? similarPhotos.length > 0 && (
-                  <Tag>{similarPhotos.length} 张相似</Tag>
-                )
-              : tab === "timeline" &&
-                timelineTotal > 0 && <Tag>{timelineTotal} 张</Tag>}
-            {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
-            {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
-          </>
-        }
-      />
+      {mobile ? (
+        <div
+          data-sticky-tab-bar="true"
+          className={`sticky z-10 flex min-w-0 items-center gap-2 bg-surface-base pb-3 ${documentScroll ? "top-[var(--photo-library-bar-height)]" : "top-0"}`}
+        >
+          <div
+            role="tablist"
+            aria-label="照片分类"
+            className="hide-scrollbar flex min-w-0 flex-1 gap-1 overflow-x-auto overscroll-x-contain"
+          >
+            {tabs.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                onClick={(event) => {
+                  setTab(key);
+                  event.currentTarget.scrollIntoView({
+                    block: "nearest",
+                    inline: "nearest",
+                  });
+                }}
+                className={`flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-accent ${tab === key ? "bg-accent-subtle text-accent-text" : "text-fg-secondary hover:bg-surface-overlay-hover"}`}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="shrink-0">{countTag}</div>
+        </div>
+      ) : (
+        <PillTabBar
+          sticky={!documentScroll}
+          tabs={tabs}
+          activeTab={tab}
+          onTabChange={setTab}
+          trailingClassName="right-16"
+          trailing={countTag}
+        />
+      )}
 
       {/* Scrollable content */}
       <div

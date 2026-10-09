@@ -1,10 +1,13 @@
+import {
+  useComponentPreference,
+  useStandaloneDocumentScroll,
+} from "@tokimo/sdk";
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PhotoOutput } from "../generated/rust-api";
 import { api } from "../generated/rust-api";
 import { thumbUrl } from "../lib/thumb";
-import { useComponentPreference, useStandaloneDocumentScroll } from "@tokimo/sdk";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import {
   ANIM_DURATION,
@@ -207,7 +210,7 @@ export function PhotoLightbox({
             : "none",
         }}
       >
-        <div className="relative flex flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
           <LightboxToolbar
             isLive={isLive}
             showLiveVideo={showLiveVideo}
@@ -240,7 +243,7 @@ export function PhotoLightbox({
           <div
             ref={zoom.imageContainerRef}
             role="application"
-            className="flex flex-1 items-center justify-center overflow-hidden select-none p-12"
+            className="flex flex-1 items-center justify-center overflow-hidden select-none p-4 sm:p-12"
             style={{
               touchAction: "none",
               cursor: zoom.dragging
@@ -272,7 +275,7 @@ export function PhotoLightbox({
                     ref={image.fullDecoded ? undefined : imgRef}
                     src={thumbSrc}
                     alt={photo.title || photo.filename}
-                    className="max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain"
+                    className="max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-2rem)] sm:max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain"
                     style={thumbDisplaySize}
                   />
                 )}
@@ -281,7 +284,7 @@ export function PhotoLightbox({
                     ref={image.fullDecoded ? imgRef : undefined}
                     src={image.fullBlobUrl}
                     alt={photo.title || photo.filename}
-                    className={`max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain ${!image.fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
+                    className={`max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-2rem)] sm:max-h-[calc(100dvh-var(--safe-area-top)-var(--safe-area-bottom)-6rem)] max-w-full select-none pointer-events-none object-contain ${!image.fullDecoded ? "absolute inset-0 opacity-0" : ""}`}
                     onLoad={() => image.setFullDecoded(true)}
                   />
                 )}
@@ -346,7 +349,7 @@ export function PhotoLightbox({
               <div className="text-fg-muted">无法加载图片</div>
             )}
           </div>
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
+          <div className="absolute bottom-4 left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 truncate rounded-full bg-black/60 px-4 py-1.5 text-xs text-white/70">
             {idx + 1} / {allPhotos.length} — {photo.filename}
             {zoom.isZoomed && (
               <span className="ml-2 text-white/50">
@@ -359,6 +362,7 @@ export function PhotoLightbox({
           <PhotoInfoSidebar
             detail={detail ?? undefined}
             photo={photo}
+            onClose={toggleInfo}
             hoveredFaceId={hoveredFaceId}
             onHoverFace={setHoveredFaceId}
             hoveredOcrId={hoveredOcrId}
@@ -447,11 +451,11 @@ function LightboxToolbar({
   onClose: () => void;
 }) {
   return (
-    <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+    <div className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center justify-end gap-2 sm:left-auto sm:right-4 sm:top-4">
       {isLive && (
         <button
           type="button"
-          className={`flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1.5 text-white transition-colors ${showLiveVideo ? "bg-white/30 ring-1 ring-white/50" : "bg-black/50 hover:bg-black/70"}`}
+          className={`flex min-h-11 cursor-pointer items-center gap-1 sm:min-h-0 rounded-full px-2.5 py-1.5 text-white transition-colors ${showLiveVideo ? "bg-white/30 ring-1 ring-white/50" : "bg-black/50 hover:bg-black/70"}`}
           onClick={() =>
             setShowLiveVideo((v) => {
               const next = !v;
@@ -475,7 +479,7 @@ function LightboxToolbar({
       {onToggleFavorite && (
         <button
           type="button"
-          className="cursor-pointer rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
+          className="flex size-11 cursor-pointer items-center justify-center rounded-full bg-black/50 p-2 sm:size-auto text-white transition-colors hover:bg-black/70"
           onClick={() => onToggleFavorite(photo)}
           title="收藏 (F)"
         >
@@ -486,15 +490,16 @@ function LightboxToolbar({
       )}
       <button
         type="button"
-        className="cursor-pointer rounded-full bg-black/50 px-3 py-2 text-xs text-white transition-colors hover:bg-black/70"
+        className="min-h-11 cursor-pointer rounded-full bg-black/50 px-3 sm:min-h-0 py-2 text-xs text-white transition-colors hover:bg-black/70"
         onClick={toggleInfo}
       >
         ℹ️ 详情
       </button>
       <button
         type="button"
-        className="cursor-pointer rounded-full bg-black/50 p-2 text-white transition-colors hover:bg-black/70"
+        className="flex size-11 cursor-pointer items-center justify-center rounded-full bg-black/50 p-2 sm:size-auto text-white transition-colors hover:bg-black/70"
         onClick={onClose}
+        aria-label="关闭照片查看器"
       >
         ✕
       </button>

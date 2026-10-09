@@ -84,8 +84,8 @@ export function computeInitialScale(
   const viewport = getLightboxViewport();
   const vw = viewport.width;
   const vh = viewport.height;
-  const infoW = infoPanelVisible ? 320 : 0;
-  const pad = 48;
+  const infoW = infoPanelVisible && window.innerWidth >= 640 ? 320 : 0;
+  const pad = window.innerWidth < 640 ? 16 : 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
   const availH = Math.max(1, vh - pad * 2);
   const fitScale = Math.min(availW / photoWidth, availH / photoHeight);
@@ -102,8 +102,8 @@ export function computeCenterRect(
   const viewport = getLightboxViewport();
   const vw = viewport.width;
   const vh = viewport.height;
-  const infoW = infoPanelVisible ? 320 : 0;
-  const pad = 48;
+  const infoW = infoPanelVisible && window.innerWidth >= 640 ? 320 : 0;
+  const pad = window.innerWidth < 640 ? 16 : 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
   const availH = Math.max(1, vh - pad * 2);
 
@@ -143,8 +143,8 @@ export function computeThumbDisplaySize(
   const viewport = getLightboxViewport();
   const vw = viewport.width;
   const vh = viewport.height;
-  const infoW = showInfo ? 320 : 0;
-  const pad = 48;
+  const infoW = showInfo && window.innerWidth >= 640 ? 320 : 0;
+  const pad = window.innerWidth < 640 ? 16 : 48;
   const availW = Math.max(1, vw - infoW - pad * 2);
   const availH = Math.max(1, vh - pad * 2);
   const fitScale = Math.min(availW / photoWidth, availH / photoHeight);

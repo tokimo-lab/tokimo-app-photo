@@ -9,6 +9,8 @@ export default function PhotoSidebar({
   activeId,
   onSelect,
   collapsed,
+  mobile = false,
+  documentScroll = false,
   onCreateClick,
   onSettingsClick,
   syncProgress,
@@ -19,6 +21,8 @@ export default function PhotoSidebar({
   activeId: string | null;
   onSelect: (id: string) => void;
   collapsed?: boolean;
+  mobile?: boolean;
+  documentScroll?: boolean;
   onCreateClick: () => void;
   onSettingsClick: () => void;
   syncProgress?: Record<
@@ -29,6 +33,52 @@ export default function PhotoSidebar({
   /** When true, the settings (⚙) button shows a highlighted state. */
   settingsActive?: boolean;
 }) {
+  if (mobile) {
+    const progress = activeId ? syncProgress?.[activeId] : undefined;
+    return (
+      <div
+        data-photo-library-bar
+        className={`app-safe-area-header app-safe-area-top app-safe-area-x flex shrink-0 items-center gap-2 border-b border-base bg-surface-sidebar px-3 py-2 text-fg-primary [--app-safe-area-padding-top:0.5rem] [--app-safe-area-padding-x:0.75rem] ${documentScroll ? "sticky top-0 z-30" : ""}`}
+      >
+        <select
+          aria-label="图库"
+          value={activeId ?? ""}
+          onChange={(event) => onSelect(event.target.value)}
+          className="h-11 min-w-0 flex-1 cursor-pointer rounded-lg border border-base bg-surface-base px-3 text-sm text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {libraries.map((library) => (
+            <option key={library.id} value={library.id}>
+              {library.name}
+              {library.itemCount > 0 ? ` (${library.itemCount})` : ""}
+            </option>
+          ))}
+        </select>
+        {progress?.isActive &&
+          (progress.indeterminate ? (
+            <Spin size="small" />
+          ) : (
+            <CircularProgress value={progress.pct} size={24} />
+          ))}
+        <button
+          type="button"
+          aria-label="新建图库"
+          onClick={onCreateClick}
+          className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-fg-secondary hover:bg-surface-overlay-hover focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Plus size={20} />
+        </button>
+        <button
+          type="button"
+          aria-label="图库设置"
+          onClick={onSettingsClick}
+          className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-fg-secondary hover:bg-surface-overlay-hover focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Settings size={20} />
+        </button>
+      </div>
+    );
+  }
+
   const sections = [
     {
       items: libraries.map((lib) => {

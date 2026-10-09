@@ -29,9 +29,10 @@ export default function PhotoApp() {
   const { route, replace } = useWindowNav();
   const { data: libraries, isLoading } = api.photo.list.useQuery();
   const [containerRef, containerWidth] = useContainerWidth();
+  const mobile = containerWidth > 0 && containerWidth < 720;
   const { collapsed: sidebarCollapsed, onToggleCollapse } = useSidebarCollapsed(
     "photo",
-    containerWidth > 0 && containerWidth < 720,
+    mobile,
   );
 
   const ctx = useRuntimeCtx();
@@ -116,13 +117,15 @@ export default function PhotoApp() {
   return (
     <div
       ref={containerRef}
-      className={`relative flex ${documentScroll ? "min-h-dvh flex-col" : "h-full"}`}
+      className={`relative flex min-w-0 [--photo-library-bar-height:calc(61px+var(--app-safe-area-top,0px))] ${documentScroll ? "min-h-dvh" : "h-full"} ${mobile ? "flex-col" : ""}`}
     >
       <PhotoSidebar
         libraries={libraries}
         activeId={activeLibraryId}
         onSelect={handleSelectLibrary}
         collapsed={sidebarCollapsed}
+        mobile={mobile}
+        documentScroll={documentScroll}
         onCreateClick={() => {
           void openEditorModal();
         }}
@@ -142,6 +145,7 @@ export default function PhotoApp() {
             <PhotoAppPage
               key={activeLibraryId}
               photoLibraryId={activeLibraryId}
+              mobile={mobile}
               syncing={!!syncProgress[activeLibraryId]?.isActive}
             />
           </PhotoMenuBar>

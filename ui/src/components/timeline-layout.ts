@@ -19,6 +19,42 @@ export interface LayoutResult {
   posToDateLabel: (pos: number) => string;
 }
 
+export function findTimelineTabBar(
+  element: HTMLElement | null,
+): HTMLElement | null {
+  let parent = element?.parentElement ?? null;
+  while (parent) {
+    const tabs = parent.querySelector<HTMLElement>(
+      '[data-sticky-tab-bar="true"]',
+    );
+    if (tabs) return tabs;
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+/** Keep labels legible at the measured height, prioritizing year labels. */
+function fitMarks(marks: Mark[], trackHeight: number): Mark[] {
+  if (trackHeight <= 0) return [];
+  const visible: Mark[] = [];
+  const priority = (mark: Mark) => (mark.isYear ? 0 : mark.label ? 1 : 2);
+  for (const mark of [...marks].sort(
+    (a, b) => priority(a) - priority(b) || a.position - b.position,
+  )) {
+    const minGap = mark.label ? 24 : 4;
+    if (
+      visible.every(
+        (other) =>
+          Math.abs(other.position - mark.position) * trackHeight >=
+          (other.label ? Math.max(24, minGap) : minGap),
+      )
+    ) {
+      visible.push(mark);
+    }
+  }
+  return visible.sort((a, b) => a.position - b.position);
+}
+
 /** Ordinal-ish integer for a date, used only for interval math. */
 function dateOrdinal(y: number, m: number, d: number): number {
   return y * 400 + m * 32 + d;
@@ -100,6 +136,7 @@ function buildDayPreciseLayout(
 export function useTimelineLayout(
   entries: TimelineEntry[],
   focusYear: number | null,
+  trackHeight: number,
 ): LayoutResult {
   return useMemo(() => {
     const empty: LayoutResult = {
@@ -129,12 +166,13 @@ export function useTimelineLayout(
         label: `${year}/${month}`,
         isYear: true,
       });
-      return layout;
+      return { ...layout, marks: fitMarks(layout.marks, trackHeight) };
     }
 
     // ── Single year: day-precise linear, month labels only ──────
     if (years.length === 1) {
-      return buildDayPreciseLayout(entries, false);
+      const layout = buildDayPreciseLayout(entries, false);
+      return { ...layout, marks: fitMarks(layout.marks, trackHeight) };
     }
 
     // ── Multi-year: 3-tier weight centered on focus year ────────
@@ -208,8 +246,7 @@ export function useTimelineLayout(
     const daySet = new Set(dayYears);
     const monthSet = new Set(monthYears);
 
-    const TRACK_PX = 700;
-    const LABEL_H = 16;
+    const LABEL_H = 24;
 
     // Sorted entries-with-pos in day tier (for nearest lookup)
     const dayTierEntries: Array<TimelineEntry & { pos: number }> = [];
@@ -266,7 +303,7 @@ export function useTimelineLayout(
         }
       } else if (monthSet.has(y)) {
         // Month tier: month labels at adaptive density
-        const yearPx = (m.w / totalW) * TRACK_PX;
+        const yearPx = (m.w / totalW) * trackHeight;
         const maxLabels = Math.max(1, Math.floor(yearPx / LABEL_H));
         const step = Math.max(1, Math.ceil(moRange / maxLabels));
         for (let mo = maxMo - step; mo >= minMo; mo -= step) {
@@ -303,7 +340,7 @@ export function useTimelineLayout(
     const dayNearestLookup = makeNearestLookup(dayTierEntries);
 
     return {
-      marks,
+      marks: fitMarks(marks, trackHeight),
       datePositions,
       posToDateLabel: (pos: number) => {
         // Detect day-tier range
@@ -335,5 +372,5 @@ export function useTimelineLayout(
         return "";
       },
     };
-  }, [entries, focusYear]);
+  }, [entries, focusYear, trackHeight]);
 }

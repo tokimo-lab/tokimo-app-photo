@@ -1,8 +1,14 @@
 import { useStandaloneDocumentScroll, useWindowContainer } from "@tokimo/sdk";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { api } from "../generated/rust-api";
-import { useTimelineLayout } from "./timeline-layout";
+import { findTimelineTabBar, useTimelineLayout } from "./timeline-layout";
 
 const SCRUBBER_TRACK_BACKGROUND =
   "color-mix(in oklab, var(--color-fg-muted) 26%, transparent)";
@@ -38,6 +44,11 @@ export function TimelineScrubber({
 }) {
   const documentScroll = useStandaloneDocumentScroll();
   const trackRef = useRef<HTMLDivElement>(null);
+  const [trackElement, setTrackElement] = useState<HTMLDivElement | null>(null);
+  const [trackHeight, setTrackHeight] = useState(0);
+  const [trackTop, setTrackTop] = useState(48);
+  const pointerIdRef = useRef<number | null>(null);
+  const dragPositionRef = useRef(0);
   const shellPortalTarget = useWindowContainer();
   const [domPortalTarget, setDomPortalTarget] = useState<HTMLElement | null>(
     null,
@@ -58,6 +69,40 @@ export function TimelineScrubber({
     }
   }, []);
 
+  const trackCallbackRef = useCallback((el: HTMLDivElement | null) => {
+    trackRef.current = el;
+    setTrackElement(el);
+  }, []);
+
+  useEffect(() => {
+    if (!trackElement) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setTrackHeight(entry?.contentRect.height ?? 0);
+    });
+    observer.observe(trackElement);
+    return () => observer.disconnect();
+  }, [trackElement]);
+
+  useEffect(() => {
+    if (!documentScroll || !trackElement) return;
+    const tabs = findTimelineTabBar(trackElement);
+    const update = () => {
+      setTrackTop(
+        Math.max(16, (tabs?.getBoundingClientRect().bottom ?? 36) + 12),
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (tabs) observer.observe(tabs);
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [documentScroll, trackElement]);
+
   const { data: timelineEntries } = api.photo.getTimelineIndex.useQuery(
     { id: appId },
     { enabled: !!appId },
@@ -65,6 +110,7 @@ export function TimelineScrubber({
   const { marks, datePositions, posToDateLabel } = useTimelineLayout(
     timelineEntries ?? [],
     focusYear,
+    trackHeight,
   );
 
   // ── Scroll → thumb sync (driven by virtualizer's visible date) ──
@@ -111,6 +157,7 @@ export function TimelineScrubber({
     (clientY: number) => {
       if (!trackRef.current) return;
       const r = trackRef.current.getBoundingClientRect();
+      if (r.height <= 0) return;
       const pos = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
       const nearest = nearestDate(pos);
       if (nearest) {
@@ -118,51 +165,54 @@ export function TimelineScrubber({
         // where dragging ends before the scroll settles, causing the sync to
         // snap the thumb back to the old visible date.
         scrollToDate(nearest, false);
-        setTooltip({ y: clientY - r.top, text: posToDateLabel(pos) });
+        setTooltip({ y: pos * r.height, text: posToDateLabel(pos) });
       }
+      dragPositionRef.current = pos;
       setThumbPos(pos);
     },
     [nearestDate, posToDateLabel, scrollToDate],
   );
 
-  // ── Mouse down on track ─────────────────────────────────────
+  // Capture keeps mouse, pen and touch drags on the track outside its bounds.
   const onDown = useCallback(
-    (e: React.MouseEvent) => {
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!e.isPrimary || e.button !== 0) return;
       e.preventDefault();
+      pointerIdRef.current = e.pointerId;
+      e.currentTarget.setPointerCapture(e.pointerId);
       setDragging(true);
       scrollToY(e.clientY);
     },
     [scrollToY],
   );
 
-  // ── Drag (global move/up) ───────────────────────────────────
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent) => scrollToY(e.clientY);
-    const onUp = () => {
+  const onEnd = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      pointerIdRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
       setDragging(false);
       setTooltip(null);
-      // Shift focus to where the user landed → recompute layout
-      if (trackRef.current) {
-        const label = posToDateLabel(thumbPos);
-        const yearMatch = label.match(/^(\d{4})/);
-        if (yearMatch) {
-          setFocusYear(Number.parseInt(yearMatch[1], 10));
-        }
+      const yearMatch = posToDateLabel(dragPositionRef.current).match(
+        /^(\d{4})/,
+      );
+      if (yearMatch) {
+        setFocusYear(Number.parseInt(yearMatch[1], 10));
       }
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [dragging, scrollToY, thumbPos, posToDateLabel]);
+    },
+    [posToDateLabel],
+  );
 
   // ── Hover tooltip ───────────────────────────────────────────
   const onHover = useCallback(
-    (e: React.MouseEvent) => {
-      if (dragging || !trackRef.current) return;
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (pointerIdRef.current === e.pointerId) {
+        scrollToY(e.clientY);
+        return;
+      }
+      if (e.pointerType !== "mouse" || dragging || !trackRef.current) return;
       const r = trackRef.current.getBoundingClientRect();
       const pos = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
       const label = posToDateLabel(pos);
@@ -170,7 +220,7 @@ export function TimelineScrubber({
         setTooltip({ y: e.clientY - r.top, text: label });
       }
     },
-    [dragging, posToDateLabel],
+    [dragging, posToDateLabel, scrollToY],
   );
 
   const onLeave = useCallback(() => {
@@ -182,7 +232,7 @@ export function TimelineScrubber({
 
   const scrubber = (
     <div
-      ref={trackRef}
+      ref={trackCallbackRef}
       role="slider"
       aria-label="Timeline scrubber"
       aria-valuenow={Math.round(thumbPos * 100)}
@@ -190,18 +240,19 @@ export function TimelineScrubber({
       aria-valuemax={100}
       aria-orientation="vertical"
       tabIndex={0}
-      className={`${documentScroll ? "fixed" : "absolute"} right-0 z-30 block w-12 cursor-pointer select-none`}
+      className={`${documentScroll ? "fixed" : "absolute"} right-0 z-30 block w-12 cursor-pointer touch-none select-none`}
       style={{
-        top: documentScroll
-          ? "calc(48px + env(safe-area-inset-top, 0px))"
-          : "48px",
+        top: documentScroll ? `${trackTop}px` : "48px",
         bottom: documentScroll
-          ? "calc(8px + env(safe-area-inset-bottom, 0px))"
+          ? "calc(16px + env(safe-area-inset-bottom, 0px))"
           : "8px",
       }}
-      onMouseDown={onDown}
-      onMouseMove={onHover}
-      onMouseLeave={onLeave}
+      onPointerDown={onDown}
+      onPointerMove={onHover}
+      onPointerUp={onEnd}
+      onPointerCancel={onEnd}
+      onLostPointerCapture={onEnd}
+      onPointerLeave={onLeave}
     >
       {/* Vertical track line */}
       <div

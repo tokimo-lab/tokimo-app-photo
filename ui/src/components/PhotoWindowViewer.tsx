@@ -5,12 +5,12 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
+import type { WindowState } from "@tokimo/sdk";
+import { useComponentPreference, useWindowActions } from "@tokimo/sdk";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../generated/rust-api";
 import type { PhotoOutput } from "../generated/rust-types";
 import { thumbUrl as photoThumbUrl } from "../lib/thumb";
-import { useComponentPreference, useWindowActions } from "@tokimo/sdk";
-import type { WindowState } from "@tokimo/sdk";
 import { LivePhotoIcon } from "./LivePhotoIcon";
 import { PhotoInfoSidebar } from "./PhotoInfoSidebar";
 import { PhotoLightbox } from "./PhotoLightbox";
@@ -450,6 +450,7 @@ export const PhotoWindowViewer = memo(function PhotoWindowViewer({
         <PhotoInfoSidebar
           detail={detail}
           photo={photo}
+          onClose={toggleInfo}
           hoveredFaceId={hoveredFaceId}
           onHoverFace={setHoveredFaceId}
           hoveredOcrId={hoveredOcrId}
