@@ -1,3 +1,10 @@
+import {
+  useStandaloneDocumentScroll,
+  useToast,
+  useWindowActions,
+  useWindowNav,
+  useWindows,
+} from "@tokimo/sdk";
 import { Button, Empty, PillTabBar, Spin, Tag } from "@tokimo/ui";
 import {
   Calendar,
@@ -22,13 +29,6 @@ import { PhotoSelectionBar } from "../components/PhotoSelectionBar";
 import { PHOTO_SIZE_LEVELS } from "../components/PhotoSizeSlider";
 import { PhotoTimeline } from "../components/PhotoTimeline";
 import type { PhotoOutput } from "../generated/rust-api";
-import {
-  useToast,
-  useStandaloneDocumentScroll,
-  useWindowActions,
-  useWindowNav,
-  useWindows,
-} from "@tokimo/sdk";
 import { ClipSearchGrid, OcrSearchBanner } from "./PhotoSearchDisplay";
 import { type TabKey, usePhotoData } from "./use-photo-data";
 import { usePhotoMutations } from "./use-photo-mutations";
@@ -280,7 +280,8 @@ export default function PhotoAppPage({
     <>
       {tab === "timeline" && similarSourceId
         ? similarPhotos.length > 0 && <Tag>{similarPhotos.length} 张相似</Tag>
-        : tab === "timeline" && timelineTotal > 0 && <Tag>{timelineTotal} 张</Tag>}
+        : tab === "timeline" &&
+          timelineTotal > 0 && <Tag>{timelineTotal} 张</Tag>}
       {tab === "favorites" && favTotal > 0 && <Tag>{favTotal} 张</Tag>}
       {tab === "trash" && trashTotal > 0 && <Tag>{trashTotal} 张</Tag>}
     </>

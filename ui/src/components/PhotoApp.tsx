@@ -1,20 +1,20 @@
-import { AppSetupGuide, Spin } from "@tokimo/ui";
-import { FolderSearch, Image, Plus, Upload } from "lucide-react";
-import { useCallback, useEffect, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { api } from "../generated/rust-api";
-import { useContainerWidth } from "../shared/hooks/use-container-width";
-import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
 import {
   useRuntimeCtx,
   useStandaloneDocumentScroll,
   useWindowActions,
   useWindowNav,
 } from "@tokimo/sdk";
-import { registerBridge } from "../modal-bridge";
+import { AppSetupGuide, Spin } from "@tokimo/ui";
+import { FolderSearch, Image, Plus, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { api } from "../generated/rust-api";
 import { useLibraryItemProgress } from "../hooks/useLibraryItemProgress";
 import { usePersonEntityEvents } from "../hooks/usePersonEntityEvents";
+import { registerBridge } from "../modal-bridge";
 import PhotoAppPage from "../pages/PhotoAppPage";
+import { useContainerWidth } from "../shared/hooks/use-container-width";
+import { useSidebarCollapsed } from "../shared/hooks/use-sidebar-collapsed";
 import PhotoMenuBar from "./PhotoMenuBar";
 import PhotoSidebar from "./PhotoSidebar";
 
